@@ -1,0 +1,19 @@
+{
+  "name": "rewind",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "tsc",
+    "dev": "tsc -w"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "electron": "^26.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}
