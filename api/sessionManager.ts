@@ -1,18 +1,10 @@
-// Session manager placeholder
+// placeholder session manager
+// Implement DB-backed session creation, listing, and event retrieval here
 
-export type Session = {
-  id: string
-  title: string
-  created_at: string
-  updated_at: string
+export async function listSessions() {
+  throw new Error('Not implemented')
 }
 
-export async function listSessions(): Promise<Session[]> {
-  // TODO: read from DB
-  return []
-}
-
-export async function getSessionEvents(sessionId: string): Promise<any[]> {
-  // TODO: read events from DB
-  return []
+export async function getSessionEvents(sessionId: string) {
+  throw new Error('Not implemented')
 }

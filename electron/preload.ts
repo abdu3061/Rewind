@@ -1,7 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+// placeholder: preload script
+// Expose safe, minimal APIs to the renderer via contextBridge
 
-contextBridge.exposeInMainWorld('rewind', {
-  getSessions: () => ipcRenderer.invoke('getSessions'),
-  getSessionEvents: (sessionId: string) => ipcRenderer.invoke('getSessionEvents', sessionId),
-  requestRecovery: (payload: any) => ipcRenderer.invoke('requestRecovery', payload)
-})
+// Example: contextBridge.exposeInMainWorld('rewind', { ... })

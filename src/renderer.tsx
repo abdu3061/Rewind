@@ -1,11 +1,6 @@
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import Dashboard from './pages/Dashboard'
-import './styles/theme.css'
+// placeholder: renderer entry
+// Implement React entry point (e.g., ReactDOM.createRoot(...))
 
-const App = () => {
-  return <Dashboard />
+export function initRenderer() {
+  // TODO: mount the React application
 }
-
-const container = document.getElementById('root')
-if (container) createRoot(container).render(<App />)

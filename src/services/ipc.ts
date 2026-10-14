@@ -1,12 +1,14 @@
-// Wrapper to match the API exposed by preload.ts
+// IPC wrapper placeholders
+// Implement calls to window.rewind (exposed by preload) from the renderer
+
 export const getSessions = async (): Promise<any[]> => {
-  return (window as any).rewind?.getSessions() || []
+  throw new Error('Not implemented')
 }
 
 export const getSessionEvents = async (sessionId: string): Promise<any[]> => {
-  return (window as any).rewind?.getSessionEvents(sessionId) || []
+  throw new Error('Not implemented')
 }
 
 export const requestRecovery = async (payload: any): Promise<any> => {
-  return (window as any).rewind?.requestRecovery(payload) || { success: false }
+  throw new Error('Not implemented')
 }
