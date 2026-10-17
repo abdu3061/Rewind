@@ -19,7 +19,3 @@ Next steps
 3. Implement API logic in api/ and wire to ipcMain handlers in electron/main.ts.
 4. Add real Google ADK credentials and implement calls in api/ai/googleAdkClient.ts.
 
-If you want, I can:
-- open issues for each task and assign labels
-- create a branch and open a pull request with more complete starter code (bundler + tests)
-
