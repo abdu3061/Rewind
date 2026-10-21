@@ -2,18 +2,48 @@
   "name": "rewind",
   "version": "0.1.0",
   "private": true,
-  "main": "electron/main.js",
+  "type": "module",
+  "description": "A local, consent-driven memory and recovery layer for Windows work sessions.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13.0 <23",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "start": "electron .",
-    "build": "tsc",
-    "dev": "tsc -w"
+    "dev": "npm run dev --workspace @rewind/desktop",
+    "dev:extension": "npm run dev --workspace @rewind/browser-extension",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/desktop/tsconfig.renderer.json && tsc -p apps/browser-extension/tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:app": "playwright test",
+    "build": "npm run typecheck && npm run build:extension && npm run package --workspace @rewind/desktop",
+    "build:extension": "npm run build --workspace @rewind/browser-extension",
+    "make": "npm run make --workspace @rewind/desktop",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "electron": "^26.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/chrome": "^0.1.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
   }
 }

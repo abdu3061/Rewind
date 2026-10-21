@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"] },
+  "include": [
+    "packages/**/*.ts",
+    "apps/desktop/src/main/**/*.ts",
+    "apps/desktop/src/preload/**/*.ts",
+    "apps/desktop/src/forge-env.d.ts",
+    "apps/desktop/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
+}

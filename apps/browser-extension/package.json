@@ -1,0 +1,13 @@
+{
+  "name": "@rewind/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@rewind/contracts": "0.1.0"
+  }
+}

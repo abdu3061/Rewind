@@ -1,0 +1,27 @@
+{
+  "name": "@rewind/desktop",
+  "productName": "Rewind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rewind Windows desktop application",
+  "author": "Rewind team",
+  "license": "UNLICENSED",
+  "main": ".vite/build/main.cjs",
+  "scripts": {
+    "dev": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@electron-forge/plugin-vite": "8.0.1",
+    "@electron-forge/shared-types": "8.0.1",
+    "@rewind/contracts": "0.1.0",
+    "@rewind/engine": "0.1.0",
+    "electron": "44.9.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}
