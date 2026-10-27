@@ -643,26 +643,3 @@ async function retryConnection(): Promise<void> {
     </div>
   );
 }
-
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <section className="panel empty-state">
-      <div className="empty-symbol" aria-hidden="true">
-        ↶
-      </div>
-
-      <h2>{title}</h2>
-      <p>{description}</p>
-
-      <span className="subtle-label">
-        Planned feature · no demo activity
-      </span>
-    </section>
-  );
-}
