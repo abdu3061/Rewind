@@ -92,10 +92,8 @@ export function App() {
   }, []);
 
   async function run(action: Exclude<SessionAction, "get">): Promise<void> {
- 
     if (busy || !ready) return;
 
- 
     setBusy(true);
     setPendingAction(action);
     setError(null);
@@ -216,9 +214,7 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">SESSION CONTROLS</p>
-                  <h2 id="session-heading">
-                    Dashboard
-                  </h2>
+                  <h2 id="session-heading">Dashboard</h2>
                 </div>
 
                 <span
@@ -227,8 +223,6 @@ export function App() {
                   role="status"
                 >
                   {ready ? status : error ? "connection error" : "loading"}
-
-                  
                 </span>
               </div>
 
@@ -250,9 +244,8 @@ export function App() {
                 <button
                   onClick={() => void run("pause")}
                   disabled={!ready || busy || status !== "active"}
- 
+
                   aria-busy={pendingAction === "pause"}
- 
                 >
                   {pendingAction === "pause" ? "Pausing..." : "Pause"}
                 </button>
@@ -262,7 +255,6 @@ export function App() {
                   disabled={!ready || busy || status !== "paused"}
 
                   aria-busy={pendingAction === "resume"}
- 
                 >
                   {pendingAction === "resume" ? "Resuming..." : "Resume"}
                 </button>
@@ -317,8 +309,6 @@ export function App() {
                   Folder selection, saved versions, and reviewed recovery are
                   planned for a later milestone.
                 </p>
- 
-
 
                 <span className="subtle-label">
                   Not available in this build
@@ -334,7 +324,6 @@ export function App() {
         )}
 
         {page === "Timeline" && (
- 
           <section className="panel">
             <p className="eyebrow">ACTIVITY TIMELINE</p>
             <h2>Your work activity</h2>
@@ -404,25 +393,20 @@ export function App() {
           </section>
         )}
 
+        <EmptyState
+          title="Your timeline will start here"
+          description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
+        />
 
-          <EmptyState
-            title="Your timeline will start here"
-            description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
-          />
-        
         {page === "Search" && (
           <section className="panel">
             <p className="eyebrow">SEARCH ACTIVITY</p>
             <h2>Search your recorded evidence</h2>
 
             <p>
- 
               Search for applications, websites, and files from your work
-              sessions.
-
-              Keyword search requires SQLite FTS5. Optional Gemini evidence
-              search comes later, after explicit opt-in.
- 
+              sessions. Keyword search requires SQLite FTS5. Optional Gemini
+              evidence search comes later, after explicit opt-in.
             </p>
 
             <div className="notice">
@@ -435,7 +419,6 @@ export function App() {
 
             <div className="search-row">
               <input
- 
                 type="search"
                 placeholder="Search your activity..."
                 aria-label="Search activity"
@@ -454,11 +437,7 @@ export function App() {
               >
                 Search
               </button>
-
-                id="search"
-                placeholder="Search is not available yet"
-                disabled
-              /
+              id="search" placeholder="Search is not available yet" disabled /
               <button disabled>Search</button>
             </div>
 
@@ -604,7 +583,6 @@ export function App() {
           </section>
         )}
 
-
         {page === "Checkpoints" && (
           <EmptyState
             title="No checkpoints yet"
@@ -689,8 +667,6 @@ export function App() {
     </div>
   );
 }
- 
-
 
 function EmptyState({
   title,
@@ -710,4 +686,3 @@ function EmptyState({
     </section>
   );
 }
- 
