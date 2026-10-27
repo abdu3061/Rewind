@@ -1,6 +1,6 @@
-import React from 'react'
+import React from "react";
 
 // placeholder TopNav component
-const TopNav: React.FC = () => null
+const TopNav: React.FC = () => null;
 
-export default TopNav
+export default TopNav;

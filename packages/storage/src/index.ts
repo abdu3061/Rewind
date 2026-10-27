@@ -1,4 +1,4 @@
-import type { Repositories, Result, Timestamp } from '@rewind/contracts';
+import type { Repositories, Result, Timestamp } from "@rewind/contracts";
 
 /** A future encrypted adapter must satisfy this interface. No database is opened today. */
 export interface StorageAdapter {
@@ -15,6 +15,7 @@ export interface RetentionReport {
   retainedKeptCheckpoints: number;
 }
 
+export * from './database-schema';
 export * from './session-repository';
 export * from './activity-repository';
 export * from './file-repository';
@@ -22,4 +23,6 @@ export * from './checkpoint-repository';
 export * from './search-repository';
 export * from './sqlite-adapter';
 
-export const storageImplementationStatus = 'not-implemented' as const;
+
+
+

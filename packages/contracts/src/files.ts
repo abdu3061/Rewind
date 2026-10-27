@@ -1,24 +1,31 @@
-import { z } from 'zod';
-import { idSchema, timestampSchema } from './common';
+import { z } from "zod";
+import { idSchema, timestampSchema } from "./common";
 
 export const httpUrlSchema = z
   .url()
   .max(8192)
   .refine((value) => {
     const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
-  }, 'Only HTTP(S) URLs without embedded credentials are accepted.');
+    return (
+      ["http:", "https:"].includes(url.protocol) &&
+      !url.username &&
+      !url.password
+    );
+  }, "Only HTTP(S) URLs without embedded credentials are accepted.");
 
 export const fileReferenceSchema = z.strictObject({
   id: idSchema,
   displayName: z.string().min(1).max(255),
-  identity: z.discriminatedUnion('kind', [
+  identity: z.discriminatedUnion("kind", [
     z.strictObject({
-      kind: z.literal('verified-path'),
+      kind: z.literal("verified-path"),
       absolutePath: z.string().min(1).max(32767),
       verifiedAt: timestampSchema,
     }),
-    z.strictObject({ kind: z.literal('unverified'), observedTitle: z.string().max(2048) }),
+    z.strictObject({
+      kind: z.literal("unverified"),
+      observedTitle: z.string().max(2048),
+    }),
   ]),
 });
 export type FileReference = z.infer<typeof fileReferenceSchema>;
@@ -43,7 +50,12 @@ export const checkpointSchema = z.strictObject({
   fileVersionIds: z.array(idSchema).max(1000),
   browserVisitIds: z.array(idSchema).max(1000),
   projectReferences: z
-    .array(z.strictObject({ displayName: z.string().min(1).max(255), folderId: idSchema }))
+    .array(
+      z.strictObject({
+        displayName: z.string().min(1).max(255),
+        folderId: idSchema,
+      }),
+    )
     .max(100),
 });
 export type Checkpoint = z.infer<typeof checkpointSchema>;

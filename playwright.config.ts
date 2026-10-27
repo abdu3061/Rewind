@@ -1,10 +1,10 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: './tests/app',
+  testDir: "./tests/app",
   workers: 1,
   fullyParallel: false,
   timeout: 30_000,
-  reporter: 'list',
-  outputDir: 'test-results',
+  reporter: "list",
+  outputDir: "test-results",
 });

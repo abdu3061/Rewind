@@ -1,12 +1,12 @@
-import React from 'react'
+import React from "react";
 
 export type EventItem = {
-  id: string
-  timestamp: string
-  text: string
-}
+  id: string;
+  timestamp: string;
+  text: string;
+};
 
 // placeholder Timeline component
-const Timeline: React.FC<{ items?: EventItem[] }> = () => null
+const Timeline: React.FC<{ items?: EventItem[] }> = () => null;
 
-export default Timeline
+export default Timeline;

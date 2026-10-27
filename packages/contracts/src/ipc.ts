@@ -1,9 +1,9 @@
-import { z } from 'zod';
-import { resultSchema, type Result } from './common';
-import { sessionStateSchema, type SessionState } from './session';
+import { z } from "zod";
+import { resultSchema, type Result } from "./common";
+import { sessionStateSchema, type SessionState } from "./session";
 
-export const SESSION_CHANNEL = 'rewind:session' as const;
-export const SESSION_CHANGED_CHANNEL = 'rewind:session-changed' as const;
+export const SESSION_CHANNEL = "rewind:session" as const;
+export const SESSION_CHANGED_CHANNEL = "rewind:session-changed" as const;
 export const sessionResponseSchema = resultSchema(sessionStateSchema);
 export const noArgumentsSchema = z.tuple([]);
 
