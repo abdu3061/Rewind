@@ -1,5 +1,5 @@
-import React from 'react';
-import TopNav from '../components/TopNav';
+import React from "react";
+import TopNav from "../components/TopNav";
 
 // placeholder Dashboard page
 const Dashboard: React.FC = () => {

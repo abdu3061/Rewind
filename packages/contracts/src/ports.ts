@@ -1,9 +1,9 @@
-import type { ActivityEvent } from './activity';
-import type { Id, Result, Timestamp } from './common';
-import type { Checkpoint, FileReference, FileVersion } from './files';
-import type { SearchQuery, SearchResult } from './search';
-import type { Session } from './session';
-import type { UserSettings } from './settings';
+import type { ActivityEvent } from "./activity";
+import type { Id, Result, Timestamp } from "./common";
+import type { Checkpoint, FileReference, FileVersion } from "./files";
+import type { SearchQuery, SearchResult } from "./search";
+import type { Session } from "./session";
+import type { UserSettings } from "./settings";
 
 export interface SessionRepository {
   save(session: Session): Promise<Result<void>>;
@@ -12,7 +12,11 @@ export interface SessionRepository {
 }
 export interface ActivityRepository {
   append(events: readonly ActivityEvent[]): Promise<Result<void>>;
-  list(sessionId: Id, limit: number, before?: Timestamp): Promise<Result<ActivityEvent[]>>;
+  list(
+    sessionId: Id,
+    limit: number,
+    before?: Timestamp,
+  ): Promise<Result<ActivityEvent[]>>;
 }
 export interface FileRepository {
   getReference(fileId: Id): Promise<Result<FileReference | null>>;

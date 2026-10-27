@@ -6,7 +6,7 @@ import type {
   SourceReference,
   Id,
   FileVersion,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 /** Validated tools available to a future bounded assistant; deliberately no execute_recovery. */
 export interface AssistantTools {
@@ -25,4 +25,4 @@ export interface EvidenceAnswer {
 export interface AssistantService {
   ask(question: string): Promise<Result<EvidenceAnswer>>;
 }
-export const assistantImplementationStatus = 'not-implemented' as const;
+export const assistantImplementationStatus = "not-implemented" as const;

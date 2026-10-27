@@ -2,5 +2,5 @@
 // Implement authentication and API calls using project credentials
 
 export async function analyzeTextWithGoogleADK() {
-  throw new Error('Not implemented');
+  throw new Error("Not implemented");
 }

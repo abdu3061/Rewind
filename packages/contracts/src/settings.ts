@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { idSchema } from './common';
+import { z } from "zod";
+import { idSchema } from "./common";
 
 export const userSettingsSchema = z.strictObject({
   collectionConsent: z.boolean(),

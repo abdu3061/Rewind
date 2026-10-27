@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { idSchema, timestampSchema } from './common';
+import { z } from "zod";
+import { idSchema, timestampSchema } from "./common";
 
 // Proposal IDs refer to engine-owned plans; a renderer cannot nominate arbitrary paths.
 export const recoveryProposalSchema = z
@@ -9,14 +9,16 @@ export const recoveryProposalSchema = z
     fileId: idSchema,
     createdAt: timestampSchema,
     expiresAt: timestampSchema,
-    mode: z.enum(['save-copy', 'overwrite']),
+    mode: z.enum(["save-copy", "overwrite"]),
     destinationLabel: z.string().min(1).max(1024),
     requiresConfirmation: z.literal(true),
     requiresCurrentFilePreservation: z.boolean(),
   })
   .refine(
-    (proposal) => proposal.requiresCurrentFilePreservation === (proposal.mode === 'overwrite'),
-    'Overwrite must preserve the current file.',
+    (proposal) =>
+      proposal.requiresCurrentFilePreservation ===
+      (proposal.mode === "overwrite"),
+    "Overwrite must preserve the current file.",
   );
 export type RecoveryProposal = z.infer<typeof recoveryProposalSchema>;
 export const recoveryResultSchema = z
@@ -24,11 +26,12 @@ export const recoveryResultSchema = z
     proposalId: idSchema,
     recoveredFileId: idSchema,
     recoveredAt: timestampSchema,
-    mode: z.enum(['save-copy', 'overwrite']),
+    mode: z.enum(["save-copy", "overwrite"]),
     preservedCurrentVersionId: idSchema.nullable(),
   })
   .refine(
-    (result) => result.mode !== 'overwrite' || result.preservedCurrentVersionId !== null,
-    'An overwrite requires a preserved current version.',
+    (result) =>
+      result.mode !== "overwrite" || result.preservedCurrentVersionId !== null,
+    "An overwrite requires a preserved current version.",
   );
 export type RecoveryResult = z.infer<typeof recoveryResultSchema>;

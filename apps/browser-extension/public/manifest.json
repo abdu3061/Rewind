@@ -4,7 +4,12 @@
   "description": "Inactive Chrome/Edge scaffold. Does not collect or transmit browsing activity.",
   "version": "0.1.0",
   "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_title": "Rewind: collection unavailable", "default_popup": "status.html" },
+  "action": {
+    "default_title": "Rewind: collection unavailable",
+    "default_popup": "status.html"
+  },
   "incognito": "not_allowed",
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
 }
