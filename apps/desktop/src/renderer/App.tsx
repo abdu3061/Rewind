@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react';
-import type { SessionAction, SessionState } from '@rewind/contracts';
+import { useEffect, useState } from "react";
+import type { SessionAction, SessionState } from "@rewind/contracts";
 
-const pages = ['Dashboard', 'Timeline', 'Search', 'Checkpoints', 'Settings'] as const;
+const pages = [
+  "Dashboard",
+  "Timeline",
+  "Search",
+  "Checkpoints",
+  "Settings",
+] as const;
 type Page = (typeof pages)[number];
 
 function formatTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>('Dashboard');
+  const [page, setPage] = useState<Page>("Dashboard");
   const [state, setState] = useState<SessionState>({ session: null });
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,7 +41,7 @@ export function App() {
     };
   }, []);
 
-  async function run(action: Exclude<SessionAction, 'get'>): Promise<void> {
+  async function run(action: Exclude<SessionAction, "get">): Promise<void> {
     setBusy(true);
     setError(null);
     try {
@@ -42,15 +49,15 @@ export function App() {
       if (result.ok) setState(result.value);
       else setError(result.error.message);
     } catch {
-      setError('Could not reach the desktop session service.');
+      setError("Could not reach the desktop session service.");
     } finally {
       setBusy(false);
     }
   }
 
   const session = state.session;
-  const status = session?.status ?? 'not started';
-  const canStart = !session || session.status === 'ended';
+  const status = session?.status ?? "not started";
+  const canStart = !session || session.status === "ended";
 
   return (
     <div className="app-shell">
@@ -67,8 +74,8 @@ export function App() {
           {pages.map((item, i) => (
             <button
               key={item}
-              className={page === item ? 'nav-item selected' : 'nav-item'}
-              aria-current={page === item ? 'page' : undefined}
+              className={page === item ? "nav-item selected" : "nav-item"}
+              aria-current={page === item ? "page" : undefined}
               onClick={() => setPage(item)}
             >
               <span className="nav-number" aria-hidden="true">
@@ -101,8 +108,8 @@ export function App() {
         <div className="notice">
           <strong>Initialization build</strong>
           <span>
-            Session controls work in memory. Activity collection, file protection, and history
-            storage are not connected.
+            Session controls work in memory. Activity collection, file
+            protection, and history storage are not connected.
           </span>
         </div>
         {error && (
@@ -111,49 +118,54 @@ export function App() {
           </div>
         )}
 
-        {page === 'Dashboard' && (
+        {page === "Dashboard" && (
           <>
-            <section className="panel session-panel" aria-labelledby="session-heading">
+            <section
+              className="panel session-panel"
+              aria-labelledby="session-heading"
+            >
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">SESSION CONTROLS</p>
-                  <h2 id="session-heading">A place to pick up where you left off.</h2>
+                  <h2 id="session-heading">
+                    A place to pick up where you left off.
+                  </h2>
                 </div>
                 <span
-                  className={`status status-${session?.status ?? 'none'}`}
+                  className={`status status-${session?.status ?? "none"}`}
                   data-testid="session-status"
                   role="status"
                 >
-                  {ready ? status : 'loading'}
+                  {ready ? status : "loading"}
                 </span>
               </div>
               <p>
-                Start a session to try the lifecycle. Starting does not enable monitoring or protect
-                files in this build.
+                Start a session to try the lifecycle. Starting does not enable
+                monitoring or protect files in this build.
               </p>
               <div className="controls" aria-label="Session controls">
                 <button
                   className="primary"
-                  onClick={() => void run('start')}
+                  onClick={() => void run("start")}
                   disabled={!ready || busy || !canStart}
                 >
                   Start session
                 </button>
                 <button
-                  onClick={() => void run('pause')}
-                  disabled={!ready || busy || status !== 'active'}
+                  onClick={() => void run("pause")}
+                  disabled={!ready || busy || status !== "active"}
                 >
                   Pause
                 </button>
                 <button
-                  onClick={() => void run('resume')}
-                  disabled={!ready || busy || status !== 'paused'}
+                  onClick={() => void run("resume")}
+                  disabled={!ready || busy || status !== "paused"}
                 >
                   Resume
                 </button>
                 <button
                   className="end-button"
-                  onClick={() => void run('end')}
+                  onClick={() => void run("end")}
                   disabled={!ready || busy || canStart}
                 >
                   End session
@@ -163,10 +175,12 @@ export function App() {
                 {session ? (
                   <>
                     Started {formatTime(session.startedAt)}
-                    {session.endedAt && <> · Ended {formatTime(session.endedAt)}</>}
+                    {session.endedAt && (
+                      <> · Ended {formatTime(session.endedAt)}</>
+                    )}
                   </>
                 ) : (
-                  'No session started in this app process.'
+                  "No session started in this app process."
                 )}
               </div>
             </section>
@@ -175,9 +189,13 @@ export function App() {
                 <p className="eyebrow">ACTIVITY HISTORY</p>
                 <h2>Nothing captured</h2>
                 <p>
-                  Timeline events will appear here once collectors and encrypted storage are ready.
+                  Timeline events will appear here once collectors and encrypted
+                  storage are ready.
                 </p>
-                <button className="text-button" onClick={() => setPage('Timeline')}>
+                <button
+                  className="text-button"
+                  onClick={() => setPage("Timeline")}
+                >
                   View timeline <span aria-hidden="true">→</span>
                 </button>
               </section>
@@ -185,51 +203,58 @@ export function App() {
                 <p className="eyebrow">FILE PROTECTION</p>
                 <h2>No folders protected</h2>
                 <p>
-                  Folder selection, saved versions, and reviewed recovery are planned for a later
-                  milestone.
+                  Folder selection, saved versions, and reviewed recovery are
+                  planned for a later milestone.
                 </p>
-                <span className="subtle-label">Not available in this build</span>
+                <span className="subtle-label">
+                  Not available in this build
+                </span>
               </section>
             </div>
             <p className="footnote">
-              Sessions reset when Rewind exits. Closing the window quits this starter.
+              Sessions reset when Rewind exits. Closing the window quits this
+              starter.
             </p>
           </>
         )}
 
-        {page === 'Timeline' && (
+        {page === "Timeline" && (
           <EmptyState
             title="Your timeline will start here"
             description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
           />
         )}
-        {page === 'Search' && (
+        {page === "Search" && (
           <section className="panel">
             <h2>Search your recorded evidence</h2>
             <p>
-              Keyword search requires SQLite FTS5. Optional Gemini evidence search comes later,
-              after explicit opt-in.
+              Keyword search requires SQLite FTS5. Optional Gemini evidence
+              search comes later, after explicit opt-in.
             </p>
             <label htmlFor="search">Search activity</label>
             <div className="search-row">
-              <input id="search" placeholder="Search is not available yet" disabled />
+              <input
+                id="search"
+                placeholder="Search is not available yet"
+                disabled
+              />
               <button disabled>Search</button>
             </div>
             <p className="footnote">No data is sent to an AI provider.</p>
           </section>
         )}
-        {page === 'Checkpoints' && (
+        {page === "Checkpoints" && (
           <EmptyState
             title="No checkpoints yet"
             description="Future checkpoints will group captured file versions, websites, and project references. They cannot restore arbitrary unsaved application state."
           />
         )}
-        {page === 'Settings' && (
+        {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
             <p>
-              These are planned defaults, shown for reference. Settings editing and persistence are
-              not available yet.
+              These are planned defaults, shown for reference. Settings editing
+              and persistence are not available yet.
             </p>
             <dl className="settings-list">
               <div>
@@ -258,8 +283,8 @@ export function App() {
               </div>
             </dl>
             <p className="footnote">
-              No keystrokes, clipboard contents, screenshots, or private browser activity will be
-              captured. Encryption is a release requirement.
+              No keystrokes, clipboard contents, screenshots, or private browser
+              activity will be captured. Encryption is a release requirement.
             </p>
           </section>
         )}
@@ -268,7 +293,13 @@ export function App() {
   );
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
+function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
     <section className="panel empty-state">
       <div className="empty-symbol" aria-hidden="true">

@@ -1,4 +1,4 @@
-import type { Result } from '@rewind/contracts';
+import type { Result } from "@rewind/contracts";
 
 /** Future Readability implementation runs only after explicit per-site permission. */
 export interface ArticleExtractor {
