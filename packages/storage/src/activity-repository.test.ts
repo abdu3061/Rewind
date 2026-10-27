@@ -1,25 +1,25 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it, beforeEach } from 'vitest';
-import type { ActivityEvent, Session } from '@rewind/contracts';
-import { SqliteActivityRepository } from './activity-repository';
-import { SqliteSessionRepository } from './session-repository';
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { describe, expect, it, beforeEach } from "vitest";
+import type { ActivityEvent, Session } from "@rewind/contracts";
+import { SqliteActivityRepository } from "./activity-repository";
+import { SqliteSessionRepository } from "./session-repository";
 
-describe('SqliteActivityRepository', () => {
+describe("SqliteActivityRepository", () => {
   let db: DatabaseSync;
   let sessionRepo: SqliteSessionRepository;
   let activityRepo: SqliteActivityRepository;
 
-  const validSessionId = '00000000-0000-4000-8000-000000000001';
+  const validSessionId = "00000000-0000-4000-8000-000000000001";
 
   beforeEach(async () => {
-    db = new DatabaseSync(':memory:');
+    db = new DatabaseSync(":memory:");
 
     // Load and run initial migration
     const migrationSql = readFileSync(
-      resolve(__dirname, '../../../db/migrations/001_initial.sql'),
-      'utf8',
+      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
+      "utf8",
     );
     db.exec(migrationSql);
 
@@ -29,35 +29,35 @@ describe('SqliteActivityRepository', () => {
     // Create a parent session so foreign key constraints are satisfied
     const session: Session = {
       id: validSessionId,
-      status: 'active',
-      startedAt: '2026-10-25T00:00:00.000Z',
-      updatedAt: '2026-10-25T00:00:00.000Z',
+      status: "active",
+      startedAt: "2026-10-25T00:00:00.000Z",
+      updatedAt: "2026-10-25T00:00:00.000Z",
       endedAt: null,
     };
     await sessionRepo.save(session);
   });
 
-  it('appends and lists activities for a session', async () => {
+  it("appends and lists activities for a session", async () => {
     const events: ActivityEvent[] = [
       {
-        id: '10000000-0000-4000-8000-000000000001',
+        id: "10000000-0000-4000-8000-000000000001",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'foreground',
-        occurredAt: '2026-10-25T00:01:00.000Z',
+        source: "windows",
+        type: "foreground",
+        occurredAt: "2026-10-25T00:01:00.000Z",
         payload: {
-          application: 'chrome.exe',
-          windowTitle: 'Google Search',
+          application: "chrome.exe",
+          windowTitle: "Google Search",
         },
       },
       {
-        id: '10000000-0000-4000-8000-000000000002',
+        id: "10000000-0000-4000-8000-000000000002",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:02:00.000Z',
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:02:00.000Z",
         payload: {
-          state: 'entered',
+          state: "entered",
         },
       },
     ];
@@ -76,31 +76,31 @@ describe('SqliteActivityRepository', () => {
     }
   });
 
-  it('paginates using limit and before cursor', async () => {
+  it("paginates using limit and before cursor", async () => {
     const events: ActivityEvent[] = [
       {
-        id: '10000000-0000-4000-8000-000000000001',
+        id: "10000000-0000-4000-8000-000000000001",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:01:00.000Z',
-        payload: { state: 'entered' },
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:01:00.000Z",
+        payload: { state: "entered" },
       },
       {
-        id: '10000000-0000-4000-8000-000000000002',
+        id: "10000000-0000-4000-8000-000000000002",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:02:00.000Z',
-        payload: { state: 'left' },
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:02:00.000Z",
+        payload: { state: "left" },
       },
       {
-        id: '10000000-0000-4000-8000-000000000003',
+        id: "10000000-0000-4000-8000-000000000003",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:03:00.000Z',
-        payload: { state: 'entered' },
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:03:00.000Z",
+        payload: { state: "entered" },
       },
     ];
 
@@ -125,24 +125,24 @@ describe('SqliteActivityRepository', () => {
     }
   });
 
-  it('rolls back all events if any insert in the batch violates a foreign key constraint', async () => {
+  it("rolls back all events if any insert in the batch violates a foreign key constraint", async () => {
     const events: ActivityEvent[] = [
       {
-        id: '10000000-0000-4000-8000-000000000001',
+        id: "10000000-0000-4000-8000-000000000001",
         sessionId: validSessionId,
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:01:00.000Z',
-        payload: { state: 'entered' },
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:01:00.000Z",
+        payload: { state: "entered" },
       },
       {
-        id: '10000000-0000-4000-8000-000000000002',
+        id: "10000000-0000-4000-8000-000000000002",
         // Non-existent session id -> Foreign key failure!
-        sessionId: '99999999-9999-4000-8000-999999999999',
-        source: 'windows',
-        type: 'idle',
-        occurredAt: '2026-10-25T00:02:00.000Z',
-        payload: { state: 'left' },
+        sessionId: "99999999-9999-4000-8000-999999999999",
+        source: "windows",
+        type: "idle",
+        occurredAt: "2026-10-25T00:02:00.000Z",
+        payload: { state: "left" },
       },
     ];
 

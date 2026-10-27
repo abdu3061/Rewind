@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from "node:sqlite";
 import {
   failure,
   type ActivityEvent,
@@ -6,13 +6,13 @@ import {
   type Id,
   type Result,
   type Timestamp,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 interface ActivityRow {
   id: string;
   session_id: string;
-  type: ActivityEvent['type'];
-  source: ActivityEvent['source'];
+  type: ActivityEvent["type"];
+  source: ActivityEvent["source"];
   occurred_at: string;
   payload: string;
 }
@@ -37,7 +37,7 @@ export class SqliteActivityRepository implements ActivityRepository {
     }
 
     try {
-      this.db.exec('BEGIN');
+      this.db.exec("BEGIN");
 
       const stmt = this.db.prepare(`
         INSERT INTO activities (id, session_id, type, source, occurred_at, payload)
@@ -55,18 +55,22 @@ export class SqliteActivityRepository implements ActivityRepository {
         );
       }
 
-      this.db.exec('COMMIT');
+      this.db.exec("COMMIT");
       return { ok: true, value: undefined };
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.db.exec("ROLLBACK");
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to append activities: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  async list(sessionId: Id, limit: number, before?: Timestamp): Promise<Result<ActivityEvent[]>> {
+  async list(
+    sessionId: Id,
+    limit: number,
+    before?: Timestamp,
+  ): Promise<Result<ActivityEvent[]>> {
     try {
       let rows: ActivityRow[];
 
@@ -94,7 +98,7 @@ export class SqliteActivityRepository implements ActivityRepository {
       return { ok: true, value: activities };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to list activities: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

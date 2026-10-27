@@ -1,11 +1,11 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from "node:sqlite";
 import {
   failure,
   type Checkpoint,
   type CheckpointRepository,
   type Id,
   type Result,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 interface CheckpointRow {
   id: string;
@@ -26,7 +26,9 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       FROM checkpoint_file_versions
       WHERE checkpoint_id = ?
     `);
-    const fvRows = fvStmt.all(row.id) as unknown as { file_version_id: string }[];
+    const fvRows = fvStmt.all(row.id) as unknown as {
+      file_version_id: string;
+    }[];
     const fileVersionIds = fvRows.map((r) => r.file_version_id);
 
     // 2. Fetch linked browser visit IDs from the junction table
@@ -35,7 +37,9 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       FROM checkpoint_browser_visits
       WHERE checkpoint_id = ?
     `);
-    const bvRows = bvStmt.all(row.id) as unknown as { browser_visit_id: string }[];
+    const bvRows = bvStmt.all(row.id) as unknown as {
+      browser_visit_id: string;
+    }[];
     const browserVisitIds = bvRows.map((r) => r.browser_visit_id);
 
     return {
@@ -46,13 +50,15 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       kept: row.kept === 1,
       fileVersionIds,
       browserVisitIds,
-      projectReferences: row.project_references ? JSON.parse(row.project_references) : [],
+      projectReferences: row.project_references
+        ? JSON.parse(row.project_references)
+        : [],
     };
   }
 
   async save(checkpoint: Checkpoint): Promise<Result<void>> {
     try {
-      this.db.exec('BEGIN');
+      this.db.exec("BEGIN");
 
       // 1. Insert or update the main checkpoint record
       const stmt = this.db.prepare(`
@@ -77,10 +83,12 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
 
       // 2. Clear old junction entries (if updating an existing checkpoint)
       this.db
-        .prepare('DELETE FROM checkpoint_file_versions WHERE checkpoint_id = ?')
+        .prepare("DELETE FROM checkpoint_file_versions WHERE checkpoint_id = ?")
         .run(checkpoint.id);
       this.db
-        .prepare('DELETE FROM checkpoint_browser_visits WHERE checkpoint_id = ?')
+        .prepare(
+          "DELETE FROM checkpoint_browser_visits WHERE checkpoint_id = ?",
+        )
         .run(checkpoint.id);
 
       // 3. Insert linked file versions
@@ -105,12 +113,12 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
         }
       }
 
-      this.db.exec('COMMIT');
+      this.db.exec("COMMIT");
       return { ok: true, value: undefined };
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.db.exec("ROLLBACK");
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to save checkpoint: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -128,7 +136,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       return { ok: true, value: row ? this.hydrateCheckpoint(row) : null };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to get checkpoint: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -148,7 +156,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       return { ok: true, value: checkpoints };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to list checkpoints: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

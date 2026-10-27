@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from "node:sqlite";
 import {
   failure,
   type FileReference,
@@ -6,12 +6,12 @@ import {
   type FileVersion,
   type Id,
   type Result,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 interface FileRow {
   id: string;
   display_name: string;
-  identity_kind: 'verified-path' | 'unverified';
+  identity_kind: "verified-path" | "unverified";
   absolute_path: string | null;
   verified_at: string | null;
   observed_title: string | null;
@@ -28,14 +28,14 @@ interface FileVersionRow {
 }
 
 function rowToFileReference(row: FileRow): FileReference {
-  if (row.identity_kind === 'verified-path') {
+  if (row.identity_kind === "verified-path") {
     return {
       id: row.id,
       displayName: row.display_name,
       identity: {
-        kind: 'verified-path',
-        absolutePath: row.absolute_path ?? '',
-        verifiedAt: row.verified_at ?? '',
+        kind: "verified-path",
+        absolutePath: row.absolute_path ?? "",
+        verifiedAt: row.verified_at ?? "",
       },
     };
   }
@@ -44,8 +44,8 @@ function rowToFileReference(row: FileRow): FileReference {
     id: row.id,
     displayName: row.display_name,
     identity: {
-      kind: 'unverified',
-      observedTitle: row.observed_title ?? '',
+      kind: "unverified",
+      observedTitle: row.observed_title ?? "",
     },
   };
 }
@@ -82,19 +82,26 @@ export class SqliteFileRepository implements FileRepository {
       let verAt: string | null = null;
       let obsTitle: string | null = null;
 
-      if (file.identity.kind === 'verified-path') {
+      if (file.identity.kind === "verified-path") {
         absPath = file.identity.absolutePath;
         verAt = file.identity.verifiedAt;
       } else {
         obsTitle = file.identity.observedTitle;
       }
 
-      stmt.run(file.id, file.displayName, file.identity.kind, absPath, verAt, obsTitle);
+      stmt.run(
+        file.id,
+        file.displayName,
+        file.identity.kind,
+        absPath,
+        verAt,
+        obsTitle,
+      );
 
       return { ok: true, value: undefined };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to save file reference: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -112,7 +119,7 @@ export class SqliteFileRepository implements FileRepository {
       return { ok: true, value: row ? rowToFileReference(row) : null };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to get file reference: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -138,7 +145,7 @@ export class SqliteFileRepository implements FileRepository {
       return { ok: true, value: undefined };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to add file version: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -156,7 +163,7 @@ export class SqliteFileRepository implements FileRepository {
       return { ok: true, value: row ? rowToFileVersion(row) : null };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to get file version: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -175,7 +182,7 @@ export class SqliteFileRepository implements FileRepository {
       return { ok: true, value: rows.map(rowToFileVersion) };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to list file versions: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

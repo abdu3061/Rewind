@@ -1,25 +1,25 @@
-import { readFileSync, statSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
-import { failure, type Repositories, type Result } from '@rewind/contracts';
-import { SqliteActivityRepository } from './activity-repository';
-import { SqliteCheckpointRepository } from './checkpoint-repository';
-import { SqliteFileRepository } from './file-repository';
-import { SqliteSearchRepository } from './search-repository';
-import { SqliteSessionRepository } from './session-repository';
-import type { StorageAdapter } from './index';
+import { readFileSync, statSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { failure, type Repositories, type Result } from "@rewind/contracts";
+import { SqliteActivityRepository } from "./activity-repository";
+import { SqliteCheckpointRepository } from "./checkpoint-repository";
+import { SqliteFileRepository } from "./file-repository";
+import { SqliteSearchRepository } from "./search-repository";
+import { SqliteSessionRepository } from "./session-repository";
+import type { StorageAdapter } from "./index";
 
 export class SqliteStorageAdapter implements StorageAdapter {
   private db: DatabaseSync | null = null;
   private _repositories: Repositories | null = null;
 
   constructor(
-    private readonly dbPath: string = ':memory:',
+    private readonly dbPath: string = ":memory:",
     private readonly migrationPath?: string,
   ) {}
 
   get repositories(): Repositories {
     if (!this._repositories) {
-      throw new Error('StorageAdapter is not open. Call open() first.');
+      throw new Error("StorageAdapter is not open. Call open() first.");
     }
     return this._repositories;
   }
@@ -27,10 +27,10 @@ export class SqliteStorageAdapter implements StorageAdapter {
   async open(): Promise<Result<void>> {
     try {
       this.db = new DatabaseSync(this.dbPath);
-      this.db.exec('PRAGMA foreign_keys = ON;');
+      this.db.exec("PRAGMA foreign_keys = ON;");
 
       if (this.migrationPath) {
-        const sql = readFileSync(this.migrationPath, 'utf8');
+        const sql = readFileSync(this.migrationPath, "utf8");
         this.db.exec(sql);
       }
 
@@ -45,7 +45,7 @@ export class SqliteStorageAdapter implements StorageAdapter {
       return { ok: true, value: undefined };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to open storage adapter: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -61,16 +61,18 @@ export class SqliteStorageAdapter implements StorageAdapter {
       return { ok: true, value: undefined };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to close storage adapter: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  async usage(): Promise<Result<{ metadataBytes: number; snapshotBytes: number }>> {
+  async usage(): Promise<
+    Result<{ metadataBytes: number; snapshotBytes: number }>
+  > {
     try {
       let metadataBytes = 0;
-      if (this.dbPath !== ':memory:') {
+      if (this.dbPath !== ":memory:") {
         try {
           const stats = statSync(this.dbPath);
           metadataBytes = stats.size;
@@ -88,7 +90,7 @@ export class SqliteStorageAdapter implements StorageAdapter {
       };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to calculate storage usage: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

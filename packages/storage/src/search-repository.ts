@@ -1,11 +1,11 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from "node:sqlite";
 import {
   failure,
   type Result,
   type SearchQuery,
   type SearchRepository,
   type SearchResult,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 interface ActivitySearchRow {
   id: string;
@@ -18,7 +18,7 @@ interface ActivitySearchRow {
 interface FileSearchRow {
   id: string;
   display_name: string;
-  identity_kind: 'verified-path' | 'unverified';
+  identity_kind: "verified-path" | "unverified";
   absolute_path: string | null;
   verified_at: string | null;
   observed_title: string | null;
@@ -66,7 +66,9 @@ export class SqliteSearchRepository implements SearchRepository {
       actSql += ` ORDER BY occurred_at DESC LIMIT ?`;
       actParams.push(query.limit);
 
-      const actRows = this.db.prepare(actSql).all(...actParams) as unknown as ActivitySearchRow[];
+      const actRows = this.db
+        .prepare(actSql)
+        .all(...actParams) as unknown as ActivitySearchRow[];
 
       for (const row of actRows) {
         let title = `Activity: ${row.type}`;
@@ -79,11 +81,11 @@ export class SqliteSearchRepository implements SearchRepository {
         }
 
         results.push({
-          source: { kind: 'activity', activityId: row.id },
+          source: { kind: "activity", activityId: row.id },
           occurredAt: row.occurred_at,
           title,
           excerpt: row.payload.slice(0, 300),
-          evidence: 'recorded',
+          evidence: "recorded",
         });
       }
 
@@ -101,17 +103,19 @@ export class SqliteSearchRepository implements SearchRepository {
         .all(term, term, term, query.limit) as unknown as FileSearchRow[];
 
       for (const row of fileRows) {
-        const isVerified = row.identity_kind === 'verified-path';
+        const isVerified = row.identity_kind === "verified-path";
         results.push({
           source: {
-            kind: 'file-version',
+            kind: "file-version",
             fileId: row.id,
             fileVersionId: row.id, // reference fallback
           },
           occurredAt: row.verified_at ?? new Date(0).toISOString(),
           title: row.display_name,
-          excerpt: isVerified ? (row.absolute_path ?? '') : (row.observed_title ?? ''),
-          evidence: isVerified ? 'verified-path' : 'title-only',
+          excerpt: isVerified
+            ? (row.absolute_path ?? "")
+            : (row.observed_title ?? ""),
+          evidence: isVerified ? "verified-path" : "title-only",
         });
       }
 
@@ -129,15 +133,17 @@ export class SqliteSearchRepository implements SearchRepository {
       cpSql += ` ORDER BY created_at DESC LIMIT ?`;
       cpParams.push(query.limit);
 
-      const cpRows = this.db.prepare(cpSql).all(...cpParams) as unknown as CheckpointSearchRow[];
+      const cpRows = this.db
+        .prepare(cpSql)
+        .all(...cpParams) as unknown as CheckpointSearchRow[];
 
       for (const row of cpRows) {
         results.push({
-          source: { kind: 'checkpoint', checkpointId: row.id },
+          source: { kind: "checkpoint", checkpointId: row.id },
           occurredAt: row.created_at,
           title: `Checkpoint: ${row.name}`,
           excerpt: `Named milestone: ${row.name}`,
-          evidence: 'recorded',
+          evidence: "recorded",
         });
       }
 
@@ -148,7 +154,7 @@ export class SqliteSearchRepository implements SearchRepository {
       return { ok: true, value: sliced };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to execute search: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

@@ -1,15 +1,15 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from "node:sqlite";
 import {
   failure,
   type Id,
   type Result,
   type Session,
   type SessionRepository,
-} from '@rewind/contracts';
+} from "@rewind/contracts";
 
 interface SessionRow {
   id: string;
-  status: 'active' | 'paused' | 'ended';
+  status: "active" | "paused" | "ended";
   started_at: string;
   updated_at: string;
   ended_at: string | null;
@@ -39,12 +39,18 @@ export class SqliteSessionRepository implements SessionRepository {
           ended_at = excluded.ended_at
       `);
 
-      stmt.run(session.id, session.status, session.startedAt, session.updatedAt, session.endedAt);
+      stmt.run(
+        session.id,
+        session.status,
+        session.startedAt,
+        session.updatedAt,
+        session.endedAt,
+      );
 
       return { ok: true, value: undefined };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to save session: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -62,7 +68,7 @@ export class SqliteSessionRepository implements SessionRepository {
       return { ok: true, value: row ? rowToSession(row) : null };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to get session: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -81,7 +87,7 @@ export class SqliteSessionRepository implements SessionRepository {
       return { ok: true, value: row ? rowToSession(row) : null };
     } catch (error) {
       return failure(
-        'INTERNAL',
+        "INTERNAL",
         `Failed to get latest session: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

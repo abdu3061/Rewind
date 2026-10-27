@@ -1,29 +1,34 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it, beforeEach } from 'vitest';
-import type { Checkpoint, FileReference, FileVersion, Session } from '@rewind/contracts';
-import { SqliteCheckpointRepository } from './checkpoint-repository';
-import { SqliteFileRepository } from './file-repository';
-import { SqliteSessionRepository } from './session-repository';
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { describe, expect, it, beforeEach } from "vitest";
+import type {
+  Checkpoint,
+  FileReference,
+  FileVersion,
+  Session,
+} from "@rewind/contracts";
+import { SqliteCheckpointRepository } from "./checkpoint-repository";
+import { SqliteFileRepository } from "./file-repository";
+import { SqliteSessionRepository } from "./session-repository";
 
-describe('SqliteCheckpointRepository', () => {
+describe("SqliteCheckpointRepository", () => {
   let db: DatabaseSync;
   let sessionRepo: SqliteSessionRepository;
   let fileRepo: SqliteFileRepository;
   let checkpointRepo: SqliteCheckpointRepository;
 
-  const validSessionId = '00000000-0000-4000-8000-000000000001';
-  const validFileId = '20000000-0000-4000-8000-000000000001';
-  const validFileVersionId = '30000000-0000-4000-8000-000000000001';
+  const validSessionId = "00000000-0000-4000-8000-000000000001";
+  const validFileId = "20000000-0000-4000-8000-000000000001";
+  const validFileVersionId = "30000000-0000-4000-8000-000000000001";
 
   beforeEach(async () => {
-    db = new DatabaseSync(':memory:');
+    db = new DatabaseSync(":memory:");
 
     // Run schema migration
     const migrationSql = readFileSync(
-      resolve(__dirname, '../../../db/migrations/001_initial.sql'),
-      'utf8',
+      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
+      "utf8",
     );
     db.exec(migrationSql);
 
@@ -34,9 +39,9 @@ describe('SqliteCheckpointRepository', () => {
     // 1. Create a parent session
     const session: Session = {
       id: validSessionId,
-      status: 'active',
-      startedAt: '2026-10-25T00:00:00.000Z',
-      updatedAt: '2026-10-25T00:00:00.000Z',
+      status: "active",
+      startedAt: "2026-10-25T00:00:00.000Z",
+      updatedAt: "2026-10-25T00:00:00.000Z",
       endedAt: null,
     };
     await sessionRepo.save(session);
@@ -44,11 +49,11 @@ describe('SqliteCheckpointRepository', () => {
     // 2. Create a file reference and version so foreign keys are satisfied
     const file: FileReference = {
       id: validFileId,
-      displayName: 'project.ts',
+      displayName: "project.ts",
       identity: {
-        kind: 'verified-path',
-        absolutePath: 'C:\\src\\project.ts',
-        verifiedAt: '2026-10-25T00:00:00.000Z',
+        kind: "verified-path",
+        absolutePath: "C:\\src\\project.ts",
+        verifiedAt: "2026-10-25T00:00:00.000Z",
       },
     };
     await fileRepo.saveReference(file);
@@ -57,25 +62,28 @@ describe('SqliteCheckpointRepository', () => {
       id: validFileVersionId,
       sessionId: validSessionId,
       fileId: validFileId,
-      capturedAt: '2026-10-25T00:05:00.000Z',
-      contentHash: 'c'.repeat(64),
+      capturedAt: "2026-10-25T00:05:00.000Z",
+      contentHash: "c".repeat(64),
       byteLength: 512,
-      mediaType: 'text/typescript',
+      mediaType: "text/typescript",
     };
     await fileRepo.addVersion(version);
   });
 
-  it('saves and retrieves a checkpoint with linked file versions and boolean kept status', async () => {
+  it("saves and retrieves a checkpoint with linked file versions and boolean kept status", async () => {
     const checkpoint: Checkpoint = {
-      id: '40000000-0000-4000-8000-000000000001',
+      id: "40000000-0000-4000-8000-000000000001",
       sessionId: validSessionId,
-      name: 'Milestone 1',
-      createdAt: '2026-10-25T00:10:00.000Z',
+      name: "Milestone 1",
+      createdAt: "2026-10-25T00:10:00.000Z",
       kept: true,
       fileVersionIds: [validFileVersionId],
-      browserVisitIds: ['50000000-0000-4000-8000-000000000001'],
+      browserVisitIds: ["50000000-0000-4000-8000-000000000001"],
       projectReferences: [
-        { displayName: 'Main Project', folderId: '60000000-0000-4000-8000-000000000001' },
+        {
+          displayName: "Main Project",
+          folderId: "60000000-0000-4000-8000-000000000001",
+        },
       ],
     };
 
@@ -91,12 +99,12 @@ describe('SqliteCheckpointRepository', () => {
     }
   });
 
-  it('lists checkpoints ordered by created_at DESC', async () => {
+  it("lists checkpoints ordered by created_at DESC", async () => {
     const cp1: Checkpoint = {
-      id: '40000000-0000-4000-8000-000000000001',
+      id: "40000000-0000-4000-8000-000000000001",
       sessionId: validSessionId,
-      name: 'Checkpoint 1 (Old)',
-      createdAt: '2026-10-25T00:10:00.000Z',
+      name: "Checkpoint 1 (Old)",
+      createdAt: "2026-10-25T00:10:00.000Z",
       kept: false,
       fileVersionIds: [],
       browserVisitIds: [],
@@ -104,10 +112,10 @@ describe('SqliteCheckpointRepository', () => {
     };
 
     const cp2: Checkpoint = {
-      id: '40000000-0000-4000-8000-000000000002',
+      id: "40000000-0000-4000-8000-000000000002",
       sessionId: validSessionId,
-      name: 'Checkpoint 2 (New)',
-      createdAt: '2026-10-25T00:20:00.000Z',
+      name: "Checkpoint 2 (New)",
+      createdAt: "2026-10-25T00:20:00.000Z",
       kept: true,
       fileVersionIds: [],
       browserVisitIds: [],
@@ -121,8 +129,8 @@ describe('SqliteCheckpointRepository', () => {
     expect(listResult.ok).toBe(true);
     if (listResult.ok) {
       expect(listResult.value).toHaveLength(2);
-      expect(listResult.value[0]!.name).toBe('Checkpoint 2 (New)'); // Newest first!
-      expect(listResult.value[1]!.name).toBe('Checkpoint 1 (Old)');
+      expect(listResult.value[0]!.name).toBe("Checkpoint 2 (New)"); // Newest first!
+      expect(listResult.value[1]!.name).toBe("Checkpoint 1 (Old)");
     }
   });
 });
