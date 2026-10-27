@@ -1,4 +1,4 @@
-import type { DesktopApi } from '@rewind/contracts';
+import type { DesktopApi } from "@rewind/contracts";
 
 declare global {
   interface Window {

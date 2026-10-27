@@ -1,50 +1,60 @@
-import { useEffect, useState } from 'react';
-import type { SessionAction, SessionState } from '@rewind/contracts';
+import { useEffect, useState } from "react";
+import type { SessionAction, SessionState } from "@rewind/contracts";
 
-const pages = ['Dashboard', 'Timeline', 'Search', 'Checkpoints', 'Settings'] as const;
+const pages = [
+  "Dashboard",
+  "Timeline",
+  "Search",
+  "Checkpoints",
+  "Settings",
+] as const;
 type Page = (typeof pages)[number];
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(new Date(value));
 }
 
 export function App() {
-  const [page, setPage] = useState<Page>('Dashboard');
+  const [page, setPage] = useState<Page>("Dashboard");
   const [state, setState] = useState<SessionState>({ session: null });
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [pendingAction, setPendingAction] =
-    useState<Exclude<SessionAction, 'get'> | null>(null);
+  const [pendingAction, setPendingAction] = useState<Exclude<
+    SessionAction,
+    "get"
+  > | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [timelineSearch, setTimelineSearch] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCheckpoint, setSelectedCheckpoint] = useState<string | null>(null);
+  const [timelineSearch, setTimelineSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<string | null>(
+    null,
+  );
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const searchHasResults = [
-  'visual studio code',
-  'application',
-  'react project',
-  'chrome',
-  'website',
-  'react documentation',
-  'project notes',
-  'file',
-  'project document',
-].some((text) => text.includes(searchQuery.toLowerCase().trim()));
+    "visual studio code",
+    "application",
+    "react project",
+    "chrome",
+    "website",
+    "react documentation",
+    "project notes",
+    "file",
+    "project document",
+  ].some((text) => text.includes(searchQuery.toLowerCase().trim()));
   const timelineHasResults = [
-  'visual studio code',
-  'application',
-  'react project',
-  'chrome',
-  'website',
-  'react documentation',
-  'project notes',
-  'file',
-  'project document',
-].some((text) => text.includes(timelineSearch.toLowerCase().trim()));
+    "visual studio code",
+    "application",
+    "react project",
+    "chrome",
+    "website",
+    "react documentation",
+    "project notes",
+    "file",
+    "project document",
+  ].some((text) => text.includes(timelineSearch.toLowerCase().trim()));
 
   useEffect(() => {
     let mounted = true;
@@ -70,7 +80,7 @@ export function App() {
       })
       .catch(() => {
         if (mounted) {
-          setError('Could not reach the desktop session service.');
+          setError("Could not reach the desktop session service.");
           setReady(false);
         }
       });
@@ -81,7 +91,7 @@ export function App() {
     };
   }, []);
 
-  async function run(action: Exclude<SessionAction, 'get'>): Promise<void> {
+  async function run(action: Exclude<SessionAction, "get">): Promise<void> {
     if (busy || !ready) return;
 
     setBusy(true);
@@ -97,32 +107,32 @@ export function App() {
         setError(result.error.message);
       }
     } catch {
-      setError('Could not reach the desktop session service.');
+      setError("Could not reach the desktop session service.");
     } finally {
       setBusy(false);
       setPendingAction(null);
     }
   }
-async function retryConnection(): Promise<void> {
-  setReady(false);
-  setError(null);
+  async function retryConnection(): Promise<void> {
+    setReady(false);
+    setError(null);
 
-  try {
-    const result = await window.rewind.sessions.get();
+    try {
+      const result = await window.rewind.sessions.get();
 
-    if (result.ok) {
-      setState(result.value);
-      setReady(true);
-    } else {
-      setError(result.error.message);
+      if (result.ok) {
+        setState(result.value);
+        setReady(true);
+      } else {
+        setError(result.error.message);
+      }
+    } catch {
+      setError("Could not reach the desktop session service.");
     }
-  } catch {
-    setError('Could not reach the desktop session service.');
   }
-}
   const session = state.session;
-  const status = session?.status ?? 'not started';
-  const canStart = !session || session.status === 'ended';
+  const status = session?.status ?? "not started";
+  const canStart = !session || session.status === "ended";
 
   return (
     <div className="app-shell">
@@ -140,8 +150,8 @@ async function retryConnection(): Promise<void> {
           {pages.map((item, i) => (
             <button
               key={item}
-              className={page === item ? 'nav-item selected' : 'nav-item'}
-              aria-current={page === item ? 'page' : undefined}
+              className={page === item ? "nav-item selected" : "nav-item"}
+              aria-current={page === item ? "page" : undefined}
               onClick={() => setPage(item)}
             >
               <span className="nav-number" aria-hidden="true">
@@ -184,21 +194,18 @@ async function retryConnection(): Promise<void> {
         </div>
 
         {error && (
-  <div className="error" role="alert">
-    <p>{error}</p>
+          <div className="error" role="alert">
+            <p>{error}</p>
 
-    {!ready && (
-      <button
-        type="button"
-        onClick={() => void retryConnection()}
-      >
-        Retry connection
-      </button>
-    )}
-  </div>
-)}
+            {!ready && (
+              <button type="button" onClick={() => void retryConnection()}>
+                Retry connection
+              </button>
+            )}
+          </div>
+        )}
 
-        {page === 'Dashboard' && (
+        {page === "Dashboard" && (
           <>
             <section
               className="panel session-panel"
@@ -213,11 +220,11 @@ async function retryConnection(): Promise<void> {
                 </div>
 
                 <span
-                  className={`status status-${session?.status ?? 'none'}`}
+                  className={`status status-${session?.status ?? "none"}`}
                   data-testid="session-status"
                   role="status"
                 >
-                  {ready ? status : error ? 'connection error' : 'loading'}
+                  {ready ? status : error ? "connection error" : "loading"}
                 </span>
               </div>
 
@@ -229,38 +236,36 @@ async function retryConnection(): Promise<void> {
               <div className="controls" aria-label="Session controls">
                 <button
                   className="primary"
-                  onClick={() => void run('start')}
+                  onClick={() => void run("start")}
                   disabled={!ready || busy || !canStart}
-                  aria-busy={pendingAction === 'start'}
+                  aria-busy={pendingAction === "start"}
                 >
-                  {pendingAction === 'start'
-                    ? 'Starting...'
-                    : 'Start session'}
+                  {pendingAction === "start" ? "Starting..." : "Start session"}
                 </button>
 
                 <button
-                  onClick={() => void run('pause')}
-                  disabled={!ready || busy || status !== 'active'}
-                  aria-busy={pendingAction === 'pause'}
+                  onClick={() => void run("pause")}
+                  disabled={!ready || busy || status !== "active"}
+                  aria-busy={pendingAction === "pause"}
                 >
-                  {pendingAction === 'pause' ? 'Pausing...' : 'Pause'}
+                  {pendingAction === "pause" ? "Pausing..." : "Pause"}
                 </button>
 
                 <button
-                  onClick={() => void run('resume')}
-                  disabled={!ready || busy || status !== 'paused'}
-                  aria-busy={pendingAction === 'resume'}
+                  onClick={() => void run("resume")}
+                  disabled={!ready || busy || status !== "paused"}
+                  aria-busy={pendingAction === "resume"}
                 >
-                  {pendingAction === 'resume' ? 'Resuming...' : 'Resume'}
+                  {pendingAction === "resume" ? "Resuming..." : "Resume"}
                 </button>
 
                 <button
                   className="end-button"
-                  onClick={() => void run('end')}
+                  onClick={() => void run("end")}
                   disabled={!ready || busy || canStart}
-                  aria-busy={pendingAction === 'end'}
+                  aria-busy={pendingAction === "end"}
                 >
-                  {pendingAction === 'end' ? 'Ending...' : 'End session'}
+                  {pendingAction === "end" ? "Ending..." : "End session"}
                 </button>
               </div>
 
@@ -273,7 +278,7 @@ async function retryConnection(): Promise<void> {
                     )}
                   </>
                 ) : (
-                  'No session started in this app process.'
+                  "No session started in this app process."
                 )}
               </div>
             </section>
@@ -284,13 +289,13 @@ async function retryConnection(): Promise<void> {
                 <h2>Nothing captured</h2>
 
                 <p>
-                  Timeline events will appear here once collectors and
-                  encrypted storage are ready.
+                  Timeline events will appear here once collectors and encrypted
+                  storage are ready.
                 </p>
 
                 <button
                   className="text-button"
-                  onClick={() => setPage('Timeline')}
+                  onClick={() => setPage("Timeline")}
                 >
                   View timeline <span aria-hidden="true">→</span>
                 </button>
@@ -318,258 +323,268 @@ async function retryConnection(): Promise<void> {
           </>
         )}
 
-        {page === 'Timeline' && (
-  <section className="panel">
-    <p className="eyebrow">ACTIVITY TIMELINE</p>
-    <h2>Your work activity</h2>
+        {page === "Timeline" && (
+          <section className="panel">
+            <p className="eyebrow">ACTIVITY TIMELINE</p>
+            <h2>Your work activity</h2>
 
-    <p>
-      See the applications, websites, and files used during your work sessions.
-    </p>
+            <p>
+              See the applications, websites, and files used during your work
+              sessions.
+            </p>
 
-    <div className="notice">
-      <strong>Preview only</strong>
-      <span>
-        These are example activities for the interface design.
-        Real activity collection is not connected yet.
-      </span>
-    </div>
+            <div className="notice">
+              <strong>Preview only</strong>
+              <span>
+                These are example activities for the interface design. Real
+                activity collection is not connected yet.
+              </span>
+            </div>
 
-    <input
-  type="search"
-  className="timeline-search"
-  placeholder="Search activities..."
-  aria-label="Search timeline activities"
-  value={timelineSearch}
-  onChange={(e) => setTimelineSearch(e.target.value)}
-/>
-    <div className="timeline-list">
-      {['visual studio code', 'application', 'react project'].some((text) =>
-  text.includes(timelineSearch.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">10:30 AM</span>
-    <div>
-      <h3>Visual Studio Code</h3>
-      <p>Application · Working on a React project</p>
-    </div>
-  </div>
-)}
+            <input
+              type="search"
+              className="timeline-search"
+              placeholder="Search activities..."
+              aria-label="Search timeline activities"
+              value={timelineSearch}
+              onChange={(e) => setTimelineSearch(e.target.value)}
+            />
+            <div className="timeline-list">
+              {["visual studio code", "application", "react project"].some(
+                (text) => text.includes(timelineSearch.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">10:30 AM</span>
+                  <div>
+                    <h3>Visual Studio Code</h3>
+                    <p>Application · Working on a React project</p>
+                  </div>
+                </div>
+              )}
 
-      {['chrome', 'website', 'react documentation'].some((text) =>
-  text.includes(timelineSearch.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">10:15 AM</span>
-    <div>
-      <h3>Chrome</h3>
-      <p>Website · Reading React documentation</p>
-    </div>
-  </div>
-)}
+              {["chrome", "website", "react documentation"].some((text) =>
+                text.includes(timelineSearch.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">10:15 AM</span>
+                  <div>
+                    <h3>Chrome</h3>
+                    <p>Website · Reading React documentation</p>
+                  </div>
+                </div>
+              )}
 
-      {['project notes', 'file', 'project document'].some((text) =>
-  text.includes(timelineSearch.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">09:45 AM</span>
-    <div>
-      <h3>Project Notes</h3>
-      <p>File · Opened a project document</p>
-    </div>
-  </div>
-)}
-        </div>
+              {["project notes", "file", "project document"].some((text) =>
+                text.includes(timelineSearch.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">09:45 AM</span>
+                  <div>
+                    <h3>Project Notes</h3>
+                    <p>File · Opened a project document</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
-    {!timelineHasResults && (
-      <p role="status">
-        No activities found. Try a different search.
-      </p>
-    )}
-  </section>
-)}
+            {!timelineHasResults && (
+              <p role="status">No activities found. Try a different search.</p>
+            )}
+          </section>
+        )}
 
-        {page === 'Search' && (
-  <section className="panel">
-    <p className="eyebrow">SEARCH ACTIVITY</p>
-    <h2>Find your work</h2>
+        {page === "Search" && (
+          <section className="panel">
+            <p className="eyebrow">SEARCH ACTIVITY</p>
+            <h2>Find your work</h2>
 
-    <p>
-      Search for applications, websites, and files from your work sessions.
-    </p>
+            <p>
+              Search for applications, websites, and files from your work
+              sessions.
+            </p>
 
-    <div className="notice">
-      <strong>Preview only</strong>
-      <span>
-        Search results below are examples. Real activity history
-        is not connected yet.
-      </span>
-    </div>
+            <div className="notice">
+              <strong>Preview only</strong>
+              <span>
+                Search results below are examples. Real activity history is not
+                connected yet.
+              </span>
+            </div>
 
-    <div className="search-row">
-      <input
-  type="search"
-  placeholder="Search your activity..."
-  aria-label="Search activity"
-  value={searchQuery}
-  onChange={(e) => setSearchQuery(e.target.value)}
-/>
-      <button
-  type="button"
-  onClick={() => document.querySelector<HTMLInputElement>('input[aria-label="Search activity"]')?.focus()}
->
-  Search
-</button>
-    </div>
+            <div className="search-row">
+              <input
+                type="search"
+                placeholder="Search your activity..."
+                aria-label="Search activity"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  document
+                    .querySelector<HTMLInputElement>(
+                      'input[aria-label="Search activity"]',
+                    )
+                    ?.focus()
+                }
+              >
+                Search
+              </button>
+            </div>
 
-    <div className="timeline-list">
-      {['visual studio code', 'application', 'react project'].some((text) =>
-  text.includes(searchQuery.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">10:30 AM</span>
-    <div>
-      <h3>Visual Studio Code</h3>
-      <p>Application · Working on a React project</p>
-    </div>
-  </div>
-)}
+            <div className="timeline-list">
+              {["visual studio code", "application", "react project"].some(
+                (text) => text.includes(searchQuery.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">10:30 AM</span>
+                  <div>
+                    <h3>Visual Studio Code</h3>
+                    <p>Application · Working on a React project</p>
+                  </div>
+                </div>
+              )}
 
-      {['chrome', 'website', 'react documentation'].some((text) =>
-  text.includes(searchQuery.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">10:15 AM</span>
-    <div>
-      <h3>Chrome</h3>
-      <p>Website · Reading React documentation</p>
-    </div>
-  </div>
-)}
+              {["chrome", "website", "react documentation"].some((text) =>
+                text.includes(searchQuery.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">10:15 AM</span>
+                  <div>
+                    <h3>Chrome</h3>
+                    <p>Website · Reading React documentation</p>
+                  </div>
+                </div>
+              )}
 
-      {['project notes', 'file', 'project document'].some((text) =>
-  text.includes(searchQuery.toLowerCase().trim())
-) && (
-  <div className="timeline-card">
-    <span className="timeline-time">09:45 AM</span>
-    <div>
-      <h3>Project Notes</h3>
-      <p>File · Opened a project document</p>
-    </div>
-  </div>
-)}
-    </div>
-    {!searchHasResults && (
-  <p role="status">
-    No results found. Try a different search.
-  </p>
-)}
-  </section>
-)}
+              {["project notes", "file", "project document"].some((text) =>
+                text.includes(searchQuery.toLowerCase().trim()),
+              ) && (
+                <div className="timeline-card">
+                  <span className="timeline-time">09:45 AM</span>
+                  <div>
+                    <h3>Project Notes</h3>
+                    <p>File · Opened a project document</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!searchHasResults && (
+              <p role="status">No results found. Try a different search.</p>
+            )}
+          </section>
+        )}
 
-        {page === 'Checkpoints' && (
-  <section className="panel">
-    <p className="eyebrow">FILE CHECKPOINTS</p>
-    <h2>Your saved checkpoints</h2>
+        {page === "Checkpoints" && (
+          <section className="panel">
+            <p className="eyebrow">FILE CHECKPOINTS</p>
+            <h2>Your saved checkpoints</h2>
 
-    <p>
-      View saved versions of your files and restore previous work.
-    </p>
+            <p>View saved versions of your files and restore previous work.</p>
 
-    <div className="notice">
-      <strong>Preview only</strong>
-      <span>
-        These checkpoints are examples for the interface design.
-        File backup and recovery are not connected yet.
-      </span>
-    </div>
+            <div className="notice">
+              <strong>Preview only</strong>
+              <span>
+                These checkpoints are examples for the interface design. File
+                backup and recovery are not connected yet.
+              </span>
+            </div>
 
-    <div className="timeline-list">
-      <div className="timeline-card">
-        <span className="timeline-time">Today · 10:30 AM</span>
-        <div>
-          <h3>React Project</h3>
-          <p>3 files · Example checkpoint</p>
-          <button
-  type="button"
-  onClick={() =>
-    setSelectedCheckpoint(
-      selectedCheckpoint === 'react' ? null : 'react'
-    )
-  }
->
-  {selectedCheckpoint === 'react' ? 'Hide details' : 'View details'}
-</button>
+            <div className="timeline-list">
+              <div className="timeline-card">
+                <span className="timeline-time">Today · 10:30 AM</span>
+                <div>
+                  <h3>React Project</h3>
+                  <p>3 files · Example checkpoint</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedCheckpoint(
+                        selectedCheckpoint === "react" ? null : "react",
+                      )
+                    }
+                  >
+                    {selectedCheckpoint === "react"
+                      ? "Hide details"
+                      : "View details"}
+                  </button>
 
-{selectedCheckpoint === 'react' && (
-  <div>
-    <p>Example saved files:</p>
-    <p>App.tsx · styles.css · package.json</p>
+                  {selectedCheckpoint === "react" && (
+                    <div>
+                      <p>Example saved files:</p>
+                      <p>App.tsx · styles.css · package.json</p>
 
-<button
-  type="button"
-  onClick={() =>
-    setPreviewFile(previewFile === 'App.tsx' ? null : 'App.tsx')
-  }
->
-  {previewFile === 'App.tsx' ? 'Close preview' : 'Preview App.tsx'}
-</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewFile(
+                            previewFile === "App.tsx" ? null : "App.tsx",
+                          )
+                        }
+                      >
+                        {previewFile === "App.tsx"
+                          ? "Close preview"
+                          : "Preview App.tsx"}
+                      </button>
 
-{previewFile === 'App.tsx' && (
-  <div className="timeline-card checkpoint-preview">
-    <div>
-      <h3>App.tsx — Version preview</h3>
-      <p>Example version: Today at 10:30 AM</p>
-      <p>Status: Saved version preview (demo)</p>
-      <p>Restore is not available yet.</p>
-    </div>
-  </div>
-)}
-    <p>Preview only — file recovery is not available yet.</p>
-  </div>
-)}
-        </div>
-      </div>
+                      {previewFile === "App.tsx" && (
+                        <div className="timeline-card checkpoint-preview">
+                          <div>
+                            <h3>App.tsx — Version preview</h3>
+                            <p>Example version: Today at 10:30 AM</p>
+                            <p>Status: Saved version preview (demo)</p>
+                            <p>Restore is not available yet.</p>
+                          </div>
+                        </div>
+                      )}
+                      <p>Preview only — file recovery is not available yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-      <div className="timeline-card">
-        <span className="timeline-time">Yesterday · 04:15 PM</span>
-        <div>
-          <h3>Project Documents</h3>
-          <p>2 files · Example checkpoint</p>
-          <button
-  type="button"
-  onClick={() =>
-    setSelectedCheckpoint(
-      selectedCheckpoint === 'documents' ? null : 'documents'
-    )
-  }
->
-  {selectedCheckpoint === 'documents' ? 'Hide details' : 'View details'}
-</button>
+              <div className="timeline-card">
+                <span className="timeline-time">Yesterday · 04:15 PM</span>
+                <div>
+                  <h3>Project Documents</h3>
+                  <p>2 files · Example checkpoint</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedCheckpoint(
+                        selectedCheckpoint === "documents" ? null : "documents",
+                      )
+                    }
+                  >
+                    {selectedCheckpoint === "documents"
+                      ? "Hide details"
+                      : "View details"}
+                  </button>
 
-{selectedCheckpoint === 'documents' && (
-  <div>
-    <p>Example saved files:</p>
-    <p>ProjectReport.docx · Notes.pdf</p>
-    <p>Preview only — file recovery is not available yet.</p>
-  </div>
-)}
-        </div>
-      </div>
-    </div>
-  </section>
-)}
+                  {selectedCheckpoint === "documents" && (
+                    <div>
+                      <p>Example saved files:</p>
+                      <p>ProjectReport.docx · Notes.pdf</p>
+                      <p>Preview only — file recovery is not available yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
-        {page === 'Settings' && (
+        {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
             <div className="notice">
-  <strong>Privacy settings</strong>
-  <span>
-    Activity collection is currently disabled.
-    These settings are for interface preview only.
-  </span>
-</div>
+              <strong>Privacy settings</strong>
+              <span>
+                Activity collection is currently disabled. These settings are
+                for interface preview only.
+              </span>
+            </div>
 
             <p>
               These are planned defaults, shown for reference. Settings editing
@@ -595,35 +610,31 @@ async function retryConnection(): Promise<void> {
               <div>
                 <dt>Retention</dt>
                 <dd>
-  <select
-    aria-label="Data retention period"
-    defaultValue="72"
-    disabled
-  >
-    <option value="24">24 hours</option>
-    <option value="48">48 hours</option>
-    <option value="72">72 hours</option>
-    <option value="168">7 days</option>
-  </select>
-  <span className="subtle-label"> Preview only</span>
-</dd>
+                  <select
+                    aria-label="Data retention period"
+                    defaultValue="72"
+                    disabled
+                  >
+                    <option value="24">24 hours</option>
+                    <option value="48">48 hours</option>
+                    <option value="72">72 hours</option>
+                    <option value="168">7 days</option>
+                  </select>
+                  <span className="subtle-label"> Preview only</span>
+                </dd>
               </div>
 
               <div>
                 <dt>Storage limit</dt>
                 <dd>
-  <select
-    aria-label="Storage limit"
-    defaultValue="2"
-    disabled
-  >
-    <option value="1">1 GiB</option>
-    <option value="2">2 GiB</option>
-    <option value="5">5 GiB</option>
-    <option value="10">10 GiB</option>
-  </select>
-  <span className="subtle-label"> Preview only</span>
-</dd>
+                  <select aria-label="Storage limit" defaultValue="2" disabled>
+                    <option value="1">1 GiB</option>
+                    <option value="2">2 GiB</option>
+                    <option value="5">5 GiB</option>
+                    <option value="10">10 GiB</option>
+                  </select>
+                  <span className="subtle-label"> Preview only</span>
+                </dd>
               </div>
 
               <div>
@@ -633,9 +644,8 @@ async function retryConnection(): Promise<void> {
             </dl>
 
             <p className="footnote">
-              No keystrokes, clipboard contents, screenshots, or private
-              browser activity will be captured. Encryption is a release
-              requirement.
+              No keystrokes, clipboard contents, screenshots, or private browser
+              activity will be captured. Encryption is a release requirement.
             </p>
           </section>
         )}
