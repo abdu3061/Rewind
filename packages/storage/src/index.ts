@@ -15,7 +15,6 @@ export interface RetentionReport {
   retainedKeptCheckpoints: number;
 }
 
-export * from "./database-schema";
 export * from "./session-repository";
 export * from "./activity-repository";
 export * from "./file-repository";
