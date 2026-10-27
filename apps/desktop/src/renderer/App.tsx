@@ -92,11 +92,8 @@ export function App() {
   }, []);
 
   async function run(action: Exclude<SessionAction, "get">): Promise<void> {
- feature/frontend-ui
     if (busy || !ready) return;
 
-
- main
     setBusy(true);
     setPendingAction(action);
     setError(null);
@@ -187,7 +184,6 @@ export function App() {
 
           <span className="badge">Local development</span>
         </header>
-
         <div className="notice">
           <strong>Initialization build</strong>
           <span>
@@ -195,7 +191,6 @@ export function App() {
             protection, and history storage are not connected.
           </span>
         </div>
-
         {error && (
           <div className="error" role="alert">
             <p>{error}</p>
@@ -207,7 +202,6 @@ export function App() {
             )}
           </div>
         )}
-
         {page === "Dashboard" && (
           <>
             <section
@@ -227,11 +221,9 @@ export function App() {
                   data-testid="session-status"
                   role="status"
                 >
- feature/frontend-ui
                   {ready ? status : error ? "connection error" : "loading"}
 
                   {ready ? status : "loading"}
- main
                 </span>
               </div>
 
@@ -253,9 +245,8 @@ export function App() {
                 <button
                   onClick={() => void run("pause")}
                   disabled={!ready || busy || status !== "active"}
- feature/frontend-ui
+
                   aria-busy={pendingAction === "pause"}
- main
                 >
                   {pendingAction === "pause" ? "Pausing..." : "Pause"}
                 </button>
@@ -263,9 +254,8 @@ export function App() {
                 <button
                   onClick={() => void run("resume")}
                   disabled={!ready || busy || status !== "paused"}
- feature/frontend-ui
+
                   aria-busy={pendingAction === "resume"}
- main
                 >
                   {pendingAction === "resume" ? "Resuming..." : "Resume"}
                 </button>
@@ -303,9 +293,7 @@ export function App() {
                   Timeline events will appear here once collectors and encrypted
                   storage are ready.
                 </p>
- feature/frontend-ui
 
- main
                 <button
                   className="text-button"
                   onClick={() => setPage("Timeline")}
@@ -322,9 +310,7 @@ export function App() {
                   Folder selection, saved versions, and reviewed recovery are
                   planned for a later milestone.
                 </p>
- feature/frontend-ui
 
- main
                 <span className="subtle-label">
                   Not available in this build
                 </span>
@@ -337,9 +323,7 @@ export function App() {
             </p>
           </>
         )}
-
         {page === "Timeline" && (
- feature/frontend-ui
           <section className="panel">
             <p className="eyebrow">ACTIVITY TIMELINE</p>
             <h2>Your work activity</h2>
@@ -408,27 +392,20 @@ export function App() {
             )}
           </section>
         )}
-
-
-          <EmptyState
-            title="Your timeline will start here"
-            description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
-          />
-        )}
- main
+        <EmptyState
+          title="Your timeline will start here"
+          description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
+        />
+        )
         {page === "Search" && (
           <section className="panel">
             <p className="eyebrow">SEARCH ACTIVITY</p>
             <h2>Find your work</h2>
 
             <p>
- feature/frontend-ui
               Search for applications, websites, and files from your work
-              sessions.
-
-              Keyword search requires SQLite FTS5. Optional Gemini evidence
-              search comes later, after explicit opt-in.
- main
+              sessions. Keyword search requires SQLite FTS5. Optional Gemini
+              evidence search comes later, after explicit opt-in.
             </p>
 
             <div className="notice">
@@ -441,7 +418,6 @@ export function App() {
 
             <div className="search-row">
               <input
- feature/frontend-ui
                 type="search"
                 placeholder="Search your activity..."
                 aria-label="Search activity"
@@ -460,13 +436,8 @@ export function App() {
               >
                 Search
               </button>
-
-                id="search"
-                placeholder="Search is not available yet"
-                disabled
-              />
+              id="search" placeholder="Search is not available yet" disabled /
               <button disabled>Search</button>
-              main
             </div>
 
             <div className="timeline-list">
@@ -511,8 +482,6 @@ export function App() {
             )}
           </section>
         )}
- feature/frontend-ui
-
         {page === "Checkpoints" && (
           <section className="panel">
             <p className="eyebrow">FILE CHECKPOINTS</p>
@@ -611,15 +580,12 @@ export function App() {
             </div>
           </section>
         )}
-
-
         {page === "Checkpoints" && (
           <EmptyState
             title="No checkpoints yet"
             description="Future checkpoints will group captured file versions, websites, and project references. They cannot restore arbitrary unsaved application state."
           />
         )}
- main
         {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
@@ -698,8 +664,6 @@ export function App() {
     </div>
   );
 }
- feature/frontend-ui
-
 
 function EmptyState({
   title,
@@ -719,4 +683,3 @@ function EmptyState({
     </section>
   );
 }
- main
