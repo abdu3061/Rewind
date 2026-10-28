@@ -5,7 +5,8 @@ import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
 // Only fallback to mock bridge if native IPC bridge is not provided by Electron preload
-if (!(window as any).api && !(window as any).electron) {
+const win = window as unknown as { api?: unknown; electron?: unknown };
+if (!win.api && !win.electron) {
   initMockBridge();
 }
 
