@@ -4,12 +4,8 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-// Only initialize mock bridge in pure local browser dev, never during tests or packaged app runs
-const win = window as unknown as { api?: unknown; electron?: unknown };
-const isTestOrPackaged =
-  window.location.protocol === "file:" || win.api || win.electron;
-
-if (!isTestOrPackaged) {
+// Only initialize mock bridge in Vite development mode, never in production builds or automated E2E tests
+if (import.meta.env.DEV) {
   initMockBridge();
 }
 
