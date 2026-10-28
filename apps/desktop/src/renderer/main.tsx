@@ -4,9 +4,12 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-// Only fallback to mock bridge if native IPC bridge is not provided by Electron preload
+// Only initialize mock bridge in pure local browser dev, never during tests or packaged app runs
 const win = window as unknown as { api?: unknown; electron?: unknown };
-if (!win.api && !win.electron) {
+const isTestOrPackaged =
+  window.location.protocol === "file:" || win.api || win.electron;
+
+if (!isTestOrPackaged) {
   initMockBridge();
 }
 
