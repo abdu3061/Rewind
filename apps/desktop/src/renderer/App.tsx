@@ -11,6 +11,45 @@ const pages = [
 ] as const;
 type Page = (typeof pages)[number];
 
+interface ActivityLog {
+  id: string;
+  time: string;
+  app: string;
+  title: string;
+  category: string;
+}
+
+const mockLogs: ActivityLog[] = [
+  {
+    id: "1",
+    time: "10:14 AM",
+    app: "VS Code",
+    title: "App.tsx � apps/desktop",
+    category: "Development",
+  },
+  {
+    id: "2",
+    time: "10:22 AM",
+    app: "Google Chrome",
+    title: "Playwright IPC Docs",
+    category: "Research",
+  },
+  {
+    id: "3",
+    time: "10:45 AM",
+    app: "Terminal",
+    title: "npm run typecheck",
+    category: "Build",
+  },
+  {
+    id: "4",
+    time: "11:05 AM",
+    app: "Figma",
+    title: "Rewind Design Tokens v2",
+    category: "Design",
+  },
+];
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -193,9 +232,49 @@ export function App() {
         {page === "Timeline" && (
           <div>
             <h1 data-testid="session-heading">Your timeline will start here</h1>
-            <p style={{ color: "var(--text-secondary)" }}>
-              Content layer active for Timeline.
+            <p style={{ color: "var(--text-secondary)", marginBottom: "20px" }}>
+              Recorded desktop activities and application switches for the
+              active session.
             </p>
+
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              {mockLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="panel"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
+                      {log.time} � {log.category}
+                    </div>
+                    <strong style={{ fontSize: "1.05rem" }}>{log.app}</strong>
+                    <div
+                      style={{
+                        color: "var(--text-secondary)",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {log.title}
+                    </div>
+                  </div>
+                  <span className="eyebrow" style={{ margin: 0 }}>
+                    Indexed
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
