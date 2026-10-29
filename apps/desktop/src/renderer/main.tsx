@@ -4,9 +4,7 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-if (import.meta.env.DEV) {
-  initMockBridge();
-}
+initMockBridge();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
