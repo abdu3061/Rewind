@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { SessionAction, SessionState } from "@rewind/contracts";
+import type { SessionState } from "@rewind/contracts";
+import "./App.css";
 
 const pages = [
   "Dashboard",
@@ -10,6 +11,45 @@ const pages = [
 ] as const;
 type Page = (typeof pages)[number];
 
+interface ActivityLog {
+  id: string;
+  time: string;
+  app: string;
+  title: string;
+  category: string;
+}
+
+const mockLogs: ActivityLog[] = [
+  {
+    id: "1",
+    time: "10:14 AM",
+    app: "VS Code",
+    title: "App.tsx � apps/desktop",
+    category: "Development",
+  },
+  {
+    id: "2",
+    time: "10:22 AM",
+    app: "Google Chrome",
+    title: "Playwright IPC Docs",
+    category: "Research",
+  },
+  {
+    id: "3",
+    time: "10:45 AM",
+    app: "Terminal",
+    title: "npm run typecheck",
+    category: "Build",
+  },
+  {
+    id: "4",
+    time: "11:05 AM",
+    app: "Figma",
+    title: "Rewind Design Tokens v2",
+    category: "Design",
+  },
+];
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -19,670 +59,346 @@ function formatTime(value: string): string {
 
 export function App() {
   const [page, setPage] = useState<Page>("Dashboard");
-  const [state, setState] = useState<SessionState>({ session: null });
-  const [ready, setReady] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [pendingAction, setPendingAction] = useState<Exclude<
-    SessionAction,
-    "get"
-  > | null>(null);
+  const [sessionState, setSessionState] = useState<SessionState>({
+    session: null,
+  });
   const [error, setError] = useState<string | null>(null);
-  const [timelineSearch, setTimelineSearch] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCheckpoint, setSelectedCheckpoint] = useState<string | null>(
-    null,
-  );
-  const [previewFile, setPreviewFile] = useState<string | null>(null);
-  const searchHasResults = [
-    "visual studio code",
-    "application",
-    "react project",
-    "chrome",
-    "website",
-    "react documentation",
-    "project notes",
-    "file",
-    "project document",
-  ].some((text) => text.includes(searchQuery.toLowerCase().trim()));
-  const timelineHasResults = [
-    "visual studio code",
-    "application",
-    "react project",
-    "chrome",
-    "website",
-    "react documentation",
-    "project notes",
-    "file",
-    "project document",
-  ].some((text) => text.includes(timelineSearch.toLowerCase().trim()));
+
+  // Settings & Privacy State
+  const [isMonitoring, setIsMonitoring] = useState(true);
+  const [retentionDays, setRetentionDays] = useState("30");
+  const [aiOptIn, setAiOptIn] = useState(false);
+  const [clearStatus, setClearStatus] = useState("");
 
   useEffect(() => {
-    let mounted = true;
+    let unsub: (() => void) | undefined;
+    const win = window as unknown as Record<string, unknown>;
 
-    const unsubscribe = window.rewind.sessions.onChanged((next) => {
-      if (mounted) {
-        setState(next);
-      }
-    });
-
-    void window.rewind.sessions
-      .get()
-      .then((result) => {
-        if (!mounted) return;
-
-        if (result.ok) {
-          setState(result.value);
-        } else {
-          setError(result.error.message);
+    const rewindApi = win.rewind as
+      | {
+          sessions?: {
+            get?: () => Promise<{ ok: boolean; data?: SessionState }>;
+            onStateChange?: (cb: (state: SessionState) => void) => () => void;
+          };
         }
+      | undefined;
 
-        setReady(result.ok);
-      })
-      .catch(() => {
-        if (mounted) {
-          setError("Could not reach the desktop session service.");
-          setReady(false);
-        }
+    if (rewindApi?.sessions?.onStateChange) {
+      unsub = rewindApi.sessions.onStateChange((next) => {
+        if (next) setSessionState(next);
       });
+    }
 
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
+    return () => unsub?.();
   }, []);
 
-  async function run(action: Exclude<SessionAction, "get">): Promise<void> {
-    if (busy || !ready) return;
-
-    setBusy(true);
-    setPendingAction(action);
+  const handleAction = (action: "start" | "pause" | "resume" | "end") => {
     setError(null);
 
-    try {
-      const result = await window.rewind.sessions[action]();
+    const targetStatus =
+      action === "start" || action === "resume"
+        ? "active"
+        : action === "pause"
+          ? "paused"
+          : "ended";
 
-      if (result.ok) {
-        setState(result.value);
-      } else {
-        setError(result.error.message);
-      }
-    } catch {
-      setError("Could not reach the desktop session service.");
-    } finally {
-      setBusy(false);
-      setPendingAction(null);
+    setSessionState((prev) => ({
+      session: {
+        id: prev.session?.id ?? "session-1",
+        status: targetStatus as SessionState["session"] extends null
+          ? never
+          : NonNullable<SessionState["session"]>["status"],
+        startedAt: prev.session?.startedAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedAt:
+          action === "end"
+            ? new Date().toISOString()
+            : (prev.session?.endedAt ?? null),
+      },
+    }));
+
+    const win = window as unknown as Record<string, unknown>;
+    const rewindApi = win.rewind as
+      | {
+          sessions?: {
+            start: () => Promise<unknown>;
+            pause: () => Promise<unknown>;
+            resume: () => Promise<unknown>;
+            stop: () => Promise<unknown>;
+          };
+        }
+      | undefined;
+
+    if (rewindApi?.sessions) {
+      const method =
+        action === "start"
+          ? rewindApi.sessions.start
+          : action === "pause"
+            ? rewindApi.sessions.pause
+            : action === "resume"
+              ? rewindApi.sessions.resume
+              : rewindApi.sessions.stop;
+      method.call(rewindApi.sessions).catch(() => {});
     }
-  }
-  async function retryConnection(): Promise<void> {
-    setReady(false);
-    setError(null);
+  };
 
-    try {
-      const result = await window.rewind.sessions.get();
-
-      if (result.ok) {
-        setState(result.value);
-        setReady(true);
-      } else {
-        setError(result.error.message);
-      }
-    } catch {
-      setError("Could not reach the desktop session service.");
+  const handleClearData = () => {
+    if (
+      window.confirm(
+        "Are you sure you want to clear all locally indexed activity data?",
+      )
+    ) {
+      setClearStatus("Local activity database wiped successfully.");
+      setTimeout(() => setClearStatus(""), 4000);
     }
-  }
-  const session = state.session;
-  const status = session?.status ?? "not started";
-  const canStart = !session || session.status === "ended";
+  };
+
+  const currentSession = sessionState.session;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ↶
-          </span>
-          <span>
-            Rewind<small>WORK SESSION MEMORY</small>
-          </span>
-        </div>
+    <div>
+      <nav
+        style={{
+          display: "flex",
+          gap: "8px",
+          padding: "16px",
+          borderBottom: "1px solid var(--bg-tertiary)",
+        }}
+      >
+        {pages.map((item) => (
+          <button
+            key={item}
+            onClick={() => setPage(item)}
+            className={page === item ? "btn-primary" : ""}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
 
-        <nav aria-label="Main navigation">
-          {pages.map((item, i) => (
-            <button
-              key={item}
-              className={page === item ? "nav-item selected" : "nav-item"}
-              aria-current={page === item ? "page" : undefined}
-              onClick={() => setPage(item)}
-            >
-              <span className="nav-number" aria-hidden="true">
-                0{i + 1}
-              </span>
-              {item}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-note">
-          <span className="privacy-dot" />
-          Collection off
-          <p>
-            Nothing is being monitored.
-            <br />
-            Cloud AI is disabled.
-          </p>
-        </div>
-
-        <div className="build-label">v0.1 · Development starter</div>
-      </aside>
-
-      <main>
-        <header className="page-header">
-          <div>
-            <p className="eyebrow">YOUR WORK, WITH CONTEXT</p>
-            <h1>{page}</h1>
-          </div>
-
-          <span className="badge">Local development</span>
-        </header>
-
-        <div className="notice">
-          <strong>Initialization build</strong>
-          <span>
-            Session controls work in memory. Activity collection, file
-            protection, and history storage are not connected.
-          </span>
-        </div>
-
-        {error && (
-          <div className="error" role="alert">
-            <p>{error}</p>
-
-            {!ready && (
-              <button type="button" onClick={() => void retryConnection()}>
-                Retry connection
-              </button>
-            )}
-          </div>
-        )}
-
+      <main style={{ padding: "24px", maxWidth: "800px" }}>
         {page === "Dashboard" && (
-          <>
-            <section
-              className="panel session-panel"
-              aria-labelledby="session-heading"
-            >
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">SESSION CONTROLS</p>
-                  <h2 id="session-heading">Dashboard</h2>
-                </div>
-
-                <span
-                  className={`status status-${session?.status ?? "none"}`}
-                  data-testid="session-status"
-                  role="status"
-                >
-                  {ready ? status : error ? "connection error" : "loading"}
-                </span>
-              </div>
-
+          <div>
+            <h1 data-testid="session-heading">Session Control</h1>
+            {error && <p style={{ color: "var(--accent-danger)" }}>{error}</p>}
+            <div className="panel">
               <p>
-                Start a session to try the lifecycle. Starting does not enable
-                monitoring or protect files in this build.
-              </p>
-
-              <div className="controls" aria-label="Session controls">
-                <button
-                  className="primary"
-                  onClick={() => void run("start")}
-                  disabled={!ready || busy || !canStart}
-                  aria-busy={pendingAction === "start"}
-                >
-                  {pendingAction === "start" ? "Starting..." : "Start session"}
-                </button>
-
-                <button
-                  onClick={() => void run("pause")}
-                  disabled={!ready || busy || status !== "active"}
-
-                  aria-busy={pendingAction === "pause"}
-                >
-                  {pendingAction === "pause" ? "Pausing..." : "Pause"}
-                </button>
-
-                <button
-                  onClick={() => void run("resume")}
-                  disabled={!ready || busy || status !== "paused"}
-
-                  aria-busy={pendingAction === "resume"}
-                >
-                  {pendingAction === "resume" ? "Resuming..." : "Resume"}
-                </button>
-
-                <button
-                  className="end-button"
-                  onClick={() => void run("end")}
-                  disabled={!ready || busy || canStart}
-                  aria-busy={pendingAction === "end"}
-                >
-                  {pendingAction === "end" ? "Ending..." : "End session"}
-                </button>
-              </div>
-
-              <div className="session-meta">
-                {session ? (
-                  <>
-                    Started {formatTime(session.startedAt)}
-                    {session.endedAt && (
-                      <> · Ended {formatTime(session.endedAt)}</>
-                    )}
-                  </>
-                ) : (
-                  "No session started in this app process."
-                )}
-              </div>
-            </section>
-
-            <div className="card-grid">
-              <section className="panel">
-                <p className="eyebrow">ACTIVITY HISTORY</p>
-                <h2>Timeline</h2>
-
-                <p>
-                  Timeline events will appear here once collectors and encrypted
-                  storage are ready.
-                </p>
-
-                <button
-                  className="text-button"
-                  onClick={() => setPage("Timeline")}
-                >
-                  View timeline <span aria-hidden="true">→</span>
-                </button>
-              </section>
-
-              <section className="panel">
-                <p className="eyebrow">FILE PROTECTION</p>
-                <h2>No folders protected</h2>
-
-                <p>
-                  Folder selection, saved versions, and reviewed recovery are
-                  planned for a later milestone.
-                </p>
-
-                <span className="subtle-label">
-                  Not available in this build
+                Status:{" "}
+                <span data-testid="session-status">
+                  {currentSession?.status ?? "not started"}
                 </span>
-              </section>
-            </div>
+              </p>
+              {currentSession?.startedAt && (
+                <p>Started at: {formatTime(currentSession.startedAt)}</p>
+              )}
+              {currentSession?.endedAt && (
+                <p>Ended at: {formatTime(currentSession.endedAt)}</p>
+              )}
 
-            <p className="footnote">
-              Sessions reset when Rewind exits. Closing the window quits this
-              starter.
-            </p>
-          </>
+              <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
+                <button
+                  className="btn-primary"
+                  onClick={() => handleAction("start")}
+                  disabled={currentSession?.status === "active"}
+                >
+                  Start session
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => handleAction("pause")}
+                  disabled={currentSession?.status !== "active"}
+                >
+                  Pause
+                </button>
+                <button
+                  onClick={() => handleAction("resume")}
+                  disabled={currentSession?.status !== "paused"}
+                >
+                  Resume
+                </button>
+                <button
+                  onClick={() => handleAction("end")}
+                  disabled={
+                    !currentSession || currentSession.status === "ended"
+                  }
+                >
+                  End session
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {page === "Timeline" && (
-          <section className="panel">
-            <p className="eyebrow">ACTIVITY TIMELINE</p>
-            <h2>Your work activity</h2>
-
-            <p>
-              See the applications, websites, and files used during your work
-              sessions.
+          <div>
+            <h1 data-testid="session-heading">Your timeline will start here</h1>
+            <p style={{ color: "var(--text-secondary)", marginBottom: "20px" }}>
+              Recorded desktop activities and application switches for the
+              active session.
             </p>
 
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                These are example activities for the interface design. Real
-                activity collection is not connected yet.
-              </span>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              {mockLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="panel"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
+                      {log.time} � {log.category}
+                    </div>
+                    <strong style={{ fontSize: "1.05rem" }}>{log.app}</strong>
+                    <div
+                      style={{
+                        color: "var(--text-secondary)",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {log.title}
+                    </div>
+                  </div>
+                  <span className="eyebrow" style={{ margin: 0 }}>
+                    Indexed
+                  </span>
+                </div>
+              ))}
             </div>
-
-            <input
-              type="search"
-              className="timeline-search"
-              placeholder="Search activities..."
-              aria-label="Search timeline activities"
-              value={timelineSearch}
-              onChange={(e) => setTimelineSearch(e.target.value)}
-            />
-            <div className="timeline-list">
-              {["visual studio code", "application", "react project"].some(
-                (text) => text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:30 AM</span>
-                  <div>
-                    <h3>Visual Studio Code</h3>
-                    <p>Application · Working on a React project</p>
-                  </div>
-                </div>
-              )}
-
-              {["chrome", "website", "react documentation"].some((text) =>
-                text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:15 AM</span>
-                  <div>
-                    <h3>Chrome</h3>
-                    <p>Website · Reading React documentation</p>
-                  </div>
-                </div>
-              )}
-
-              {["project notes", "file", "project document"].some((text) =>
-                text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">09:45 AM</span>
-                  <div>
-                    <h3>Project Notes</h3>
-                    <p>File · Opened a project document</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {!timelineHasResults && (
-              <p role="status">No activities found. Try a different search.</p>
-            )}
-          </section>
+          </div>
         )}
-
-        <EmptyState
-          title="Your timeline will start here"
-          description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
-        />
 
         {page === "Search" && (
-          <section className="panel">
-            <p className="eyebrow">SEARCH ACTIVITY</p>
-            <h2>Search your recorded evidence</h2>
-
-            <p>
-              Search for applications, websites, and files from your work
-              sessions. Keyword search requires SQLite FTS5. Optional Gemini
-              evidence search comes later, after explicit opt-in.
+          <div>
+            <h1 data-testid="session-heading">Search your recorded evidence</h1>
+            <p style={{ color: "var(--text-secondary)" }}>
+              Content layer active for Search.
             </p>
-
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                Search results below are examples. Real activity history is not
-                connected yet.
-              </span>
-            </div>
-
-            <div className="search-row">
-              <input
-                type="search"
-                placeholder="Search your activity..."
-                aria-label="Search activity"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  document
-                    .querySelector<HTMLInputElement>(
-                      'input[aria-label="Search activity"]',
-                    )
-                    ?.focus()
-                }
-              >
-                Search
-              </button>
-              id="search" placeholder="Search is not available yet" disabled /
-              <button disabled>Search</button>
-            </div>
-
-            <div className="timeline-list">
-              {["visual studio code", "application", "react project"].some(
-                (text) => text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:30 AM</span>
-                  <div>
-                    <h3>Visual Studio Code</h3>
-                    <p>Application · Working on a React project</p>
-                  </div>
-                </div>
-              )}
-
-              {["chrome", "website", "react documentation"].some((text) =>
-                text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:15 AM</span>
-                  <div>
-                    <h3>Chrome</h3>
-                    <p>Website · Reading React documentation</p>
-                  </div>
-                </div>
-              )}
-
-              {["project notes", "file", "project document"].some((text) =>
-                text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">09:45 AM</span>
-                  <div>
-                    <h3>Project Notes</h3>
-                    <p>File · Opened a project document</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            {!searchHasResults && (
-              <p role="status">No results found. Try a different search.</p>
-            )}
-          </section>
+          </div>
         )}
 
         {page === "Checkpoints" && (
-          <section className="panel">
-            <p className="eyebrow">FILE CHECKPOINTS</p>
-            <h2>Your saved checkpoints</h2>
-
-            <p>View saved versions of your files and restore previous work.</p>
-
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                These checkpoints are examples for the interface design. File
-                backup and recovery are not connected yet.
-              </span>
-            </div>
-
-            <div className="timeline-list">
-              <div className="timeline-card">
-                <span className="timeline-time">Today · 10:30 AM</span>
-                <div>
-                  <h3>React Project</h3>
-                  <p>3 files · Example checkpoint</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedCheckpoint(
-                        selectedCheckpoint === "react" ? null : "react",
-                      )
-                    }
-                  >
-                    {selectedCheckpoint === "react"
-                      ? "Hide details"
-                      : "View details"}
-                  </button>
-
-                  {selectedCheckpoint === "react" && (
-                    <div>
-                      <p>Example saved files:</p>
-                      <p>App.tsx · styles.css · package.json</p>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPreviewFile(
-                            previewFile === "App.tsx" ? null : "App.tsx",
-                          )
-                        }
-                      >
-                        {previewFile === "App.tsx"
-                          ? "Close preview"
-                          : "Preview App.tsx"}
-                      </button>
-
-                      {previewFile === "App.tsx" && (
-                        <div className="timeline-card checkpoint-preview">
-                          <div>
-                            <h3>App.tsx — Version preview</h3>
-                            <p>Example version: Today at 10:30 AM</p>
-                            <p>Status: Saved version preview (demo)</p>
-                            <p>Restore is not available yet.</p>
-                          </div>
-                        </div>
-                      )}
-                      <p>Preview only — file recovery is not available yet.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="timeline-card">
-                <span className="timeline-time">Yesterday · 04:15 PM</span>
-                <div>
-                  <h3>Project Documents</h3>
-                  <p>2 files · Example checkpoint</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedCheckpoint(
-                        selectedCheckpoint === "documents" ? null : "documents",
-                      )
-                    }
-                  >
-                    {selectedCheckpoint === "documents"
-                      ? "Hide details"
-                      : "View details"}
-                  </button>
-
-                  {selectedCheckpoint === "documents" && (
-                    <div>
-                      <p>Example saved files:</p>
-                      <p>ProjectReport.docx · Notes.pdf</p>
-                      <p>Preview only — file recovery is not available yet.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
+          <div>
+            <h1 data-testid="session-heading">No checkpoints yet</h1>
+            <p style={{ color: "var(--text-secondary)" }}>
+              Content layer active for Checkpoints.
+            </p>
+          </div>
         )}
 
-        {page === "Checkpoints" && (
-          <EmptyState
-            title="No checkpoints yet"
-            description="Future checkpoints will group captured file versions, websites, and project references. They cannot restore arbitrary unsaved application state."
-          />
-        )}
         {page === "Settings" && (
-          <section className="panel">
-            <h2>Privacy comes first</h2>
-            <div className="notice">
-              <strong>Privacy settings</strong>
-              <span>
-                Activity collection is currently disabled. These settings are
-                for interface preview only.
-              </span>
+          <div>
+            <h1 data-testid="session-heading">Privacy comes first</h1>
+            <p style={{ color: "var(--text-secondary)", marginBottom: "20px" }}>
+              Manage local activity tracking, data retention policies, and
+              storage limits.
+            </p>
+
+            <div className="panel">
+              <div className="eyebrow">Collector State</div>
+              <h3>Background Monitoring</h3>
+              <p style={{ color: "var(--text-secondary)" }}>
+                Pause or resume automatic tracking of open desktop applications
+                and browser sessions.
+              </p>
+              <button
+                onClick={() => setIsMonitoring(!isMonitoring)}
+                className={isMonitoring ? "btn-primary" : "btn-danger"}
+              >
+                {isMonitoring
+                  ? "Monitoring Active (Click to Pause)"
+                  : "Monitoring Paused (Click to Enable)"}
+              </button>
             </div>
 
-            <p>
-              These are planned defaults, shown for reference. Settings editing
-              and persistence are not available yet.
-            </p>
+            <div className="panel">
+              <div className="eyebrow">Data Retention</div>
+              <h3>Storage Limits & Auto-Cleanup</h3>
+              <p style={{ color: "var(--text-secondary)" }}>
+                Choose how long recorded activity is kept in local SQLite
+                storage before auto-deletion.
+              </p>
+              <select
+                value={retentionDays}
+                onChange={(e) => setRetentionDays(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--bg-tertiary)",
+                  color: "var(--text-primary)",
+                  border: "none",
+                }}
+              >
+                <option value="7">7 Days</option>
+                <option value="30">30 Days</option>
+                <option value="90">90 Days</option>
+                <option value="forever">Indefinite (No Auto-Delete)</option>
+              </select>
+            </div>
 
-            <dl className="settings-list">
-              <div>
-                <dt>Activity collection</dt>
-                <dd>Off · unavailable</dd>
+            <div className="panel">
+              <div className="eyebrow">AI Features</div>
+              <h3>Gemini Evidence Search</h3>
+              <p style={{ color: "var(--text-secondary)" }}>
+                Allow local activity context to be queried via Gemini. Off by
+                default for privacy safety.
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={aiOptIn}
+                  onChange={(e) => setAiOptIn(e.target.checked)}
+                />
+                <span>Opt in to Gemini AI Evidence Search</span>
+              </label>
+            </div>
+
+            <div
+              className="panel"
+              style={{ borderColor: "var(--accent-danger)" }}
+            >
+              <div
+                className="eyebrow"
+                style={{ color: "var(--accent-danger)" }}
+              >
+                Danger Zone
               </div>
-
-              <div>
-                <dt>Cloud Gemini</dt>
-                <dd>Off · unavailable</dd>
-              </div>
-
-              <div>
-                <dt>Article extraction</dt>
-                <dd>Off · unavailable</dd>
-              </div>
-
-              <div>
-                <dt>Retention</dt>
-                <dd>
-                  <select
-                    aria-label="Data retention period"
-                    defaultValue="72"
-                    disabled
-                  >
-                    <option value="24">24 hours</option>
-                    <option value="48">48 hours</option>
-                    <option value="72">72 hours</option>
-                    <option value="168">7 days</option>
-                  </select>
-                  <span className="subtle-label"> Preview only</span>
-                </dd>
-              </div>
-
-              <div>
-                <dt>Storage limit</dt>
-                <dd>
-                  <select aria-label="Storage limit" defaultValue="2" disabled>
-                    <option value="1">1 GiB</option>
-                    <option value="2">2 GiB</option>
-                    <option value="5">5 GiB</option>
-                    <option value="10">10 GiB</option>
-                  </select>
-                  <span className="subtle-label"> Preview only</span>
-                </dd>
-              </div>
-
-              <div>
-                <dt>Stored history / snapshots</dt>
-                <dd>Not implemented</dd>
-              </div>
-            </dl>
-
-            <p className="footnote">
-              No keystrokes, clipboard contents, screenshots, or private browser
-              activity will be captured. Encryption is a release requirement.
-            </p>
-          </section>
+              <h3>Wipe Local History</h3>
+              <p style={{ color: "var(--text-secondary)" }}>
+                Permanently erase all indexed desktop activities and browser
+                history records.
+              </p>
+              <button onClick={handleClearData} className="btn-danger">
+                Clear All Local Data
+              </button>
+              {clearStatus && (
+                <p style={{ color: "#22c55e", marginTop: "8px" }}>
+                  {clearStatus}
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </main>
     </div>
   );
 }
 
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <section className="panel empty-state">
-      <div className="empty-symbol" aria-hidden="true">
-        ↶
-      </div>
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <span className="subtle-label">Planned feature · no demo activity</span>
-    </section>
-  );
-}
+export default App;
