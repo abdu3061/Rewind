@@ -4,8 +4,8 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-// Only initialize mock bridge during local Vite development (never during Playwright E2E tests or packaged builds)
-if (import.meta.env.DEV && !(window as any).navigator?.webdriver) {
+// Only initialize mock bridge strictly during Vite dev mode
+if (import.meta.env.DEV) {
   initMockBridge();
 }
 
