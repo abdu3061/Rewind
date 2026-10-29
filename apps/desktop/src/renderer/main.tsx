@@ -4,10 +4,11 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-// Only initialize mock bridge if Electron preload hasn't attached a native bridge
-const hasPreloadBridge = "electron" in window || "api" in window;
+// Check if Electron's preload script already exposed an IPC bridge
+const hasNativeBridge = "electron" in window || "api" in window;
 
-if (import.meta.env.DEV && !hasPreloadBridge) {
+// Only initialize mock bridge in dev mode if no native bridge is present
+if (import.meta.env.DEV && !hasNativeBridge) {
   initMockBridge();
 }
 
