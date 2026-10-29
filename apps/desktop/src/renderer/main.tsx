@@ -4,8 +4,10 @@ import App from "./App";
 import { initMockBridge } from "./mockBridge";
 import "./App.css";
 
-// Only initialize mock bridge strictly during Vite dev mode
-if (import.meta.env.DEV) {
+// Only initialize mock bridge if Electron preload hasn't attached a native bridge
+const hasPreloadBridge = "electron" in window || "api" in window;
+
+if (import.meta.env.DEV && !hasPreloadBridge) {
   initMockBridge();
 }
 
