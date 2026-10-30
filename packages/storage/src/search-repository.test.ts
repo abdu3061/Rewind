@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type {
   ActivityEvent,
   Checkpoint,
@@ -98,13 +98,84 @@ describe("SqliteSearchRepository", () => {
 
     expect(searchResult.ok).toBe(true);
     if (searchResult.ok) {
-      // All 3 items should match "Database"!
       expect(searchResult.value.length).toBe(3);
 
       const kinds = searchResult.value.map((r) => r.source.kind);
       expect(kinds).toContain("activity");
       expect(kinds).toContain("file-version");
       expect(kinds).toContain("checkpoint");
+    }
+  });
+
+  it("returns browser-visit source kind when an activity is a browser visit", async () => {
+    const browserVisitId = "30000000-0000-4000-8000-000000000001";
+    const event: ActivityEvent = {
+      id: "10000000-0000-4000-8000-000000000001",
+      sessionId: validSessionId,
+      source: "browser",
+      type: "browser-visit",
+      occurredAt: "2026-10-25T00:05:00.000Z",
+      payload: {
+        id: browserVisitId,
+        sessionId: validSessionId,
+        browser: "chrome",
+        url: "https://sqlite.org/docs",
+        title: "SQLite Documentation and Guides",
+        visitedAt: "2026-10-25T00:05:00.000Z",
+        endedAt: null,
+      },
+    };
+    await activityRepo.append([event]);
+
+    const searchResult = await searchRepo.search({
+      text: "SQLite",
+      mode: "keyword",
+      limit: 5,
+    });
+
+    expect(searchResult.ok).toBe(true);
+    if (searchResult.ok) {
+      expect(searchResult.value).toHaveLength(1);
+      expect(searchResult.value[0]?.source.kind).toBe("browser-visit");
+      if (searchResult.value[0]?.source.kind === "browser-visit") {
+        expect(searchResult.value[0].source.browserVisitId).toBe(
+          browserVisitId,
+        );
+      }
+    }
+  });
+
+  it("filters search results by time range and limit", async () => {
+    const event1: ActivityEvent = {
+      id: "10000000-0000-4000-8000-000000000001",
+      sessionId: validSessionId,
+      source: "windows",
+      type: "foreground",
+      occurredAt: "2026-10-25T01:00:00.000Z",
+      payload: { application: "Code.exe", windowTitle: "matching-search" },
+    };
+    const event2: ActivityEvent = {
+      id: "10000000-0000-4000-8000-000000000002",
+      sessionId: validSessionId,
+      source: "windows",
+      type: "foreground",
+      occurredAt: "2026-10-25T05:00:00.000Z",
+      payload: { application: "Code.exe", windowTitle: "matching-search" },
+    };
+    await activityRepo.append([event1, event2]);
+
+    const filtered = await searchRepo.search({
+      text: "matching-search",
+      mode: "keyword",
+      from: "2026-10-25T02:00:00.000Z",
+      to: "2026-10-25T06:00:00.000Z",
+      limit: 10,
+    });
+
+    expect(filtered.ok).toBe(true);
+    if (filtered.ok) {
+      expect(filtered.value).toHaveLength(1);
+      expect(filtered.value[0]?.occurredAt).toBe("2026-10-25T05:00:00.000Z");
     }
   });
 
@@ -118,6 +189,19 @@ describe("SqliteSearchRepository", () => {
     expect(searchResult.ok).toBe(true);
     if (searchResult.ok) {
       expect(searchResult.value).toHaveLength(0);
+    }
+  });
+
+  it("rejects invalid search queries with INVALID_INPUT error", async () => {
+    // limit exceeds max 100
+    const invalidResult = await searchRepo.search({
+      text: "test",
+      mode: "keyword",
+      limit: 500,
+    });
+    expect(invalidResult.ok).toBe(false);
+    if (!invalidResult.ok) {
+      expect(invalidResult.error.code).toBe("INVALID_INPUT");
     }
   });
 });
