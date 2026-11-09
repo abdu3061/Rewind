@@ -20,6 +20,8 @@
     "@electron-forge/shared-types": "8.0.1",
     "@rewind/contracts": "0.1.0",
     "@rewind/engine": "0.1.0",
+    "@rewind/storage": "0.1.0",
+    "@rewind/collectors": "0.1.0",
     "electron": "44.9.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"

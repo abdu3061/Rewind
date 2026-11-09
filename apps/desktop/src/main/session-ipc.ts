@@ -2,14 +2,20 @@ import {
   failure,
   sessionCommandSchema,
   type Result,
+  type SessionAction,
   type SessionState,
 } from "@rewind/contracts";
-import type { SessionService } from "@rewind/engine";
+
+export interface SessionExecutor {
+  execute(
+    action: SessionAction,
+  ): Result<SessionState> | Promise<Result<SessionState>>;
+}
 
 export function dispatchSessionRequest(
-  service: SessionService,
+  service: SessionExecutor,
   input: unknown,
-): Result<SessionState> {
+): Result<SessionState> | Promise<Result<SessionState>> {
   const parsed = sessionCommandSchema.safeParse(input);
   if (!parsed.success)
     return failure("INVALID_INPUT", "A valid session command is required.");

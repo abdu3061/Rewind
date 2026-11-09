@@ -11,13 +11,17 @@ import {
   protocol,
   Tray,
 } from "electron";
+import { createCollectorRegistry } from "@rewind/collectors";
 import {
+  createDefaultSettings,
   failure,
   SESSION_CHANNEL,
   SESSION_CHANGED_CHANNEL,
   type SessionAction,
+  type UserSettings,
 } from "@rewind/contracts";
-import { SessionService } from "@rewind/engine";
+import { SessionCoordinator, SessionService } from "@rewind/engine";
+import { SqliteStorageAdapter } from "@rewind/storage";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 
 protocol.registerSchemesAsPrivileged([
@@ -27,17 +31,27 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const sessions = new SessionService({
+const sessionService = new SessionService({
   newId: randomUUID,
   now: () => new Date().toISOString(),
 });
+
+const userSettings: UserSettings = {
+  ...createDefaultSettings(),
+  collectionConsent: true,
+};
+
+let storage: SqliteStorageAdapter | null = null;
+let coordinator: SessionCoordinator | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
 
 function publishState(): void {
-  const state = sessions.getState();
+  const state = coordinator
+    ? coordinator.getState()
+    : sessionService.getState();
   if (
     mainWindow &&
     !mainWindow.isDestroyed() &&
@@ -48,15 +62,21 @@ function publishState(): void {
   updateTray();
 }
 
-function runTrayAction(action: SessionAction): void {
-  const result = sessions.execute(action);
+async function runTrayAction(action: SessionAction): Promise<void> {
+  const target = coordinator ?? sessionService;
+  const result = await target.execute(action);
   if (result.ok) publishState();
 }
 
 function updateTray(): void {
   if (!tray) return;
-  const status = sessions.getState().session?.status ?? "not started";
-  tray.setToolTip(`Rewind: ${status} session. Collection off.`);
+  const status =
+    (coordinator ? coordinator.getState() : sessionService.getState()).session
+      ?.status ?? "not started";
+  const isCollecting = status === "active" && userSettings.collectionConsent;
+  tray.setToolTip(
+    `Rewind: ${status} session. Collection ${isCollecting ? "on" : "off"}.`,
+  );
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -66,27 +86,30 @@ function updateTray(): void {
           mainWindow?.focus();
         },
       },
-      { label: `Session: ${status} | Collection off`, enabled: false },
+      {
+        label: `Session: ${status} | Collection ${isCollecting ? "on" : "off"}`,
+        enabled: false,
+      },
       { type: "separator" },
       {
         label: "Start session",
         enabled: status === "not started" || status === "ended",
-        click: () => runTrayAction("start"),
+        click: () => void runTrayAction("start"),
       },
       {
         label: "Pause session",
         enabled: status === "active",
-        click: () => runTrayAction("pause"),
+        click: () => void runTrayAction("pause"),
       },
       {
         label: "Resume session",
         enabled: status === "paused",
-        click: () => runTrayAction("resume"),
+        click: () => void runTrayAction("resume"),
       },
       {
         label: "End session",
         enabled: status === "active" || status === "paused",
-        click: () => runTrayAction("end"),
+        click: () => void runTrayAction("end"),
       },
       { type: "separator" },
       { label: "Quit Rewind", click: () => app.quit() },
@@ -159,8 +182,26 @@ async function createWindow(): Promise<void> {
 app
   .whenReady()
   .then(async () => {
+    // 1. Initialize persistent SQLite database
+    const dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
+    const migrationPath = path.resolve(
+      __dirname,
+      "../../db/migrations/001_initial.sql",
+    );
+    storage = new SqliteStorageAdapter(dbPath, migrationPath);
+    await storage.open();
+
+    // 2. Initialize tracking modules and coordination engine
+    const collectors = createCollectorRegistry();
+    coordinator = new SessionCoordinator({
+      service: sessionService,
+      repositories: storage.repositories,
+      collectors,
+      getSettings: () => userSettings,
+    });
+
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
-    ipcMain.handle(SESSION_CHANNEL, (event, ...args: unknown[]) => {
+    ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (
         !mainWindow ||
         event.sender !== mainWindow.webContents ||
@@ -178,11 +219,13 @@ app
           "INVALID_INPUT",
           "Exactly one session command is required.",
         );
-      const result = dispatchSessionRequest(sessions, args[0]);
+      const target = coordinator ?? sessionService;
+      const result = await dispatchSessionRequest(target, args[0]);
       if (result.ok) publishState();
       return result;
     });
-    // A simple native bitmap avoids external icon assets in the initialization build.
+
+    // Simple native bitmap for tray icon
     const pixels = Buffer.alloc(16 * 16 * 4);
     for (let i = 0; i < 16 * 16; i++) {
       pixels.set([130, 80, 40, 255], i * 4);
@@ -200,10 +243,18 @@ app
     app.exit(1);
   });
 
-app.on("before-quit", () => {
-  const status = sessions.getState().session?.status;
-  if (status === "active" || status === "paused") sessions.execute("end");
+app.on("before-quit", async () => {
+  const target = coordinator ?? sessionService;
+  const status = target.getState().session?.status;
+  if (status === "active" || status === "paused") {
+    await target.execute("end");
+  }
+  if (storage) {
+    await storage.close();
+    storage = null;
+  }
   tray?.destroy();
   tray = null;
 });
+
 app.on("window-all-closed", () => app.quit());

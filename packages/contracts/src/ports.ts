@@ -121,3 +121,9 @@ export interface Collector {
   resume(context: CollectorContext): Promise<Result<void>>;
   stop(): Promise<Result<void>>;
 }
+
+export interface CollectorRegistry {
+  windows: Collector;
+  browser: Collector;
+  folders: Collector;
+}
