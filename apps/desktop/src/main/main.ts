@@ -212,7 +212,6 @@ app
       );
       storage = new SqliteStorageAdapter(":memory:");
       await storage.open();
- ee6c884 (fix(collectors): harden window tracking strategy and collector against OS script failures)
     }
 
     // 2. Initialize tracking modules and coordination engine
