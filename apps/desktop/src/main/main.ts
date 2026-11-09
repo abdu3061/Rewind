@@ -200,9 +200,19 @@ app
     const dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
     const migrationPath = resolveMigrationPath();
     storage = new SqliteStorageAdapter(dbPath, migrationPath);
+ HEAD
     const openResult = await storage.open();
     if (!openResult.ok) {
       throw new Error(openResult.error.message);
+
+    const openRes = await storage.open();
+    if (!openRes.ok) {
+      console.warn(
+        `[main] Failed to open storage at ${dbPath}: ${openRes.error.message}. Falling back to in-memory database.`,
+      );
+      storage = new SqliteStorageAdapter(":memory:");
+      await storage.open();
+ ee6c884 (fix(collectors): harden window tracking strategy and collector against OS script failures)
     }
 
     // 2. Initialize tracking modules and coordination engine
@@ -250,9 +260,13 @@ app
     updateTray();
     await createWindow();
   })
-  .catch(() => {
+  .catch((error) => {
     console.error(
-      JSON.stringify({ level: "error", code: "DESKTOP_START_FAILED" }),
+      JSON.stringify({
+        level: "error",
+        code: "DESKTOP_START_FAILED",
+        error: error instanceof Error ? error.message : String(error),
+      }),
     );
     app.exit(1);
   });

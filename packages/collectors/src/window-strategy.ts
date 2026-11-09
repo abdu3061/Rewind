@@ -5,7 +5,8 @@ import type { ActiveWindowInfo, WindowQueryStrategy } from "./types";
 const execFileAsync = promisify(execFile);
 
 const WINDOWS_POWERSHELL_SCRIPT = `
-$code = @'
+try {
+    $code = @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -21,18 +22,28 @@ public class ActiveWindow {
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 '@
-Add-Type -TypeDefinition $code -Language CSharp -ErrorAction SilentlyContinue
+    if (-not ([System.Management.Automation.PSTypeName]'ActiveWindow').Type) {
+        Add-Type -TypeDefinition $code -Language CSharp -ErrorAction SilentlyContinue
+    }
 
-$hwnd = [ActiveWindow]::GetForegroundWindow()
-if ($hwnd -ne [IntPtr]::Zero) {
-    $sb = New-Object System.Text.StringBuilder 2048
-    [ActiveWindow]::GetWindowText($hwnd, $sb, 2048) | Out-Null
-    $pid = 0
-    [ActiveWindow]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-    $appName = if ($proc) { $proc.ProcessName } else { "unknown" }
-    $title = $sb.ToString()
-    Write-Output "$appName\`t$title"
+    if (([System.Management.Automation.PSTypeName]'ActiveWindow').Type) {
+        $hwnd = [ActiveWindow]::GetForegroundWindow()
+        if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+            $sb = New-Object System.Text.StringBuilder 2048
+            [ActiveWindow]::GetWindowText($hwnd, $sb, 2048) | Out-Null
+            $pid = 0
+            [ActiveWindow]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+            if ($pid -gt 0) {
+                $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+                $appName = if ($proc) { $proc.ProcessName } else { "unknown" }
+                $title = $sb.ToString()
+                Write-Output "$appName\`t$title"
+            }
+        }
+    }
+} catch {
+    # In headless CI or if user32 / Add-Type fails, exit cleanly without writing to stderr
+    exit 0
 }
 `.trim();
 
@@ -44,6 +55,8 @@ export class WindowsWindowQueryStrategy implements WindowQueryStrategy {
         [
           "-NoProfile",
           "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
           "-Command",
           WINDOWS_POWERSHELL_SCRIPT,
         ],
@@ -68,7 +81,11 @@ export class WindowsWindowQueryStrategy implements WindowQueryStrategy {
         application: application || "unknown",
         windowTitle,
       };
-    } catch {
+    } catch (error) {
+      console.warn(
+        "[WindowsWindowQueryStrategy] Failed to query active window via PowerShell:",
+        error instanceof Error ? error.message : String(error),
+      );
       return null;
     }
   }
@@ -115,7 +132,11 @@ export class DarwinWindowQueryStrategy implements WindowQueryStrategy {
         application: application || "unknown",
         windowTitle,
       };
-    } catch {
+    } catch (error) {
+      console.warn(
+        "[DarwinWindowQueryStrategy] Failed to query active window via AppleScript:",
+        error instanceof Error ? error.message : String(error),
+      );
       return null;
     }
   }

@@ -26,6 +26,89 @@ function getDefaultMigrationPath(): string | undefined {
   return undefined;
 }
 
+const EMBEDDED_INITIAL_SCHEMA = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'ended')),
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  ended_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions (started_at DESC);
+
+CREATE TABLE IF NOT EXISTS activities (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_activities_session ON activities (session_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_activities_session_type ON activities (session_id, type, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_activities_occurred_at ON activities (occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  identity_kind TEXT NOT NULL CHECK (identity_kind IN ('verified-path', 'unverified')),
+  absolute_path TEXT,
+  verified_at TEXT,
+  observed_title TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_files_display_name ON files (display_name);
+
+CREATE TABLE IF NOT EXISTS file_versions (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  file_id TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  byte_length INTEGER NOT NULL,
+  media_type TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+  FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_file_versions_file ON file_versions (file_id, captured_at);
+CREATE INDEX IF NOT EXISTS idx_file_versions_session ON file_versions (session_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_versions_hash ON file_versions (content_hash);
+
+CREATE TABLE IF NOT EXISTS checkpoints (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  kept INTEGER NOT NULL DEFAULT 0 CHECK (kept IN (0, 1)),
+  project_references TEXT,
+  FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON checkpoints (session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_kept ON checkpoints (kept, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS checkpoint_file_versions (
+  checkpoint_id TEXT NOT NULL,
+  file_version_id TEXT NOT NULL,
+  PRIMARY KEY (checkpoint_id, file_version_id),
+  FOREIGN KEY (checkpoint_id) REFERENCES checkpoints (id) ON DELETE CASCADE,
+  FOREIGN KEY (file_version_id) REFERENCES file_versions (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_cp_fv_version ON checkpoint_file_versions (file_version_id);
+
+CREATE TABLE IF NOT EXISTS checkpoint_browser_visits (
+  checkpoint_id TEXT NOT NULL,
+  browser_visit_id TEXT NOT NULL,
+  PRIMARY KEY (checkpoint_id, browser_visit_id),
+  FOREIGN KEY (checkpoint_id) REFERENCES checkpoints (id) ON DELETE CASCADE
+);
+`;
+
 export class SqliteStorageAdapter implements StorageAdapter {
   private db: DatabaseSync | null = null;
   private _repositories: Repositories | null = null;
@@ -68,8 +151,10 @@ export class SqliteStorageAdapter implements StorageAdapter {
 
       // Execute versioned migrations
       const migrationTarget = this.migrationPath ?? getDefaultMigrationPath();
-      if (migrationTarget) {
+      if (migrationTarget && existsSync(migrationTarget)) {
         this.applyMigrations(migrationTarget);
+      } else {
+        this.applyEmbeddedSchema();
       }
 
       this._repositories = {
@@ -89,6 +174,22 @@ export class SqliteStorageAdapter implements StorageAdapter {
     }
   }
 
+  private applyEmbeddedSchema(): void {
+    if (!this.db) return;
+
+    this.db.exec(EMBEDDED_INITIAL_SCHEMA);
+    const checkStmt = this.db.prepare(
+      "SELECT version FROM schema_migrations WHERE version = 1",
+    );
+    const applied = checkStmt.get();
+    if (!applied) {
+      const insertStmt = this.db.prepare(
+        "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      );
+      insertStmt.run(1, "001_initial.sql", new Date().toISOString());
+    }
+  }
+
   private applyMigrations(target: string): void {
     if (!this.db) return;
 
@@ -100,6 +201,11 @@ export class SqliteStorageAdapter implements StorageAdapter {
         applied_at TEXT NOT NULL
       );
     `);
+
+    if (!existsSync(target)) {
+      this.applyEmbeddedSchema();
+      return;
+    }
 
     const stats = statSync(target);
     const filesToRun: { version: number; name: string; path: string }[] = [];

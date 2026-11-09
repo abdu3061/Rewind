@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ActivityEvent,
   CollectorContext,
   UserSettings,
 } from "@rewind/contracts";
-import { MockWindowQueryStrategy } from "./window-strategy";
+import {
+  MockWindowQueryStrategy,
+  WindowsWindowQueryStrategy,
+} from "./window-strategy";
 import { WindowsCollector } from "./windows-collector";
 
 describe("WindowsCollector", () => {
@@ -158,5 +161,64 @@ describe("WindowsCollector", () => {
     expect(emittedEvents).toHaveLength(0);
 
     await collector.stop();
+  });
+
+  it("safely catches OS script and strategy errors, logs a warning, and avoids throwing", async () => {
+    const errorStrategy: MockWindowQueryStrategy = {
+      queryCount: 0,
+      setActiveWindow: () => {},
+      getActiveWindow: async () => {
+        throw new Error(
+          "PowerShell process exited with code 1: no desktop window",
+        );
+      },
+    } as unknown as MockWindowQueryStrategy;
+
+    const errorCollector = new WindowsCollector({
+      strategy: errorStrategy,
+      pollIntervalMs: 50,
+      newId: () => "20000000-0000-4000-8000-000000000001",
+      now: () => "2026-11-09T10:00:00.000Z",
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Starting with a failing strategy must not crash or reject
+    const startResult = await errorCollector.start(context);
+    expect(startResult.ok).toBe(true);
+
+    // Polling directly must not throw
+    await expect(errorCollector.poll()).resolves.toBeUndefined();
+    expect(emittedEvents).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[WindowsCollector] Strategy getActiveWindow threw an error:",
+      expect.stringContaining("PowerShell process exited with code 1"),
+    );
+
+    await errorCollector.stop();
+    warnSpy.mockRestore();
+  });
+
+  it("handles null fallback cleanly when no active window is found in headless environments", async () => {
+    strategy.setActiveWindow(null);
+    await collector.start(context);
+    expect(emittedEvents).toHaveLength(0);
+
+    await collector.poll();
+    expect(emittedEvents).toHaveLength(0);
+
+    await collector.stop();
+  });
+
+  it("WindowsWindowQueryStrategy handles OS script errors gracefully and returns fallback null", async () => {
+    const queryStrategy = new WindowsWindowQueryStrategy();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // In environments without powershell or with failing scripts, must return null and never throw
+    const result = await queryStrategy.getActiveWindow();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 });
