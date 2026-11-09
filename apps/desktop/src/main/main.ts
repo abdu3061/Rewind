@@ -200,11 +200,6 @@ app
     const dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
     const migrationPath = resolveMigrationPath();
     storage = new SqliteStorageAdapter(dbPath, migrationPath);
- HEAD
-    const openResult = await storage.open();
-    if (!openResult.ok) {
-      throw new Error(openResult.error.message);
-
     const openRes = await storage.open();
     if (!openRes.ok) {
       console.warn(
@@ -258,7 +253,7 @@ app
     );
     updateTray();
     await createWindow();
-  });
+  })
   .catch((error) => {
     console.error(
       JSON.stringify({
