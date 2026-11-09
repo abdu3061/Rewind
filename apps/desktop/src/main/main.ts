@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -47,6 +48,19 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
+
+function resolveMigrationPath(): string | undefined {
+  const candidates = [
+    path.resolve(app.getAppPath(), "db/migrations/001_initial.sql"),
+    path.resolve(app.getAppPath(), "../db/migrations/001_initial.sql"),
+    path.resolve(process.cwd(), "db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../../../db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../../db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../db/migrations/001_initial.sql"),
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate));
+}
 
 function publishState(): void {
   const state = coordinator
@@ -184,12 +198,12 @@ app
   .then(async () => {
     // 1. Initialize persistent SQLite database
     const dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
-    const migrationPath = path.resolve(
-      __dirname,
-      "../../db/migrations/001_initial.sql",
-    );
+    const migrationPath = resolveMigrationPath();
     storage = new SqliteStorageAdapter(dbPath, migrationPath);
-    await storage.open();
+    const openResult = await storage.open();
+    if (!openResult.ok) {
+      throw new Error(openResult.error.message);
+    }
 
     // 2. Initialize tracking modules and coordination engine
     const collectors = createCollectorRegistry();
