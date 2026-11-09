@@ -193,31 +193,142 @@ async function createWindow(): Promise<void> {
   await mainWindow.loadURL(rendererUrl);
 }
 
+// Catch any unhandled promise rejection before Electron can silently exit.
+process.on("unhandledRejection", (reason) => {
+  const msg =
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  console.error(
+    JSON.stringify({ level: "error", code: "UNHANDLED_REJECTION", error: msg }),
+  );
+});
+
 app
   .whenReady()
   .then(async () => {
-    // 1. Initialize persistent SQLite database
-    const dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
-    const migrationPath = resolveMigrationPath();
-    storage = new SqliteStorageAdapter(dbPath, migrationPath);
-    const openRes = await storage.open();
-    if (!openRes.ok) {
-      console.warn(
-        `[main] Failed to open storage at ${dbPath}: ${openRes.error.message}. Falling back to in-memory database.`,
+    // ── Step 1: Resolve userData path and SQLite db file path ──────────────
+    let dbPath: string;
+    try {
+      dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
+      console.log(
+        JSON.stringify({ level: "info", code: "STORAGE_PATH", dbPath }),
       );
-      storage = new SqliteStorageAdapter(":memory:");
-      await storage.open();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "STORAGE_PATH_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
     }
 
-    // 2. Initialize tracking modules and coordination engine
-    const collectors = createCollectorRegistry();
-    coordinator = new SessionCoordinator({
-      service: sessionService,
-      repositories: storage.repositories,
-      collectors,
-      getSettings: () => userSettings,
-    });
+    // ── Step 2: Resolve migration SQL file (best-effort; falls back to embedded schema) ──
+    let migrationPath: string | undefined;
+    try {
+      migrationPath = resolveMigrationPath();
+      console.log(
+        JSON.stringify({
+          level: "info",
+          code: "MIGRATION_PATH",
+          migrationPath: migrationPath ?? "(none – using embedded schema)",
+        }),
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          code: "MIGRATION_PATH_FAILED",
+          error: msg,
+        }),
+      );
+      // Non-fatal – SqliteStorageAdapter falls back to its embedded schema
+      migrationPath = undefined;
+    }
 
+    // ── Step 3: Open SQLite storage (fall back to :memory: on failure) ─────
+    try {
+      storage = new SqliteStorageAdapter(dbPath, migrationPath);
+      console.log(
+        JSON.stringify({ level: "info", code: "STORAGE_OPENING", dbPath }),
+      );
+      const openRes = await storage.open();
+      if (!openRes.ok) {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            code: "STORAGE_OPEN_FAILED",
+            error: openRes.error.message,
+            fallback: ":memory:",
+          }),
+        );
+        storage = new SqliteStorageAdapter(":memory:");
+        const memRes = await storage.open();
+        if (!memRes.ok) {
+          throw new Error(
+            `[main] In-memory storage fallback also failed: ${memRes.error.message}`,
+          );
+        }
+      }
+      console.log(JSON.stringify({ level: "info", code: "STORAGE_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "STORAGE_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 4: Initialize collector registry ──────────────────────────────
+    let collectors: ReturnType<typeof createCollectorRegistry>;
+    try {
+      collectors = createCollectorRegistry();
+      console.log(JSON.stringify({ level: "info", code: "COLLECTORS_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "COLLECTORS_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 5: Create session coordinator ────────────────────────────────
+    try {
+      coordinator = new SessionCoordinator({
+        service: sessionService,
+        repositories: storage.repositories,
+        collectors,
+        getSettings: () => userSettings,
+      });
+      console.log(JSON.stringify({ level: "info", code: "COORDINATOR_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "COORDINATOR_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 6: Register IPC and local asset protocol ─────────────────────
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
     ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (
@@ -243,23 +354,51 @@ app
       return result;
     });
 
-    // Simple native bitmap for tray icon
-    const pixels = Buffer.alloc(16 * 16 * 4);
-    for (let i = 0; i < 16 * 16; i++) {
-      pixels.set([130, 80, 40, 255], i * 4);
+    // ── Step 7: Create tray icon ───────────────────────────────────────────
+    try {
+      const pixels = Buffer.alloc(16 * 16 * 4);
+      for (let i = 0; i < 16 * 16; i++) {
+        pixels.set([130, 80, 40, 255], i * 4);
+      }
+      tray = new Tray(
+        nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }),
+      );
+      updateTray();
+      console.log(JSON.stringify({ level: "info", code: "TRAY_READY" }));
+    } catch (err) {
+      // Tray is non-critical – log and continue
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.warn(
+        JSON.stringify({ level: "warn", code: "TRAY_INIT_FAILED", error: msg }),
+      );
     }
-    tray = new Tray(
-      nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }),
-    );
-    updateTray();
-    await createWindow();
+
+    // ── Step 8: Open the main browser window ──────────────────────────────
+    try {
+      await createWindow();
+      console.log(JSON.stringify({ level: "info", code: "WINDOW_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "WINDOW_CREATE_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
   })
   .catch((error) => {
+    const stack =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(
       JSON.stringify({
         level: "error",
         code: "DESKTOP_START_FAILED",
-        error: error instanceof Error ? error.message : String(error),
+        error: stack,
       }),
     );
     app.exit(1);
