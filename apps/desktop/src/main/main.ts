@@ -258,7 +258,7 @@ app
     );
     updateTray();
     await createWindow();
-  })
+  });
   .catch((error) => {
     console.error(
       JSON.stringify({
