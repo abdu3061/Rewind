@@ -25,6 +25,9 @@ import { SessionCoordinator, SessionService } from "@rewind/engine";
 import { SqliteStorageAdapter } from "@rewind/storage";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 
+// Disable hardware acceleration at startup for headless and GPU-less environments (e.g. CI)
+app.disableHardwareAcceleration();
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "rewind",

@@ -4,7 +4,9 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 
 const config: ForgeConfig = {
   packagerConfig: { asar: true, executableName: "Rewind" },
-  rebuildConfig: {},
+  rebuildConfig: {
+    force: true,
+  },
   makers: [new MakerZIP({}, ["win32"])],
   plugins: [
     new VitePlugin({

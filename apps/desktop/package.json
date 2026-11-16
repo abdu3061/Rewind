@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make"
+    "make": "electron-forge make",
+    "rebuild": "electron-rebuild"
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
