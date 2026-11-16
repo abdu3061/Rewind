@@ -172,3 +172,38 @@ test("a different window cannot invoke privileged session commands", async () =>
     await application.close();
   }
 });
+
+test("an unavailable preload bridge leaves an honest disconnected screen", async () => {
+  const application = await electron.launch({
+    executablePath,
+    env: launchEnvironment,
+  });
+  try {
+    await application.firstWindow();
+    const extraWindow = application.waitForEvent("window");
+    await application.evaluate(async ({ BrowserWindow }) => {
+      const windowWithoutPreload = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      });
+      await windowWithoutPreload.loadURL("rewind://app/index.html");
+    });
+    const page = await extraWindow;
+    await expect(page.getByRole("alert")).toContainText(
+      "Could not reach the desktop session service.",
+    );
+    await expect(
+      page.getByRole("button", { name: "Start session", exact: true }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Retry connection", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toBeVisible();
+  } finally {
+    await application.close();
+  }
+});

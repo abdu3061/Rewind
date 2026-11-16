@@ -3,6 +3,7 @@ import tseslint from "typescript-eslint";
 import prettier from "eslint-config-prettier";
 import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
+import { builtinModules } from "node:module";
 
 export default tseslint.config(
   {
@@ -31,6 +32,7 @@ export default tseslint.config(
         {
           patterns: [
             "node:*",
+            ...builtinModules,
             "electron",
             "@rewind/engine",
             "@rewind/storage",

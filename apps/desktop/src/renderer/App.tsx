@@ -30,6 +30,12 @@ export function App() {
   useEffect(() => {
     let mounted = true;
 
+    if (!window.rewind?.sessions) {
+      setError("Could not reach the desktop session service.");
+      setReady(false);
+      return;
+    }
+
     const unsubscribe = window.rewind.sessions.onChanged((next) => {
       if (mounted) {
         setState(next);
