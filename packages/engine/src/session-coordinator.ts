@@ -25,6 +25,7 @@ interface CommonOptions {
   service: SessionService;
   operationTimeoutMs?: number;
   newGenerationId?: () => string;
+  onChanged?: () => void;
 }
 export type SessionCoordinatorOptions = CommonOptions &
   (
@@ -96,6 +97,17 @@ export class SessionCoordinator {
   getActiveGenerationId(): string | null {
     return this.run?.id ?? null;
   }
+  /** Authorized read-model work observes completed lifecycle transactions, never a candidate. */
+  read<T>(query: () => Promise<Result<T>>): Promise<Result<T>> {
+    if (this.closing)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session service is shutting down."),
+      );
+    return this.enqueue(async () => {
+      const ready = await this.initializeInternal();
+      return ready.ok ? this.operations.run("History query", query) : ready;
+    });
+  }
 
   initialize(): Promise<Result<SessionState>> {
     if (this.closing)
@@ -108,7 +120,7 @@ export class SessionCoordinator {
       return this.status.unavailable
         ? failure("UNAVAILABLE", "Session service requires recovery.")
         : { ok: true, value: this.getState() };
-    });
+    }).finally(() => this.notify());
   }
   execute(action: SessionAction): Promise<Result<SessionState>> {
     if (this.closing)
@@ -136,16 +148,21 @@ export class SessionCoordinator {
           "A stop or failed operation prevents this transition.",
         );
       return this.transition(action, ticket);
-    });
+    }).finally(() => this.notify());
   }
 
   /** Apply an authoritative consent/exclusion change; never auto-resume collection. */
-  updateSettings(settings: UserSettings): Promise<Result<SessionState>> {
+  updateSettings(
+    settings: UserSettings,
+    persist?: () => Promise<Result<void>>,
+  ): Promise<Result<SessionState>> {
     this.invalidate();
     const parsed = userSettingsSchema.safeParse(settings);
-    this.settingsOverride = parsed.success
-      ? structuredClone(parsed.data)
-      : createDefaultSettings();
+    // Denial applies immediately. A new grant is installed only after stop and persistence.
+    if (!parsed.success || !parsed.data.collectionConsent)
+      this.settingsOverride = parsed.success
+        ? structuredClone(parsed.data)
+        : createDefaultSettings();
     if (!parsed.success)
       this.fail("INVALID_INPUT", "Collection settings are invalid.");
     if (this.closing)
@@ -159,10 +176,34 @@ export class SessionCoordinator {
         this.getState().session?.status === "active"
           ? await this.transition("pause", this.epoch)
           : await this.stopWithoutTransition();
-      return parsed.success
-        ? result
-        : failure("INVALID_INPUT", "Collection settings are invalid.");
-    });
+      if (!parsed.success)
+        return failure("INVALID_INPUT", "Collection settings are invalid.");
+      if (!result.ok && parsed.data.collectionConsent) return result;
+      if (persist) {
+        const saved = await this.operations.run(
+          "Collection settings save",
+          persist,
+        );
+        if (!saved.ok) {
+          this.settingsOverride = {
+            ...structuredClone(parsed.data),
+            collectionConsent: false,
+          };
+          this.fail(saved.error.code, saved.error.message);
+          this.requestCleanup();
+          return saved;
+        }
+      }
+      if (!result.ok) return result;
+      this.settingsOverride = structuredClone(parsed.data);
+      this.status = {
+        collection: "off",
+        unavailable: false,
+        shutdown: false,
+        error: null,
+      };
+      return result;
+    }).finally(() => this.notify());
   }
   revokeConsent(): Promise<Result<SessionState>> {
     return this.updateSettings({
@@ -202,6 +243,7 @@ export class SessionCoordinator {
       return ok();
     }).finally(() => {
       this.shutdownAttempt = null;
+      this.notify();
     });
     return this.shutdownAttempt;
   }
@@ -226,6 +268,14 @@ export class SessionCoordinator {
     this.epoch++;
     this.run = null;
     this.status.collection = "off";
+    this.notify();
+  }
+  private notify(): void {
+    try {
+      this.options.onChanged?.();
+    } catch {
+      /* Observers cannot change a transition outcome. */
+    }
   }
   private fail(
     code: AppError["code"],
@@ -238,6 +288,7 @@ export class SessionCoordinator {
       shutdown: false,
       error: { code, message },
     };
+    this.notify();
     return failure(code, message);
   }
   private readSettings(): UserSettings | null {

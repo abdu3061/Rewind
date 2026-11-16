@@ -1,12 +1,10 @@
 import path from "node:path";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test, launchVerificationApp } from "./fixtures";
 import type { DesktopApi } from "@rewind/contracts";
 
-const executablePath = path.resolve(
-  `apps/desktop/out/Rewind-${process.platform}-${process.arch}/Rewind.exe`,
-);
 function removeBridgeFixture(directory: string): void {
   const relative = path.relative(
     path.resolve(tmpdir()),
@@ -20,22 +18,15 @@ function removeBridgeFixture(directory: string): void {
     throw new Error("Refusing cleanup outside the generated bridge fixture.");
   rmSync(directory, { recursive: true, force: true });
 }
-// Some development hosts run Electron as a Node executable. Tests need the GUI runtime.
-const launchEnvironment: Record<string, string> = {};
-for (const [key, value] of Object.entries(process.env)) {
-  if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE")
-    launchEnvironment[key] = value;
-}
 test.skip(
   process.platform !== "win32",
   "The supported packaged starter target is Windows.",
 );
 
-test("packaged app uses the isolated preload bridge for session controls and navigation", async () => {
-  const application = await electron.launch({
-    executablePath,
-    env: launchEnvironment,
-  });
+test("packaged app uses the isolated preload bridge for session controls and navigation", async ({
+  profile,
+}) => {
+  const application = await launchVerificationApp(profile);
   try {
     const page = await application.firstWindow();
     const errors: string[] = [];
@@ -95,7 +86,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     expect(bridge).toMatchObject({
       node: "undefined",
       process: "undefined",
-      keys: ["sessions"],
+      keys: ["runtime", "privacy", "timeline", "history", "sessions"],
       invalid: { ok: false, error: { code: "INVALID_INPUT" } },
       invalidTransition: { ok: false, error: { code: "INVALID_TRANSITION" } },
     });
@@ -149,11 +140,10 @@ test("packaged app uses the isolated preload bridge for session controls and nav
   }
 });
 
-test("a different window cannot invoke privileged session commands", async () => {
-  const application = await electron.launch({
-    executablePath,
-    env: launchEnvironment,
-  });
+test("a different window cannot invoke privileged session commands", async ({
+  profile,
+}) => {
+  const application = await launchVerificationApp(profile);
   try {
     const page = await application.firstWindow();
     await expect(page.getByTestId("session-status")).toHaveText("not started");
@@ -188,11 +178,10 @@ test("a different window cannot invoke privileged session commands", async () =>
   }
 });
 
-test("an unavailable preload bridge leaves an honest disconnected screen", async () => {
-  const application = await electron.launch({
-    executablePath,
-    env: launchEnvironment,
-  });
+test("an unavailable preload bridge leaves an honest disconnected screen", async ({
+  profile,
+}) => {
+  const application = await launchVerificationApp(profile);
   try {
     await application.firstWindow();
     const extraWindow = application.waitForEvent("window");
@@ -222,11 +211,10 @@ test("an unavailable preload bridge leaves an honest disconnected screen", async
     await application.close();
   }
 });
-test("concurrent session commands stay serialized and a clean quit never resumes a shell session", async () => {
-  let application = await electron.launch({
-    executablePath,
-    env: launchEnvironment,
-  });
+test("concurrent session commands stay serialized and ended history survives a clean restart", async ({
+  profile,
+}) => {
+  let application = await launchVerificationApp(profile);
   try {
     let page = await application.firstWindow();
     await expect(page.getByTestId("session-status")).toHaveText("not started");
@@ -243,12 +231,9 @@ test("concurrent session commands stay serialized and a clean quit never resumes
     const closed = application.waitForEvent("close");
     await application.evaluate(({ app }) => app.quit());
     await closed;
-    application = await electron.launch({
-      executablePath,
-      env: launchEnvironment,
-    });
+    application = await launchVerificationApp(profile);
     page = await application.firstWindow();
-    await expect(page.getByTestId("session-status")).toHaveText("not started");
+    await expect(page.getByTestId("session-status")).toHaveText("ended");
     await expect(
       page.getByRole("complementary").getByText("Collection off"),
     ).toBeVisible();
@@ -261,7 +246,7 @@ for (const hydrateActive of [true, false])
     hydrateActive
       ? "newer session events survive delayed hydration"
       : "newer command events survive delayed responses",
-    async () => {
+    async ({ profile }) => {
       const directory = mkdtempSync(path.join(tmpdir(), "rewind-bridge-test-"));
       const preload = path.join(directory, "synthetic-preload.cjs");
       writeFileSync(
@@ -281,10 +266,7 @@ for (const hydrateActive of [true, false])
     } });
   `,
       );
-      const application = await electron.launch({
-        executablePath,
-        env: launchEnvironment,
-      });
+      const application = await launchVerificationApp(profile);
       try {
         await application.firstWindow();
         const nextWindow = application.waitForEvent("window");

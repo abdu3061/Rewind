@@ -125,6 +125,61 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("serializes grant persistence with resume and lets revocation preempt both", async () => {
+  const f = fixture(false);
+  await f.coordinator.execute("start");
+  const entered = deferred();
+  const release = deferred();
+  const grant = f.coordinator.updateSettings(
+    { ...f.settings, collectionConsent: true },
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
+    },
+  );
+  await entered.promise;
+  const resume = f.coordinator.execute("resume");
+  const revoke = f.coordinator.revokeConsent();
+  expect(f.coordinator.getActiveGenerationId()).toBeNull();
+  expect(f.contexts).toHaveLength(0);
+  release.resolve();
+  expect((await grant).ok).toBe(true);
+  expect((await resume).ok).toBe(false);
+  expect((await revoke).ok).toBe(true);
+  await f.coordinator.execute("resume");
+  expect(f.contexts).toHaveLength(0);
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
+});
+
+it("keeps read models behind an uncommitted lifecycle operation", async () => {
+  const f = fixture();
+  const entered = deferred();
+  const release = deferred();
+  f.collectors.windows.start.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return ok();
+  });
+  const starting = f.coordinator.execute("start");
+  await entered.promise;
+  const read = vi.fn(async () => ({
+    ok: true as const,
+    value: f.coordinator.getState(),
+  }));
+  const reading = f.coordinator.read(read);
+  await turn();
+  expect(read).not.toHaveBeenCalled();
+  release.resolve();
+  expect((await starting).ok).toBe(true);
+  expect(await reading).toMatchObject({
+    ok: true,
+    value: { session: { status: "active" } },
+  });
+  await f.coordinator.shutdown();
+});
+
 describe("SessionCoordinator failure regressions", () => {
   it("reports session storage failure without publishing an active session", async () => {
     const f = fixture();

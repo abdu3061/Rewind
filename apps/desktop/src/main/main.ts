@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -16,11 +15,17 @@ import {
   failure,
   SESSION_CHANNEL,
   SESSION_CHANGED_CHANNEL,
+  ACTIVITY_CHANGED_CHANNEL,
+  RECORDING_CHANNEL,
+  RUNTIME_CHANGED_CHANNEL,
+  boundedWorkerMessage,
   type SessionAction,
 } from "@rewind/contracts";
-import { SessionCoordinator, SessionService } from "@rewind/engine";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 import { QuitGuard } from "./quit-guard";
+import { createBackend } from "./backend";
+import { validateFixtureRoot } from "./fixture-mode";
+import { dispatchRecordingRequest } from "./recording-ipc";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -29,17 +34,45 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const sessions = new SessionCoordinator({
-  mode: "session-only",
-  service: new SessionService({
-    newId: randomUUID,
-    now: () => new Date().toISOString(),
-  }),
+let fixtureRoot: string | null = null;
+try {
+  fixtureRoot = validateFixtureRoot(
+    app.commandLine.getSwitchValue("rewind-fixture-root"),
+  );
+  if (fixtureRoot) app.setPath("userData", fixtureRoot);
+} catch {
+  console.error(
+    JSON.stringify({ level: "error", code: "INVALID_VERIFICATION_PROFILE" }),
+  );
+  app.exit(1);
+}
+const sessions = createBackend({
+  root: app.getPath("userData"),
+  synthetic: fixtureRoot !== null,
+  entry: path.join(__dirname, "worker-entry.cjs"),
+  onSnapshot: () => publishState(),
+  onActivity: (sessionId) => {
+    if (
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      isTrustedRendererUrl(mainWindow.webContents.getURL(), rendererUrl)
+    )
+      mainWindow.webContents.send(ACTIVITY_CHANGED_CHANNEL, sessionId);
+  },
 });
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
+function trusted(event: Electron.IpcMainInvokeEvent): boolean {
+  return (
+    !!mainWindow &&
+    event.sender === mainWindow.webContents &&
+    !!event.senderFrame &&
+    event.senderFrame === event.sender.mainFrame &&
+    isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
+  );
+}
 
 function publishState(): void {
   const state = sessions.getState();
@@ -49,6 +82,10 @@ function publishState(): void {
     isTrustedRendererUrl(mainWindow.webContents.getURL(), rendererUrl)
   ) {
     mainWindow.webContents.send(SESSION_CHANGED_CHANNEL, state);
+    mainWindow.webContents.send(
+      RUNTIME_CHANGED_CHANNEL,
+      sessions.getSnapshot(),
+    );
   }
   updateTray();
 }
@@ -62,7 +99,11 @@ async function runTrayAction(action: SessionAction): Promise<void> {
 function updateTray(): void {
   if (!tray) return;
   const status = sessions.getState().session?.status ?? "not started";
-  tray.setToolTip(`Rewind: ${status} session. Collection off.`);
+  const runtime = sessions.getSnapshot();
+  const available = runtime.service === "ready";
+  tray.setToolTip(
+    `Rewind: ${status} session. Collection ${runtime.collection}.`,
+  );
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -72,26 +113,29 @@ function updateTray(): void {
           mainWindow?.focus();
         },
       },
-      { label: `Session: ${status} | Collection off`, enabled: false },
+      {
+        label: `Session: ${status} | Collection ${runtime.collection}`,
+        enabled: false,
+      },
       { type: "separator" },
       {
         label: "Start session",
-        enabled: status === "not started" || status === "ended",
+        enabled: available && (status === "not started" || status === "ended"),
         click: () => runTrayAction("start"),
       },
       {
         label: "Pause session",
-        enabled: status === "active",
+        enabled: available && status === "active",
         click: () => runTrayAction("pause"),
       },
       {
         label: "Resume session",
-        enabled: status === "paused",
+        enabled: available && status === "paused",
         click: () => runTrayAction("resume"),
       },
       {
         label: "End session",
-        enabled: status === "active" || status === "paused",
+        enabled: available && (status === "active" || status === "paused"),
         click: () => runTrayAction("end"),
       },
       { type: "separator" },
@@ -165,17 +209,13 @@ async function createWindow(): Promise<void> {
 app
   .whenReady()
   .then(async () => {
+    if (!app.requestSingleInstanceLock()) {
+      app.quit();
+      return;
+    }
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
-    const initialized = await sessions.initialize();
-    if (!initialized.ok) throw new Error("Session initialization failed.");
     ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
-      if (
-        !mainWindow ||
-        event.sender !== mainWindow.webContents ||
-        !event.senderFrame ||
-        event.senderFrame !== event.sender.mainFrame ||
-        !isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
-      ) {
+      if (!trusted(event)) {
         return failure(
           "FORBIDDEN",
           "This frame cannot access Rewind sessions.",
@@ -190,6 +230,20 @@ app
       if (result.ok) publishState();
       return result;
     });
+    ipcMain.handle(RECORDING_CHANNEL, async (event, ...args: unknown[]) => {
+      if (!trusted(event))
+        return failure(
+          "FORBIDDEN",
+          "This frame cannot access Rewind recording.",
+        );
+      if (args.length !== 1 || !boundedWorkerMessage(args[0]))
+        return failure(
+          "INVALID_INPUT",
+          "Exactly one bounded recording command is required.",
+        );
+      return dispatchRecordingRequest(sessions, args[0]);
+    });
+    await sessions.start();
     // A simple native bitmap avoids external icon assets in the initialization build.
     const pixels = Buffer.alloc(16 * 16 * 4);
     for (let i = 0; i < 16 * 16; i++) {

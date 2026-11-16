@@ -61,3 +61,25 @@ export const preferencesResponseSchema = resultSchema(
   collectionPreferencesSchema,
 );
 export const runtimeResponseSchema = resultSchema(runtimeSnapshotSchema);
+export const acknowledgementResponseSchema = resultSchema(z.literal(true));
+
+export const RECORDING_CHANNEL = "rewind:recording" as const;
+export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
+export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
+export const recordingCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("runtime.get") }),
+  z.strictObject({ kind: z.literal("runtime.retry") }),
+  z.strictObject({ kind: z.literal("privacy.get") }),
+  z.strictObject({
+    kind: z.literal("privacy.update"),
+    value: collectionPreferencesSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("timeline.query"),
+    query: timelineQuerySchema,
+  }),
+  z.strictObject({
+    kind: z.literal("history.list"),
+    query: historyQuerySchema,
+  }),
+]);
