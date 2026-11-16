@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./key-store": {
+      "types": "./src/key-store.ts",
+      "default": "./src/key-store.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     }
   },
   "dependencies": {
-    "@rewind/contracts": "0.1.0"
+    "@rewind/contracts": "0.1.0",
+    "better-sqlite3-multiple-ciphers": "13.1.1"
   }
 }

@@ -67,6 +67,6 @@ export interface Collector {
 /** Engine-owned lifecycle ports; infrastructure cannot grant collection consent. */
 export interface CollectorRegistry {
   windows: Collector;
-  browser: Collector;
-  folders: Collector;
+  browser?: Collector;
+  folders?: Collector;
 }

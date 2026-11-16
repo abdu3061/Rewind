@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   failure,
   type Checkpoint,
@@ -17,7 +17,7 @@ interface CheckpointRow {
 }
 
 export class SqliteCheckpointRepository implements CheckpointRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   private hydrateCheckpoint(row: CheckpointRow): Checkpoint {
     // 1. Fetch linked file version IDs from the junction table

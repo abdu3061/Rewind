@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   failure,
   activityEventSchema,
@@ -38,7 +38,7 @@ interface CheckpointSearchRow {
 }
 
 export class SqliteSearchRepository implements SearchRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   async search(query: SearchQuery): Promise<Result<SearchResult[]>> {
     const parsedQuery = searchQuerySchema.safeParse(query);

@@ -21,3 +21,4 @@ export * from "./file-repository";
 export * from "./checkpoint-repository";
 export * from "./search-repository";
 export * from "./sqlite-adapter";
+export { SecureStorage } from "./secure-storage";

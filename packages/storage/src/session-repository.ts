@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   failure,
   idSchema,
@@ -31,7 +31,7 @@ function rowToSession(row: SessionRow): Result<Session> {
 }
 
 export class SqliteSessionRepository implements SessionRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   async save(session: Session): Promise<Result<void>> {
     const parsed = sessionSchema.safeParse(session);

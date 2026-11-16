@@ -1,9 +1,9 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import type { FileReference } from "@rewind/contracts";
 
 /** Shared synchronous write so references and observations can share an owned transaction. */
 export function writeFileReference(
-  db: DatabaseSync,
+  db: DatabaseConnection,
   file: FileReference,
 ): void {
   db.prepare(

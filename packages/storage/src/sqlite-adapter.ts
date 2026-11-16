@@ -7,6 +7,7 @@ import { SqliteFileRepository } from "./file-repository";
 import { SqliteSearchRepository } from "./search-repository";
 import { SqliteSessionRepository } from "./session-repository";
 import type { StorageAdapter } from "./index";
+import { verifyRepositorySchema } from "./repositories";
 
 export class SqliteStorageAdapter implements StorageAdapter {
   private db: DatabaseSync | null = null;
@@ -45,17 +46,7 @@ export class SqliteStorageAdapter implements StorageAdapter {
 
       // A successful open must expose usable repositories, even when opening
       // an existing fixture database without a migration path.
-      for (const query of [
-        "SELECT id, status, started_at, updated_at, ended_at FROM sessions LIMIT 0",
-        "SELECT id, session_id, type, source, occurred_at, payload FROM activities LIMIT 0",
-        "SELECT id, display_name, identity_kind, absolute_path, verified_at, observed_title FROM files LIMIT 0",
-        "SELECT id, session_id, file_id, captured_at, content_hash, byte_length, media_type FROM file_versions LIMIT 0",
-        "SELECT id, session_id, name, created_at, kept, project_references FROM checkpoints LIMIT 0",
-        "SELECT checkpoint_id, file_version_id FROM checkpoint_file_versions LIMIT 0",
-        "SELECT checkpoint_id, browser_visit_id FROM checkpoint_browser_visits LIMIT 0",
-      ]) {
-        this.db.prepare(query).all();
-      }
+      verifyRepositorySchema(this.db);
       if (this.db.isTransaction) this.db.exec("COMMIT");
 
       this._repositories = {

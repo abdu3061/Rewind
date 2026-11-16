@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   failure,
   fileReferenceSchema,
@@ -65,7 +65,7 @@ function rowToFileVersion(row: FileVersionRow): FileVersion {
 }
 
 export class SqliteFileRepository implements FileRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   async saveReference(file: FileReference): Promise<Result<void>> {
     const parsed = fileReferenceSchema.safeParse(file);

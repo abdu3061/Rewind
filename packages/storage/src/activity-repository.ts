@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   activityEventSchema,
   activityBatchSchema,
@@ -42,7 +42,7 @@ function rowToActivityEvent(row: ActivityRow): Result<ActivityEvent> {
 }
 
 export class SqliteActivityRepository implements ActivityRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   async append(events: readonly ActivityEvent[]): Promise<Result<void>> {
     const parsed = activityBatchSchema.safeParse(events);

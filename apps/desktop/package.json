@@ -18,10 +18,15 @@
     "@electron-forge/maker-zip": "8.0.1",
     "@electron-forge/plugin-vite": "8.0.1",
     "@electron-forge/shared-types": "8.0.1",
+    "@rewind/collectors": "^0.1.0",
     "@rewind/contracts": "0.1.0",
     "@rewind/engine": "0.1.0",
+    "@rewind/storage": "^0.1.0",
     "electron": "44.11.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"
+  },
+  "dependencies": {
+    "better-sqlite3-multiple-ciphers": "13.1.1"
   }
 }
