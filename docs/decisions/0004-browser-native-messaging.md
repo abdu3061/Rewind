@@ -2,6 +2,8 @@
 
 Date: 17 October 2026. Status: **Proposed; implementation requires Rasit's approval.** Owner: Mohammad Poorhamadi, approver: Rasit.
 
+Local follow-up: bounded Windows native framing, exact-origin syntax checks and strict candidate metadata schemas now have synthetic tests; see [transport progress](../browser-integration.md#local-transport-foundation). No executable host, pipe authentication, registration, permissions or browser capture is implemented. This does not approve a final shipping handshake or establish browser verification.
+
 Chrome/Edge extensions cannot simply attach to an arbitrary Electron Node process. Recommend browser Native Messaging: a separately installed executable host registered to exact extension origins, with bounded length-prefixed stdio messages, relaying to an authenticated same-user Windows named pipe into the utility ingestion service.
 
 This avoids opening a general loopback HTTP/WebSocket endpoint. Loopback would still require pairing/authentication, origin enforcement, quotas, and lifecycle controls; it remains an alternative only if the native-host packaging spike shows a serious incompatibility. Native Messaging itself does not authenticate the host-to-desktop pipe or authorize collection.

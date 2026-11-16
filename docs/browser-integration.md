@@ -1,6 +1,16 @@
 # Browser integration and installation plan
 
-Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contracts, host security, and installer changes. **Status: inactive extension implemented; Native Messaging proposed, not implemented or registered.**
+Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contracts, host security, and installer changes. **Status: inactive extension; a tested native framing/policy foundation exists locally, but no native host, browser connection, registry entry or listener is installed.**
+
+## Local transport foundation
+
+`packages/contracts/src/browser-transport.ts` defines candidate versioned hello/visit messages. Strict visit payloads require nonprivate focused context, session/generation/connection IDs, a positive sequence, UTC time and HTTP(S) metadata without credentials, query or fragment. The pure URL helper strips query/fragment and rejects excluded hosts/subdomains. These assertions are untrusted input and do not authorize collection.
+
+`packages/collectors/src/native-messaging.ts` implements Windows little-endian length framing with a 256 KiB message cap, bounded chunk/frame work, strict UTF-8/JSON/schema validation, fragmented/coalesced input and terminal rejection of malformed/truncated streams. Its caller helper matches exact extension origins, with no default allowlist. Tests cover bytewise multibyte framing, floods, malformed/oversized input, origin spoofing, private/unfocused input, capability expansion and URL policy. It opens no process or socket.
+
+This advances the transport task without bypassing its missing authentication. Next implement the actual packaged host and a same-user pipe with verified ACLs and authenticated fresh-session handshakes; bind browser identity to an approved extension ID, reject replayed sequence/generation values, add separate browser consent, and test Chrome/Edge lifecycle races. No production extension IDs are invented. The existing PR 5 browser normalization is reusable after those gates; its input DTO is not transport authentication.
+
+The wire format follows the official [Chrome Native Messaging documentation](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) and [Edge Native Messaging documentation](https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/native-messaging). Their browser origin and manifest requirements do not replace engine authorization. The extension still has no nativeMessaging permission or collection listeners.
 
 ## Starter behavior
 
