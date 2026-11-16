@@ -28,6 +28,13 @@ import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 // Disable hardware acceleration at startup for headless and GPU-less environments (e.g. CI)
 app.disableHardwareAcceleration();
 
+// Enable Node.js built-in SQLite module in Electron's Node runtime
+app.commandLine.appendSwitch("experimental-sqlite");
+if (!process.env.NODE_OPTIONS?.includes("--experimental-sqlite")) {
+  process.env.NODE_OPTIONS =
+    `${process.env.NODE_OPTIONS ?? ""} --experimental-sqlite`.trim();
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "rewind",

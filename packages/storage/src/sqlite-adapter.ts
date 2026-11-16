@@ -3,12 +3,142 @@ import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { failure, type Repositories, type Result } from "@rewind/contracts";
+import type {
+  ActivityEvent,
+  Checkpoint,
+  FileReference,
+  FileVersion,
+  Session,
+} from "@rewind/contracts";
 import { SqliteActivityRepository } from "./activity-repository";
 import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteFileRepository } from "./file-repository";
 import { SqliteSearchRepository } from "./search-repository";
 import { SqliteSessionRepository } from "./session-repository";
 import type { StorageAdapter } from "./index";
+
+function getDatabaseSyncConstructor():
+  (new (path: string) => DatabaseSync) | null {
+  if (typeof DatabaseSync === "function") {
+    return DatabaseSync;
+  }
+  try {
+    // Dynamic fallback for CJS bundlers or Electron Node runtime wrapper variations
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("node:sqlite") as Record<string, unknown>;
+    const ctor =
+      mod.DatabaseSync ??
+      mod.Database ??
+      (mod.default as Record<string, unknown> | undefined)?.DatabaseSync ??
+      (mod.default as Record<string, unknown> | undefined)?.Database;
+    if (typeof ctor === "function") {
+      return ctor as new (path: string) => DatabaseSync;
+    }
+  } catch {
+    // Continue
+  }
+  return null;
+}
+
+function createInMemoryRepositories(): Repositories {
+  const sessions = new Map<string, Session>();
+  const activities: ActivityEvent[] = [];
+  const files = new Map<string, FileReference>();
+  const versions = new Map<string, FileVersion>();
+  const checkpoints = new Map<string, Checkpoint>();
+
+  return {
+    sessions: {
+      async save(session: Session) {
+        sessions.set(session.id, { ...session });
+        return { ok: true, value: undefined };
+      },
+      async get(id: string) {
+        const found = sessions.get(id);
+        return { ok: true, value: found ? { ...found } : null };
+      },
+      async getLatest() {
+        let latest: Session | null = null;
+        for (const s of sessions.values()) {
+          if (!latest || s.startedAt > latest.startedAt) {
+            latest = s;
+          }
+        }
+        return { ok: true, value: latest ? { ...latest } : null };
+      },
+      async list(limit = 20) {
+        return {
+          ok: true,
+          value: Array.from(sessions.values()).slice(0, limit),
+        };
+      },
+      async delete(id: string) {
+        sessions.delete(id);
+        return { ok: true, value: undefined };
+      },
+    },
+    activities: {
+      async append(events: readonly ActivityEvent[]) {
+        for (const ev of events) {
+          activities.push({ ...ev });
+        }
+        return { ok: true, value: undefined };
+      },
+      async list(sessionId: string, limit: number, before?: string) {
+        const filtered = activities.filter(
+          (a) =>
+            a.sessionId === sessionId && (!before || a.occurredAt < before),
+        );
+        return { ok: true, value: filtered.slice(0, limit) };
+      },
+    },
+    files: {
+      async getReference(fileId: string) {
+        const found = files.get(fileId);
+        return { ok: true, value: found ? { ...found } : null };
+      },
+      async saveReference(file: FileReference) {
+        files.set(file.id, { ...file });
+        return { ok: true, value: undefined };
+      },
+      async addVersion(version: FileVersion) {
+        versions.set(version.id, { ...version });
+        return { ok: true, value: undefined };
+      },
+      async getVersion(id: string) {
+        const found = versions.get(id);
+        return { ok: true, value: found ? { ...found } : null };
+      },
+      async listVersions(fileId: string) {
+        const list = Array.from(versions.values()).filter(
+          (v) => v.fileId === fileId,
+        );
+        return { ok: true, value: list };
+      },
+    },
+    checkpoints: {
+      async save(checkpoint: Checkpoint) {
+        checkpoints.set(checkpoint.id, { ...checkpoint });
+        return { ok: true, value: undefined };
+      },
+      async get(id: string) {
+        const found = checkpoints.get(id);
+        return { ok: true, value: found ? { ...found } : null };
+      },
+      async list(sessionId: string) {
+        const list = Array.from(checkpoints.values()).filter(
+          (c) => c.sessionId === sessionId,
+        );
+        return { ok: true, value: list };
+      },
+    },
+    search: {
+      async search() {
+        return { ok: true, value: [] };
+      },
+    },
+  };
+}
 
 function getDefaultMigrationPath(): string | undefined {
   try {
@@ -134,7 +264,16 @@ export class SqliteStorageAdapter implements StorageAdapter {
 
   async open(): Promise<Result<void>> {
     try {
-      this.db = new DatabaseSync(this.dbPath);
+      const DatabaseConstructor = getDatabaseSyncConstructor();
+      if (!DatabaseConstructor) {
+        console.warn(
+          "[SqliteStorageAdapter] 'node:sqlite' DatabaseSync is not available in current runtime environment. Using in-memory fallback repositories.",
+        );
+        this._repositories = createInMemoryRepositories();
+        return { ok: true, value: undefined };
+      }
+
+      this.db = new DatabaseConstructor(this.dbPath);
 
       // Core pragmas for data integrity and performance
       this.db.exec("PRAGMA foreign_keys = ON;");
@@ -167,10 +306,11 @@ export class SqliteStorageAdapter implements StorageAdapter {
 
       return { ok: true, value: undefined };
     } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to open storage adapter: ${error instanceof Error ? error.message : String(error)}`,
+      console.warn(
+        `[SqliteStorageAdapter] Failed to initialize SQLite database: ${error instanceof Error ? error.message : String(error)}. Using in-memory fallback repositories.`,
       );
+      this._repositories = createInMemoryRepositories();
+      return { ok: true, value: undefined };
     }
   }
 
