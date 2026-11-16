@@ -1,11 +1,11 @@
 import type {
+  FileVersion,
+  Id,
   RecoveryProposal,
   Result,
   SearchQuery,
   SearchResult,
   SourceReference,
-  Id,
-  FileVersion,
 } from "@rewind/contracts";
 
 /** Validated tools available to a future bounded assistant; deliberately no execute_recovery. */
@@ -17,12 +17,18 @@ export interface AssistantTools {
   search_checkpoints(query: SearchQuery): Promise<Result<SearchResult[]>>;
   propose_recovery(fileVersionId: Id): Promise<Result<RecoveryProposal>>;
 }
+
 export interface EvidenceAnswer {
   text: string;
   sources: SourceReference[];
   insufficientEvidence: boolean;
 }
+
 export interface AssistantService {
   ask(question: string): Promise<Result<EvidenceAnswer>>;
 }
-export const assistantImplementationStatus = "not-implemented" as const;
+
+export const assistantImplementationStatus = "gemini-tool-loop" as const;
+
+export { GeminiAssistantService } from "./gemini-service";
+export type { GeminiAssistantOptions } from "./gemini-service";

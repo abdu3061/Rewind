@@ -14,6 +14,8 @@ import {
 } from "electron";
 import { createCollectorRegistry } from "@rewind/collectors";
 import {
+  askQuestionSchema,
+  ASSISTANT_CHANNEL,
   createDefaultSettings,
   failure,
   SESSION_CHANNEL,
@@ -23,6 +25,7 @@ import {
 } from "@rewind/contracts";
 import { SessionCoordinator, SessionService } from "@rewind/engine";
 import { SqliteStorageAdapter } from "@rewind/storage";
+import type { AssistantService } from "@rewind/assistant";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 
 // Disable hardware acceleration at startup for headless and GPU-less environments (e.g. CI)
@@ -54,6 +57,7 @@ const userSettings: UserSettings = {
 
 let storage: SqliteStorageAdapter | null = null;
 let coordinator: SessionCoordinator | null = null;
+let assistantService: AssistantService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const rendererUrl =
@@ -338,8 +342,46 @@ app
       throw err;
     }
 
-    // ── Step 6: Register IPC and local asset protocol ─────────────────────
+    // ── Step 6: Initialize assistant (only when cloud AI is enabled + key present) ──
+    if (userSettings.cloudAiEnabled) {
+      const geminiApiKey = process.env["REWIND_GEMINI_KEY"] ?? "";
+      if (geminiApiKey) {
+        try {
+          const { GeminiAssistantService } = await import("@rewind/assistant");
+          assistantService = new GeminiAssistantService({
+            apiKey: geminiApiKey,
+            repositories: storage.repositories,
+            settings: userSettings,
+          });
+          console.log(
+            JSON.stringify({ level: "info", code: "ASSISTANT_READY" }),
+          );
+        } catch (err) {
+          const msg =
+            err instanceof Error ? (err.stack ?? err.message) : String(err);
+          console.warn(
+            JSON.stringify({
+              level: "warn",
+              code: "ASSISTANT_INIT_FAILED",
+              error: msg,
+            }),
+          );
+          // Non-fatal — assistant remains null; IPC returns UNAVAILABLE
+        }
+      } else {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "ASSISTANT_SKIPPED",
+            reason: "REWIND_GEMINI_KEY not set",
+          }),
+        );
+      }
+    }
+
+    // ── Step 7: Register IPC and local asset protocol ─────────────────────
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
+
     ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (
         !mainWindow ||
@@ -364,7 +406,45 @@ app
       return result;
     });
 
-    // ── Step 7: Create tray icon ───────────────────────────────────────────
+    ipcMain.handle(ASSISTANT_CHANNEL, async (event, ...args: unknown[]) => {
+      if (
+        !mainWindow ||
+        event.sender !== mainWindow.webContents ||
+        !event.senderFrame ||
+        event.senderFrame !== event.sender.mainFrame ||
+        !isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
+      ) {
+        return failure(
+          "FORBIDDEN",
+          "This frame cannot access the Rewind assistant.",
+        );
+      }
+      if (args.length !== 1) {
+        return failure(
+          "INVALID_INPUT",
+          "Exactly one assistant command is required.",
+        );
+      }
+      const parsed = askQuestionSchema.safeParse(args[0]);
+      if (!parsed.success) {
+        return failure(
+          "INVALID_INPUT",
+          `Invalid assistant request: ${parsed.error.issues[0]?.message ?? "validation failed"}`,
+        );
+      }
+      if (!userSettings.cloudAiEnabled) {
+        return failure("FORBIDDEN", "Cloud AI is disabled.");
+      }
+      if (!assistantService) {
+        return failure(
+          "UNAVAILABLE",
+          "Assistant service is not available. Set REWIND_GEMINI_KEY and enable cloudAiEnabled.",
+        );
+      }
+      return assistantService.ask(parsed.data.question);
+    });
+
+    // ── Step 8: Create tray icon ───────────────────────────────────────────
     try {
       const pixels = Buffer.alloc(16 * 16 * 4);
       for (let i = 0; i < 16 * 16; i++) {
@@ -384,7 +464,7 @@ app
       );
     }
 
-    // ── Step 8: Open the main browser window ──────────────────────────────
+    // ── Step 9: Open the main browser window ──────────────────────────────
     try {
       await createWindow();
       console.log(JSON.stringify({ level: "info", code: "WINDOW_READY" }));
