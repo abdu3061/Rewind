@@ -1,0 +1,69 @@
+import { expect, it } from "vitest";
+import { createDefaultSettings, failure, type CollectorContext, type CollectorRegistry, type Repositories } from "@rewind/contracts";
+import { SessionService } from "./session-service";
+import { SessionCoordinator } from "./session-coordinator";
+
+const ok = async () => ({ ok: true as const, value: undefined });
+function fixture(consent = false) {
+  const settings = { ...createDefaultSettings(), collectionConsent: consent };
+  const contexts: CollectorContext[] = [];
+  const makeCollector = () => ({ id: "synthetic", start: async (context: CollectorContext) => { contexts.push(context); return ok(); }, pause: ok, resume: ok, stop: ok });
+  const collectors: CollectorRegistry = { windows: makeCollector(), browser: makeCollector(), folders: makeCollector() };
+  const repositories = { sessions: { save: ok }, activities: { append: ok } } as unknown as Repositories;
+  const coordinator = new SessionCoordinator({
+    service: new SessionService({ newId: () => "00000000-0000-4000-8000-000000000001", now: () => "2026-11-16T10:00:00.000Z" }),
+    repositories, collectors, getSettings: () => settings,
+    newGenerationId: () => "10000000-0000-4000-8000-000000000001",
+  });
+  return { coordinator, repositories, collectors, contexts };
+}
+
+it("must report session storage failure", async () => {
+  const f = fixture();
+  f.repositories.sessions.save = async () => failure("UNAVAILABLE", "Synthetic storage failure.");
+  expect((await f.coordinator.execute("start")).ok).toBe(false);
+});
+
+it("must report collector startup failure", async () => {
+  const f = fixture(true);
+  f.collectors.windows.start = async () => failure("UNAVAILABLE", "Synthetic collector failure.");
+  expect((await f.coordinator.execute("start")).ok).toBe(false);
+});
+
+it("must not start collectors after a later pause has acknowledged", async () => {
+  const f = fixture(true);
+  let release!: () => void;
+  const pendingSave = new Promise<void>((resolve) => { release = resolve; });
+  let saves = 0;
+  f.repositories.sessions.save = async () => { if (++saves === 1) await pendingSave; return ok(); };
+  const start = f.coordinator.execute("start");
+  try {
+    await f.coordinator.execute("pause");
+  } finally {
+    release();
+    await start;
+  }
+  expect(f.coordinator.getState().session?.status).toBe("paused");
+  expect(f.contexts).toHaveLength(0);
+});
+
+it("must wait for in-flight ingestion before acknowledging pause", async () => {
+  const f = fixture(true);
+  await f.coordinator.execute("start");
+  let release!: () => void;
+  const pendingAppend = new Promise<void>((resolve) => { release = resolve; });
+  f.repositories.activities.append = async () => { await pendingAppend; return ok(); };
+  const emission = f.contexts[0]!.emit([{
+    id: "20000000-0000-4000-8000-000000000001", sessionId: "00000000-0000-4000-8000-000000000001",
+    occurredAt: "2026-11-16T10:00:00.000Z", source: "windows", type: "idle", payload: { state: "entered" },
+  }]);
+  let acknowledged = false;
+  const pause = f.coordinator.execute("pause").then(() => { acknowledged = true; });
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(acknowledged).toBe(false);
+  } finally {
+    release();
+    await Promise.all([emission, pause]);
+  }
+});

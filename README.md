@@ -75,6 +75,7 @@ Start with [repository status](docs/repository-status.md), [team tasks](docs/tea
 
 ## Project references
 
+- [Full engineering audit and roadmap](docs/audit/README.md) — current branch review, verified stabilization, remaining gates and owned future tasks
 - [Version-one specification](docs/project-spec.md), [architecture](docs/architecture.md), [contracts](docs/contracts.md)
 - [Security and privacy](docs/security-privacy.md), [ownership](docs/team-ownership.md), [contributing](docs/contributing.md)
 - [Architecture decisions](docs/decisions/README.md), [dependencies and licenses](docs/dependencies-licenses.md)
@@ -82,4 +83,4 @@ Start with [repository status](docs/repository-status.md), [team tasks](docs/tea
 
 The existing [project plan](docs/project-plan.md) and [technical research](docs/technical-research.md) are preserved unchanged. They describe proposals and future behavior, not the current implementation. The new specification, feature status, and ADRs clarify the initialization boundary.
 
-No third-party project source was copied. Rewind's own distribution license has not been selected; package metadata is `UNLICENSED` and private until Rasit decides. Third-party dependencies retain their own licenses.
+The repository includes an MIT `LICENSE` file, while private packages declare `UNLICENSED` and existing planning documents treat licensing as undecided. Rasit must reconcile the license and metadata before distribution. The audit does not choose or change the project license. Third-party dependencies retain their own licenses.

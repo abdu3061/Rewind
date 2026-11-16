@@ -12,4 +12,6 @@ Accepted initialization decisions reflect the explicit approved stack/scope. Pro
 | [0006](0006-evidence-and-recovery-contracts.md) | Accepted contract direction                           | UUID/UTC evidence references and user-controlled recovery               |
 | [0007](0007-maintenance-baseline.md)            | Implemented locally; pending Rasit's review           | Preserve runtime privacy gates during branch cleanup and patch Electron |
 
+See also [ADR 0008](0008-audit-stabilization.md): bounded audit fixes implemented locally for Rasit's review, without approving new collection, persistence or AI capabilities.
+
 For a new decision: state context, options, recommendation, consequences, owner/status, and acceptance evidence. Do not mark a proposed binding/protocol approved because a placeholder interface exists.

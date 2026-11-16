@@ -1,0 +1,216 @@
+diff --git a/apps/desktop/src/main/main.ts b/apps/desktop/src/main/main.ts
+index 1753e47..da5d2c5 100644
+--- a/apps/desktop/src/main/main.ts
++++ b/apps/desktop/src/main/main.ts
+@@ -47,10 +47,7 @@ const sessionService = new SessionService({
+   now: () => new Date().toISOString(),
+ });
+
+-const userSettings: UserSettings = {
+-  ...createDefaultSettings(),
+-  collectionConsent: true,
+-};
++const userSettings: UserSettings = createDefaultSettings();
+
+ let storage: SqliteStorageAdapter | null = null;
+ let coordinator: SessionCoordinator | null = null;
+diff --git a/packages/collectors/src/window-strategy.test.ts b/packages/collectors/src/window-strategy.test.ts
+new file mode 100644
+index 0000000..b8044db
+--- /dev/null
++++ b/packages/collectors/src/window-strategy.test.ts
+@@ -0,0 +1,55 @@
++import { promisify } from "node:util";
++import { expect, it, vi } from "vitest";
++import { WindowsWindowQueryStrategy } from "./window-strategy";
++
++const runner = vi.hoisted(() => vi.fn());
++vi.mock("node:child_process", async (original) => {
++  const actual = await original<typeof import("node:child_process")>();
++  const { promisify: utilPromisify } = await import("node:util");
++  return {
++    ...actual,
++    execFile: Object.assign(() => {}, { [utilPromisify.custom]: runner }),
++  };
++});
++
++it.runIf(process.platform === "win32")(
++  "queries a synthetic window without assigning a PowerShell automatic variable",
++  async () => {
++    const actual =
++      await vi.importActual<typeof import("node:child_process")>(
++        "node:child_process",
++      );
++    const syntheticWindow = `
++Add-Type -TypeDefinition @'
++using System;
++using System.Text;
++public class ActiveWindow {
++    public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
++    public static int GetWindowText(IntPtr handle, StringBuilder text, int size) {
++        text.Append("Synthetic audit window"); return text.Length;
++    }
++    public static uint GetWindowThreadProcessId(IntPtr handle, out uint processId) {
++        processId = (uint)System.Diagnostics.Process.GetCurrentProcess().Id; return 1;
++    }
++}
++'@
++`;
++    runner.mockImplementation(async (_file: string, args: string[]) => {
++      const script = args.at(-1);
++      if (!script) throw new Error("Missing window-query script.");
++      // The stub replaces every window API before the production script runs.
++      // Only this child PowerShell process and synthetic text are observed.
++      return promisify(actual.execFile)(
++        "powershell.exe",
++        ["-NoProfile", "-NonInteractive", "-Command", syntheticWindow + script],
++        { timeout: 10_000, windowsHide: true },
++      );
++    });
++    expect(
++      await new WindowsWindowQueryStrategy().getActiveWindow(),
++    ).toMatchObject({
++      windowTitle: "Synthetic audit window",
++    });
++  },
++  15_000,
++);
+diff --git a/packages/collectors/src/window-strategy.ts b/packages/collectors/src/window-strategy.ts
+index aff15ab..aaa7bce 100644
+--- a/packages/collectors/src/window-strategy.ts
++++ b/packages/collectors/src/window-strategy.ts
+@@ -31,10 +31,10 @@ public class ActiveWindow {
+         if ($hwnd -and $hwnd -ne [IntPtr]::Zero) {
+             $sb = New-Object System.Text.StringBuilder 2048
+             [ActiveWindow]::GetWindowText($hwnd, $sb, 2048) | Out-Null
+-            $pid = 0
+-            [ActiveWindow]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+-            if ($pid -gt 0) {
+-                $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
++            [uint32]$foregroundProcessId = 0
++            [ActiveWindow]::GetWindowThreadProcessId($hwnd, [ref]$foregroundProcessId) | Out-Null
++            if ($foregroundProcessId -gt 0) {
++                $proc = Get-Process -Id $foregroundProcessId -ErrorAction SilentlyContinue
+                 $appName = if ($proc) { $proc.ProcessName } else { "unknown" }
+                 $title = $sb.ToString()
+                 Write-Output "$appName\`t$title"
+diff --git a/packages/collectors/src/windows-collector.test.ts b/packages/collectors/src/windows-collector.test.ts
+index d453fd1..9f23ab4 100644
+--- a/packages/collectors/src/windows-collector.test.ts
++++ b/packages/collectors/src/windows-collector.test.ts
+@@ -1,4 +1,17 @@
+ import { beforeEach, describe, expect, it, vi } from "vitest";
++
++vi.mock("node:child_process", async (original) => {
++  const actual = await original<typeof import("node:child_process")>();
++  const { promisify } = await import("node:util");
++  return {
++    ...actual,
++    execFile: Object.assign(() => {}, {
++      [promisify.custom]: async () => {
++        throw new Error("Synthetic native process failure.");
++      },
++    }),
++  };
++});
+ import type {
+   ActivityEvent,
+   CollectorContext,
+diff --git a/packages/storage/src/sqlite-adapter.test.ts b/packages/storage/src/sqlite-adapter.test.ts
+index b9d06d7..4e627f8 100644
+--- a/packages/storage/src/sqlite-adapter.test.ts
++++ b/packages/storage/src/sqlite-adapter.test.ts
+@@ -9,6 +9,22 @@ describe("SqliteStorageAdapter", () => {
+   const migrationsDir = resolve(__dirname, "../../../db/migrations");
+   const migrationPath = resolve(migrationsDir, "001_initial.sql");
+
++  it("rejects a persistent open failure instead of exposing fallback repositories", async () => {
++    const adapter = new SqliteStorageAdapter(
++      resolve(__dirname, "audit-missing-parent", "synthetic.sqlite"),
++      migrationsDir,
++    );
++    try {
++      expect(await adapter.open()).toMatchObject({
++        ok: false,
++        error: { code: "INTERNAL" },
++      });
++      expect(() => adapter.repositories).toThrow();
++    } finally {
++      await adapter.close();
++    }
++  });
++
+   it("opens database, executes migrations, exposes all repositories, and closes cleanly", async () => {
+     const adapter = new SqliteStorageAdapter(":memory:", migrationPath);
+
+diff --git a/packages/storage/src/sqlite-adapter.ts b/packages/storage/src/sqlite-adapter.ts
+index 1d45655..af25ce3 100644
+--- a/packages/storage/src/sqlite-adapter.ts
++++ b/packages/storage/src/sqlite-adapter.ts
+@@ -266,6 +266,12 @@ export class SqliteStorageAdapter implements StorageAdapter {
+     try {
+       const DatabaseConstructor = getDatabaseSyncConstructor();
+       if (!DatabaseConstructor) {
++        if (this.dbPath !== ":memory:") {
++          return failure(
++            "UNAVAILABLE",
++            "SQLite is unavailable; persistent storage was not opened.",
++          );
++        }
+         console.warn(
+           "[SqliteStorageAdapter] 'node:sqlite' DatabaseSync is not available in current runtime environment. Using in-memory fallback repositories.",
+         );
+@@ -289,6 +295,9 @@ export class SqliteStorageAdapter implements StorageAdapter {
+       }
+
+       // Execute versioned migrations
++      if (this.migrationPath && !existsSync(this.migrationPath)) {
++        throw new Error("The requested migration is unavailable.");
++      }
+       const migrationTarget = this.migrationPath ?? getDefaultMigrationPath();
+       if (migrationTarget && existsSync(migrationTarget)) {
+         this.applyMigrations(migrationTarget);
+@@ -305,12 +314,17 @@ export class SqliteStorageAdapter implements StorageAdapter {
+       };
+
+       return { ok: true, value: undefined };
+-    } catch (error) {
+-      console.warn(
+-        `[SqliteStorageAdapter] Failed to initialize SQLite database: ${error instanceof Error ? error.message : String(error)}. Using in-memory fallback repositories.`,
+-      );
+-      this._repositories = createInMemoryRepositories();
+-      return { ok: true, value: undefined };
++    } catch {
++      this._repositories = null;
++      if (this.db) {
++        try {
++          this.db.close();
++          this.db = null;
++        } catch {
++          // Retain the handle for a later close retry without exposing repositories.
++        }
++      }
++      return failure("INTERNAL", "Failed to open storage adapter.");
+     }
+   }
+
+@@ -343,8 +357,7 @@ export class SqliteStorageAdapter implements StorageAdapter {
+     `);
+
+     if (!existsSync(target)) {
+-      this.applyEmbeddedSchema();
+-      return;
++      throw new Error("The requested migration is unavailable.");
+     }
+
+     const stats = statSync(target);
+@@ -412,8 +425,8 @@ export class SqliteStorageAdapter implements StorageAdapter {
+       if (this.db) {
+         this.db.close();
+         this.db = null;
+-        this._repositories = null;
+       }
++      this._repositories = null;
+       return { ok: true, value: undefined };
+     } catch (error) {
+       return failure(

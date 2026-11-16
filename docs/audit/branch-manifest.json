@@ -1,0 +1,269 @@
+{
+  "reviewDate": "2026-11-16",
+  "repository": "abdu3061/Rewind",
+  "defaultBranch": "main",
+  "sharedMain": "0391630314cea03ba6f15d93379f6e889ce2f0b2",
+  "priorLocalCleanup": "2f169b93b802ee81b2f513c2f36abe85b92c7ea8",
+  "localCollectorFix": "e77a0661686eae69700bb476efaa1c4e7e0c6a6a",
+  "pullRequests": [
+    {
+      "number": 1,
+      "title": "feat(storage): implement SQLite schema and versioned repositories (RWD-102)",
+      "state": "closed",
+      "merged": true,
+      "mergeable": false,
+      "base": "main",
+      "head": "feature/database-schema",
+      "headSha": "bd80f3429616840523492158c8dbf2f9badcbbba",
+      "mergedAt": "2026-10-27T21:36:19Z",
+      "changedFiles": 16,
+      "files": [
+        "db/migrations/001_initial.sql",
+        "db/schema.sql",
+        "docs/team-tasks.md",
+        "packages/storage/src/activity-repository.test.ts",
+        "packages/storage/src/activity-repository.ts",
+        "packages/storage/src/checkpoint-repository.test.ts",
+        "packages/storage/src/checkpoint-repository.ts",
+        "packages/storage/src/file-repository.test.ts",
+        "packages/storage/src/file-repository.ts",
+        "packages/storage/src/index.ts",
+        "packages/storage/src/search-repository.test.ts",
+        "packages/storage/src/search-repository.ts",
+        "packages/storage/src/session-repository.test.ts",
+        "packages/storage/src/session-repository.ts",
+        "packages/storage/src/sqlite-adapter.test.ts",
+        "packages/storage/src/sqlite-adapter.ts"
+      ],
+      "ci": null
+    },
+    {
+      "number": 2,
+      "title": "feat: implement frontend UI screens and interactions",
+      "state": "closed",
+      "merged": true,
+      "mergeable": false,
+      "base": "main",
+      "head": "feature/frontend-ui",
+      "headSha": "1b81d665f9495f0be5541a58635bfac47064c37c",
+      "mergedAt": "2026-10-27T22:59:56Z",
+      "changedFiles": 3,
+      "files": [
+        "apps/desktop/src/renderer/App.tsx",
+        "apps/desktop/src/renderer/styles.css",
+        "apps/desktop/src/renderer/styles.d.ts"
+      ],
+      "ci": null
+    },
+    {
+      "number": 3,
+      "title": "Feature/design tokens privacy",
+      "state": "open",
+      "merged": false,
+      "mergeable": true,
+      "base": "main",
+      "head": "feature/design-tokens-privacy",
+      "headSha": "ba16ceb7d31fad9878484645d2fe5fb4b6cc7ccb",
+      "mergedAt": null,
+      "changedFiles": 4,
+      "files": [
+        "apps/desktop/src/renderer/App.css",
+        "apps/desktop/src/renderer/App.tsx",
+        "apps/desktop/src/renderer/main.tsx",
+        "apps/desktop/src/renderer/mockBridge.ts"
+      ],
+      "ci": {
+        "workflow_runs": [
+          {
+            "id": 40860502742,
+            "name": "CI",
+            "status": "completed",
+            "conclusion": "failure",
+            "run_number": 37,
+            "jobs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/40860502742/jobs",
+            "logs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/40860502742/logs",
+            "workflow_id": 392168488
+          }
+        ]
+      }
+    },
+    {
+      "number": 4,
+      "title": "feat(storage): implement SQLite persistence layer",
+      "state": "open",
+      "merged": false,
+      "mergeable": true,
+      "base": "main",
+      "head": "feature/sqlite-persistence",
+      "headSha": "5824ea103cd97f03d4660e33f5ad9fae759d98d8",
+      "mergedAt": null,
+      "changedFiles": 15,
+      "files": [
+        "db/migrations/001_initial.sql",
+        "db/schema.sql",
+        "packages/contracts/src/ports.ts",
+        "packages/storage/src/activity-repository.test.ts",
+        "packages/storage/src/activity-repository.ts",
+        "packages/storage/src/checkpoint-repository.test.ts",
+        "packages/storage/src/checkpoint-repository.ts",
+        "packages/storage/src/file-repository.test.ts",
+        "packages/storage/src/file-repository.ts",
+        "packages/storage/src/search-repository.test.ts",
+        "packages/storage/src/search-repository.ts",
+        "packages/storage/src/session-repository.test.ts",
+        "packages/storage/src/session-repository.ts",
+        "packages/storage/src/sqlite-adapter.test.ts",
+        "packages/storage/src/sqlite-adapter.ts"
+      ],
+      "ci": {
+        "workflow_runs": [
+          {
+            "id": 41050077797,
+            "name": "CI",
+            "status": "completed",
+            "conclusion": "success",
+            "run_number": 38,
+            "jobs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/41050077797/jobs",
+            "logs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/41050077797/logs",
+            "workflow_id": 392168488
+          }
+        ]
+      }
+    },
+    {
+      "number": 5,
+      "title": "Feature/data collectors",
+      "state": "open",
+      "merged": false,
+      "mergeable": true,
+      "base": "main",
+      "head": "feature/data-collectors",
+      "headSha": "611432465a4c63c266d4cd63d7875179cef8c5e7",
+      "mergedAt": null,
+      "changedFiles": 34,
+      "files": [
+        "apps/desktop/forge.config.ts",
+        "apps/desktop/package.json",
+        "apps/desktop/src/main/main.ts",
+        "apps/desktop/src/main/session-ipc.ts",
+        "apps/desktop/vite.main.config.ts",
+        "db/migrations/001_initial.sql",
+        "db/schema.sql",
+        "package.json",
+        "packages/collectors/src/browser-collector.test.ts",
+        "packages/collectors/src/browser-collector.ts",
+        "packages/collectors/src/folder-collector.test.ts",
+        "packages/collectors/src/folder-collector.ts",
+        "packages/collectors/src/index.ts",
+        "packages/collectors/src/types.ts",
+        "packages/collectors/src/window-strategy.ts",
+        "packages/collectors/src/windows-collector.test.ts",
+        "packages/collectors/src/windows-collector.ts",
+        "packages/contracts/src/activity.ts",
+        "packages/contracts/src/ports.ts",
+        "packages/engine/src/index.ts",
+        "packages/engine/src/session-coordinator.test.ts",
+        "packages/engine/src/session-coordinator.ts",
+        "packages/storage/src/activity-repository.test.ts",
+        "packages/storage/src/activity-repository.ts",
+        "packages/storage/src/checkpoint-repository.test.ts",
+        "packages/storage/src/checkpoint-repository.ts",
+        "packages/storage/src/file-repository.test.ts",
+        "packages/storage/src/file-repository.ts",
+        "packages/storage/src/search-repository.test.ts",
+        "packages/storage/src/search-repository.ts",
+        "packages/storage/src/session-repository.test.ts",
+        "packages/storage/src/session-repository.ts",
+        "packages/storage/src/sqlite-adapter.test.ts",
+        "packages/storage/src/sqlite-adapter.ts"
+      ],
+      "ci": {
+        "workflow_runs": [
+          {
+            "id": 43850977634,
+            "name": "CI",
+            "status": "completed",
+            "conclusion": "success",
+            "run_number": 45,
+            "jobs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/43850977634/jobs",
+            "logs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/43850977634/logs",
+            "workflow_id": 392168488
+          }
+        ]
+      }
+    },
+    {
+      "number": 6,
+      "title": "feat(assistant): implement Gemini session assistant, read-only tools, and IPC bridge",
+      "state": "open",
+      "merged": false,
+      "mergeable": true,
+      "base": "main",
+      "head": "feature/gemini-assistant",
+      "headSha": "a91d79dc27005d6715694d75d089e278213571f3",
+      "mergedAt": null,
+      "changedFiles": 44,
+      "files": [
+        "apps/desktop/forge.config.ts",
+        "apps/desktop/package.json",
+        "apps/desktop/src/main/main.ts",
+        "apps/desktop/src/main/session-ipc.ts",
+        "apps/desktop/src/preload/preload.ts",
+        "apps/desktop/vite.main.config.ts",
+        "db/migrations/001_initial.sql",
+        "db/schema.sql",
+        "package-lock.json",
+        "package.json",
+        "packages/assistant/package.json",
+        "packages/assistant/src/assistant.test.ts",
+        "packages/assistant/src/gemini-service.ts",
+        "packages/assistant/src/index.ts",
+        "packages/assistant/src/tools.ts",
+        "packages/assistant/src/vendor.d.ts",
+        "packages/collectors/src/browser-collector.test.ts",
+        "packages/collectors/src/browser-collector.ts",
+        "packages/collectors/src/folder-collector.test.ts",
+        "packages/collectors/src/folder-collector.ts",
+        "packages/collectors/src/index.ts",
+        "packages/collectors/src/types.ts",
+        "packages/collectors/src/window-strategy.ts",
+        "packages/collectors/src/windows-collector.test.ts",
+        "packages/collectors/src/windows-collector.ts",
+        "packages/contracts/src/activity.ts",
+        "packages/contracts/src/ipc.ts",
+        "packages/contracts/src/ports.ts",
+        "packages/engine/src/index.ts",
+        "packages/engine/src/session-coordinator.test.ts",
+        "packages/engine/src/session-coordinator.ts",
+        "packages/storage/src/activity-repository.test.ts",
+        "packages/storage/src/activity-repository.ts",
+        "packages/storage/src/checkpoint-repository.test.ts",
+        "packages/storage/src/checkpoint-repository.ts",
+        "packages/storage/src/file-repository.test.ts",
+        "packages/storage/src/file-repository.ts",
+        "packages/storage/src/search-repository.test.ts",
+        "packages/storage/src/search-repository.ts",
+        "packages/storage/src/session-repository.test.ts",
+        "packages/storage/src/session-repository.ts",
+        "packages/storage/src/sqlite-adapter.test.ts",
+        "packages/storage/src/sqlite-adapter.ts",
+        "tests/app/session.spec.ts"
+      ],
+      "ci": {
+        "workflow_runs": [
+          {
+            "id": 43897459889,
+            "name": "CI",
+            "status": "completed",
+            "conclusion": "success",
+            "run_number": 47,
+            "jobs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/43897459889/jobs",
+            "logs_url": "https://api.github.com/repos/abdu3061/Rewind/actions/runs/43897459889/logs",
+            "workflow_id": 392168488
+          }
+        ]
+      }
+    }
+  ],
+  "localCollectorHead": "51913cada718faac2c3f0c5ce991512dce68797f"
+}
