@@ -1,5 +1,7 @@
 # PR integration plan
 
+**Local follow-up:** `feature/backend-lifecycle-stabilization` selectively adapts the existing coordinator and Windows adapter and corrects related prototype storage/query defects; see [implementation evidence](backend-stabilization.md). Prefer reviewing these bounded repair commits over copying #5's unsafe main/embedded-schema/fallback composition. #4/#5 consumers must adopt SessionStorage, exact-run authorization and composite activity cursors when integrating. Remote PR state below is the audit snapshot; this implementation does not merge, rebase, push or mark those PRs ready. Their encryption/utility/browser/identity gates remain.
+
 Snapshot: 16 November 2026, after a fresh origin fetch and GitHub metadata/CI/review queries. Default branch is `main` at `0391630`. **No merge, push, remote PR/comment, branch deletion or repository setting change was performed.** GitHub text mergeability does not establish semantic correctness or approval.
 
 ## Verified branches and pull requests

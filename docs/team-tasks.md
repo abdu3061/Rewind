@@ -1,5 +1,7 @@
 # Team tasks and backlog
 
+Local backend progress is recorded in [backend stabilization](audit/backend-stabilization.md) and [ADR 0009](decisions/0009-session-lifecycle-stabilization.md): lifecycle/fixture integration, existing Windows adapter shutdown and prototype integrity are implemented for review. RWD-100/102/103 still require their complete utility/encrypted-runtime acceptance; no broad task is silently marked Done and ownership is unchanged. Next: Mohammed Bashli's encrypted-storage/key feasibility with Rasit's review, before real recording composition.
+
 Task acceptance status reviewed on 16 November 2026; see [repository status](repository-status.md) for merged prototypes and open-branch blockers. P0 = must precede dependent/sensitive work; P1 = core version-one deliverable; P2 = polish or follow-up. Status values: Planned, In Progress, In Review, Blocked, Done. A merged prototype does not satisfy a task's full acceptance criteria. All implementation tasks require reviewed PRs; Rasit has final technical/merge approval.
 
 Each row includes the task ID, single accountable owner, priority, dependencies, expected modules, acceptance criteria, branch, and status. Owners may pair on reviews while keeping implementation responsibility clear. Existing contracts enable synthetic test adapters; those adapters must stay in tests or be explicitly labeled development fixtures.

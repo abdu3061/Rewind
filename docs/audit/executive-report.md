@@ -1,5 +1,7 @@
 # Rewind engineering audit report
 
+**Follow-up completed locally:** [Backend stabilization](backend-stabilization.md) implements the former next goal in section J and related verified backend repairs. Use that report for current changes, remaining gates and the next encrypted-storage feasibility goal. The A–J report below remains the original audit snapshot, including the remote revisions it examined.
+
 16 November 2026. Start with this report, then use the [current-state inventory](current-state.md), [30 findings and ranked top ten](findings.md), [architecture plan](architecture-improvement-plan.md), [roadmap](development-roadmap.md), [PR integration plan](pr-integration-plan.md) and [actual validation record](validation-report.md).
 
 ## A. Executive summary

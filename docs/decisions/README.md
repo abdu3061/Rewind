@@ -15,3 +15,5 @@ Accepted initialization decisions reflect the explicit approved stack/scope. Pro
 See also [ADR 0008](0008-audit-stabilization.md): bounded audit fixes implemented locally for Rasit's review, without approving new collection, persistence or AI capabilities.
 
 For a new decision: state context, options, recommendation, consequences, owner/status, and acceptance evidence. Do not mark a proposed binding/protocol approved because a placeholder interface exists.
+
+See [ADR 0009](0009-session-lifecycle-stabilization.md): locally implemented candidate/commit, checked storage lifecycle, consent/run invalidation, acknowledged drain and quit policy. It does not select an encryption binding or enable real recording.

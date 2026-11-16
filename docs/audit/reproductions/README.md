@@ -1,5 +1,7 @@
 # Preserved known-failure probes
 
+Historical targets only: the [backend stabilization follow-up](../backend-stabilization.md) promotes the four coordinator and two query invariants into ordinary tests using the new explicit storage port and composite cursor. These preserved text files still describe failures on the original PR revisions. The four assistant probes remain unresolved; do not interpret the historical count of ten as ten current failures on the repaired branch.
+
 These `.test.ts.txt` files preserve the exact synthetic probes used during the audit. They assert required behavior and **fail against the inspected PR code**. They are evidence for future corrections, not passing production regression tests and not part of the baseline green test count. No assertion was inverted or marked expected-failure to make a broken implementation look correct.
 
 | File                               | Target                                                                              | Observed failures                                                                                                                     |

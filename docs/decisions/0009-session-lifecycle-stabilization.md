@@ -1,0 +1,39 @@
+# ADR 0009 — Failure-aware session lifecycle
+
+Date: 16 November 2026. Owner: Rasit. Status: implemented locally under the backend-stabilization goal; pending lead review before PR integration. This decision covers lifecycle semantics and prototype integrity. It does not approve an encryption binding, live monitoring, native browser transport, or a release.
+
+## Context and alternatives
+
+PR #5 publishes synchronous session mutations before asynchronous persistence/collector work, ignores Results and allows overlapping startup and pause. Its stop acknowledgement does not drain writes or pending native queries. Returning an error after publishing active state, or swallowing failure into memory repositories, cannot correct those semantics.
+
+Retain the pure SessionService, injected collector/repository ports and existing SQLite prototypes. Add prepared transitions and one asynchronous coordinator rather than a framework or a replacement backend. Adapt the existing Windows polling implementation through its injected strategy; do not enable it in desktop composition.
+
+## Decision
+
+- The desktop explicitly constructs `mode: "session-only"`. It has no storage/collector dependencies or automatic fallback. Sessions are volatile, collection stays off, and the existing DesktopApi remains unchanged. Repository mode is available behind `SessionStorage` for synthetic integration and the future approved utility host.
+- Serialize lifecycle commands and reads. Prepare a candidate without publishing it. In repository mode, open/load storage successfully, persist the candidate, establish collector readiness when consent permits, then commit the public state. Context emissions before that commit are rejected. Starting a session never supplies consent.
+- Pause, end, settings updates, revocation and shutdown immediately invalidate the current authorization. They also preempt earlier unfinished start/resume requests. A preempted first start can fail with CONFLICT while the queued pause fails INVALID_TRANSITION because no session committed. Do not invent a paused session or report startup success. Callers receive explicit Results and may retry.
+- Stop all collector ports, drain admitted work and pending port operations, then persist and publish the stopped transition. Work already inside an append may finish before acknowledgement; queued/unstarted work is rejected. No stopped-generation write may outlive a **successful** acknowledgement. Pause uses `stop()` so handles are released; `resume(context)` must accept a fresh context from the stopped state.
+- On partial startup failure, invalidate and stop all sources. After quiescence, restore the prior paused record for a failed resume, or persist a failed new session as ended. Keep the prior public state. If cleanup/compensation/durability is uncertain, return failure, keep collection disabled and expose unavailable status. Never switch adapters or manufacture persistent success.
+- Stop/end can retry after a port failure. If a failed first start cannot be compensated, no public session is invented; readiness remains unavailable and the owner must resolve storage and restart the coordinator. Shutdown can be retried. An already initialized but faulted coordinator must not report successful readiness.
+- Every external port is checked. Rejected Promises and public errors become bounded, content-free Results. A deadline is a failure, not proof of cancellation: retain the underlying operation until it settles, refuse successful drain/close meanwhile, and stop a late startup again before acknowledgement. Default port deadline is 5 seconds, configurable from 1 ms to 60 seconds for deterministic tests and later host policy.
+- Bound client commands to 64 pending, activity batches to 32 pending, 128 events and 256 KiB encoded per batch. A single reserved cleanup task cannot be crowded out by client commands. Overflow or append failure disables ingestion and schedules source cleanup. These are initial safety bounds, not measured performance targets.
+- Bind each emit closure to the exact run object, session and source. Revalidate current consent/settings at admission and immediately before append, including after asynchronous resource authorization. Reused injected generation strings confer no authority. Settings are copied; an explicit update pauses and drains without automatically resuming on regrant.
+- Browser/file observations require a separate engine resource-authorization port; absence denies them. Exclusions remain independent denials. Article text additionally requires its separate gate. Lexical folder exclusions do not authorize canonical/reparsed paths. Generic browser titles are suppressed; full private-context/native browser proof remains a gate before real collection.
+- Adapter startup probes readiness without emitting history. Windows polling is nonoverlapping; stop waits for pending query and emit work, stale contexts are dropped, and deduplication advances only after accepted ingestion. Runtime query failure emits a capture gap; the engine persists the gap when possible and disables collection. No raw native error/title is logged.
+- Restart loads and validates the latest record. An interrupted active session is persisted as paused before hydration, retaining its last durable timestamp rather than inventing an exact crash time. No collector resumes automatically. Storage has one coordinator owner; multi-host ownership/restart supervision belongs to the later utility protocol.
+- Electron quit prevents default, coalesces repeated quit requests, awaits shutdown and closes through a guarded second quit. Failure keeps the process alive with an explicit generic error and permits retry. No force-exit success is claimed. Renderer event snapshots take precedence over delayed responses, preserving the existing bridge shape.
+
+## Storage and contract consequences
+
+`SessionStorage` owns open/close and the session/activity repository subset. `ActivityRepository.append` atomically writes accepted file-opened references with events and verifies active session linkage. This is metadata integrity, not filesystem authorization or byte capture. Session/activity inputs and hydrated rows are validated. The adapter exposes no usable repositories after failed open/close, and schema-readiness validation occurs before migration commit.
+
+`ActivityRepository.list` accepts a new `(occurredAt, id)` cursor for complete pagination. Its existing string argument remains an exclusive timestamp boundary, not a promise to enumerate equal-time events. Existing DesktopApi and SessionState remain unchanged. Future #4/#5 query consumers must explicitly adopt the composite cursor.
+
+Keyword search now returns actual scoped version IDs, never file IDs as invented versions, and selects latest versions within the requested session/time window. It applies all time filters, treats LIKE metacharacters literally and rejects unsupported natural-language mode. No FTS, assistant, recovery or capture capability is introduced.
+
+## Verification and remaining gates
+
+See [backend stabilization](../audit/backend-stabilization.md) for executed regressions, quality checks, build/app results, failure cases and scope. Tests use generated SQLite fixtures, injected collectors, a synthetic C# window script and fake bridge timing. No real foreground/title, user folder, browser visit or cloud call is used.
+
+Encrypted storage/key feasibility, numbered packaged migration resources, utility-process supervision, durable settings/consent UI, canonical file identity, browser provenance, retention, recovery and native resource measurement remain separate gates. Stock SQLite stays confined to generated fixtures. Roll back this local slice through reviewed source commits while preserving existing records; a Git revert is not a safe database downgrade strategy.

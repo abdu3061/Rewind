@@ -1,5 +1,11 @@
 # Engineering findings
 
+## Subsequent implementation status
+
+[Backend stabilization](backend-stabilization.md) and [ADR 0009](../decisions/0009-session-lifecycle-stabilization.md) record local implementation after this audit. F03–F05's coordinator/quit defects are corrected in the selected branch with synthetic concurrency/failure tests. F09's activity cursor and F10's prototype query scope/version references are corrected. F01/F06 fail closed in the selected composition; F07/F08 protections are preserved and extended. F11/F26 now cover validated/sanitized session/activity operations and atomic file-opened references, with broader repository work still pending. F14's existing Windows adapter now drains queries/emits, propagates failures, reports gaps and retries rejected dedup candidates; F15's PID correction is retained. F19's missing-bridge fix is retained and delayed-response races are also corrected. F27/F30 gain corresponding regressions and shared typed registry/storage ports.
+
+These are local code outcomes, not changes to remote #3–#6 or approval for live recording. F02 encryption, the remaining F12/F13/F17 relationships/resource authority, utility supervision, retention/recovery, AI and release gates remain open. The detailed entries below preserve the original revision-specific evidence; use the follow-up report for current completion boundaries and actual validation.
+
 Reviewed 16 November 2026. P0 = critical or blocks release/real-data integration; P1 = high correctness/reliability risk; P2 = medium; P3 = cleanup. A release-blocking missing capability is not a claim that the inactive foundation currently captures data unsafely. Confidence is **reproduced**, **confirmed by code**, **architectural concern**, or **requires measurement**. Effort estimates are focused engineer-days, excluding review and unfamiliar native-build setup.
 
 Revision scope: shared main `0391630`; previous local cleanup `2f169b9`; PR #3 `ba16ceb`, #4 `5824ea1`, #5 `6114324`, #6 `a91d79d`. The latter two inherit #4, and #6 inherits #5. Local fixes are explicitly distinguished from unchanged remote PR heads. [Validation](validation-report.md) includes commands and preserved failure probes.

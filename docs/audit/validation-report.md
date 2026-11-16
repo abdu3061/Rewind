@@ -1,5 +1,7 @@
 # Audit validation report
 
+The subsequent [backend stabilization validation](backend-stabilization.md#validation-record) records implementation results after this historical audit. Lifecycle/query acceptance invariants have been promoted into regression tests on the local feature branch; assistant probes remain unresolved. Original command counts and failures below are preserved for their inspected revisions.
+
 Date: 16 November 2026. Host: Windows x64; shell Node 22.16.0, npm 11.7.0. This report distinguishes commands executed in this audit from earlier cleanup results and remote CI. Source/command evidence is scoped to the tested revision and capability; a passing schema/unit test is not proof of recording, encryption or recovery.
 
 ## Baseline, dependencies and isolation

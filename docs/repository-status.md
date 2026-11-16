@@ -1,5 +1,7 @@
 # Repository status
 
+The [backend implementation follow-up](audit/backend-stabilization.md) is the current local stabilization evidence. Its feature branch preserves this cleanup/audit history and does not merge or enable the remote recording prototypes.
+
 This is the earlier cleanup snapshot. The [full engineering audit](audit/README.md) extends it with PR #6, reproduced failure cases, isolated stabilization and a dependency-ordered roadmap. Audit fixes have not been merged into shared main.
 
 Reviewed on 16 November 2026 on Windows x64 with Node 22.16.0 and npm 11.7.0.

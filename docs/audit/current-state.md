@@ -1,5 +1,7 @@
 # Rewind current-state audit
 
+**Subsequent local implementation:** see [backend stabilization](backend-stabilization.md) for the coordinator, checked storage lifecycle, ingestion integrity, Windows-adapter shutdown and renderer ordering now implemented on `feature/backend-lifecycle-stabilization`. This inventory retains the original inspected revisions. The desktop still records no real activity and opens no database.
+
 Audit date: 16 November 2026. Scope: the tracked repository, fetched branches and PRs, existing local cleanup work, tests, builds, and official compatibility documentation. This is an engineering audit, not a release certification. See [validation](validation-report.md) for exactly what ran, [findings](findings.md) for defects, and [roadmap](development-roadmap.md) for future work.
 
 ## Assessment and inspected revisions

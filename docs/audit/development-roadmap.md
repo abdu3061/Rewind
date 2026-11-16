@@ -1,5 +1,11 @@
 # Dependency-ordered development roadmap
 
+## Local implementation progress after audit
+
+See [backend stabilization](backend-stabilization.md) for evidence and [ADR 0009](../decisions/0009-session-lifecycle-stabilization.md) for policy. RWA-001's lifecycle policy and RWA-100's fixture implementation are implemented locally and await normal lead review. RWA-003 gained concurrency/failure and packaged ordering coverage. RWA-102 gained session/activity validation, atomic reference/event writes and stronger prototype readiness; versioned packaged migrations and other relationship work remain. RWA-200 gained corrected existing Windows adapter lifecycle/failure behavior under synthetic strategies; native measurement/host approval remain. RWA-402's prototype query/cursor correctness slice is implemented; FTS/query UI and permission/expiry integration are still future work. These partial slices do not mark the broader roadmap tasks or remote PRs complete.
+
+The next gate is RWA-101 encrypted-storage/key feasibility, followed by RWA-103 utility supervision and durable consent integration. Do not repeat the old lifecycle audit goal or bypass encryption to enable recording.
+
 This roadmap is future work, **not implemented features or authorization to merge/publish**. Rasit approves architecture, contracts, dependencies, security and integration; ownership below preserves the existing team assignments. IDs `RWA-*` are audit follow-ups, not silent replacements for the existing RWD backlog. Effort is focused engineer-days, excluding review, native build uncertainty and student availability. Each major task should be a separate PR unless explicitly split further; dependent contract PRs land first.
 
 Security is an admission gate in every phase. In particular, encrypted real-data storage and explicit revocable permission are Phase 1 prerequisites, not work postponed to Phase 7. Synthetic fixtures are permitted before those gates. A later phase never grants permission to enable an earlier unsafe integration.

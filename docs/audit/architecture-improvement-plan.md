@@ -1,5 +1,7 @@
 # Architecture improvement plan
 
+**Implemented follow-up:** [ADR 0009](../decisions/0009-session-lifecycle-stabilization.md) and [backend stabilization](backend-stabilization.md) implement the lifecycle policy/fixture slice, stronger prototype storage/query integrity, existing Windows adapter shutdown and async desktop quit. The target utility host, encrypted binding, filesystem/browser authority, recovery and UI features below remain proposals. This local implementation does not approve them collectively.
+
 This is a proposal, not implemented architecture. Preserve the npm-workspace/Electron/React/TypeScript/Vite/Forge stack and current security controls. All substantive contracts, native dependencies, encryption, recovery and lifetime decisions below **need Rasit's approval**. [Findings](findings.md) supply evidence; [roadmap](development-roadmap.md) supplies owned tasks.
 
 ## Current relationships

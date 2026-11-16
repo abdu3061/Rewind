@@ -1,5 +1,7 @@
 # Architecture
 
+Local backend follow-up: [ADR 0009](decisions/0009-session-lifecycle-stabilization.md) and [implementation evidence](audit/backend-stabilization.md) now govern the coordinator's commit/failure/drain semantics. The desktop constructs its explicit session-only mode around SessionService; repository mode and the existing Windows adapter are verified with synthetic fixtures only. No SQLite/native collector runs in main. Utility supervision and encrypted real-data composition remain future gates.
+
 The initialization keeps domain code independent of Electron and React. It uses the approved stack and introduces only dependencies required by the runnable starter. Proposed production mechanisms have explicit implementation gates.
 
 ## Components and dependency direction
@@ -8,7 +10,7 @@ The initialization keeps domain code independent of Electron and React. It uses 
 flowchart LR
   R[React renderer] --> P[Typed preload bridge]
   P --> M[Electron main: authorization and composition]
-  M --> E[Engine: in-memory sessions today]
+  M --> E[Engine: serialized coordinator and in-memory SessionService]
   M -. later .-> U[Node utility-process host]
   U -. later .-> C[Collectors]
   U -. later .-> S[Encrypted storage and FTS5]

@@ -7,6 +7,7 @@ Rewind is a Windows desktop application that will help users remember their work
 - Electron + React desktop shell with Dashboard, Timeline, Search, Checkpoints, and Settings.
 - Real in-memory Start → Pause → Resume → End session controls through a typed, validated preload bridge. Invalid transitions return structured errors.
 - Tray session controls and status. Collection is always off. Closing the window quits the starter; session state resets on exit.
+- Serialized session orchestration and acknowledged shutdown, plus failure-tested repository/Windows-adapter prototypes using synthetic data. The desktop explicitly selects session-only mode; see [backend stabilization](docs/audit/backend-stabilization.md).
 - Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
 
 No activity is collected. No folders are protected. SQLite schema/repository prototypes are exercised with synthetic test data and are not connected to the desktop. Durable history, file versions/recovery, checkpoints, search, editable settings, encryption, retention cleanup, utility-process services, native browser transport, and Gemini are **not implemented in the app**. Other screens show honest empty states. ASAR packaging is not data encryption.
@@ -22,7 +23,7 @@ npm install
 npm run dev
 ```
 
-Use `npm ci` on subsequent clean checkouts to install the committed lockfile exactly. Run commands from this directory, where the root `package.json` lives. No `.env` file, API key, SQLite runtime, Python, or separately installed browser is required. Dependencies download Electron on the first install; allow network access for that download. No native collectors or SQLite binding are installed yet.
+Use `npm ci` on subsequent clean checkouts to install the committed lockfile exactly. Run commands from this directory, where the root `package.json` lives. No `.env` file, API key, SQLite runtime, Python, or separately installed browser is required. Dependencies download Electron on the first install; allow network access for that download. No native collectors are registered in the desktop, and no external SQLite binding is installed.
 
 If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; changing the machine execution policy is unnecessary. A main/preload edit requires restarting `npm run dev`; renderer edits use Vite HMR. Close Rewind or press Ctrl+C to stop development. The dev server binds only to loopback.
 
@@ -50,9 +51,9 @@ To inspect the inactive extension, enable Developer mode at `chrome://extensions
 apps/desktop/          Electron main + sandboxed preload + React renderer (Forge/Vite)
 apps/browser-extension/  Inactive Chrome/Edge Manifest V3 starter
 packages/contracts/   Validated domain models, ports, public desktop API
-packages/engine/      Tested in-memory session state machine
+packages/engine/      Pure session state machine and failure-aware coordinator
 packages/storage/     SQLite repository prototypes; no desktop persistence
-packages/collectors/  Collector lifecycle boundary; no monitoring
+packages/collectors/  Unintegrated Windows polling prototype and lifecycle ports
 packages/assistant/   Validated-tool design boundary; no cloud requests
 tests/app/            Packaged Electron integration tests
 docs/                 Specification, architecture, ownership, backlog, ADRs
