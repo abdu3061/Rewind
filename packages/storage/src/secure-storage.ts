@@ -139,12 +139,18 @@ export class SecureStorage implements SessionStorage {
       const integrity = db.pragma("integrity_check") as {
         integrity_check: string;
       }[];
+      const foreignKeys = db.pragma("foreign_key_check");
       if (
         integrity.length !== 1 ||
         integrity[0]?.integrity_check !== "ok" ||
+        !Array.isArray(foreignKeys) ||
+        foreignKeys.length !== 0 ||
         !ciphertextHeader(this.file)
       )
         throw new Error("STORAGE_INTEGRITY_FAILED");
+      db.exec(
+        "INSERT INTO activity_fts(activity_fts, rank) VALUES ('integrity-check', 1)",
+      );
       this.repositorySet = createRepositories(connection(db));
       stage = "settings";
       const defaults = userSettingsSchema.parse(createDefaultSettings());

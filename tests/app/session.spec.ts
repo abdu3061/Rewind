@@ -101,7 +101,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     expect(sandboxed).toBe(true);
 
     for (const [screen, heading] of [
-      ["Timeline", "Your timeline will start here"],
+      ["Timeline", "Recorded activity"],
       ["Search", "Search your recorded evidence"],
       ["Checkpoints", "No checkpoints yet"],
       ["Settings", "Privacy comes first"],
@@ -110,12 +110,12 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(screen);
       if (screen === "Search") {
-        await expect(page.getByLabel("Search history")).toBeDisabled();
+        await expect(page.getByLabel("Search history")).toBeEnabled();
         await expect(
           page
             .getByRole("main")
             .getByRole("button", { name: "Search", exact: true }),
-        ).toBeDisabled();
+        ).toBeEnabled();
       }
       if (screen !== "Timeline") {
         await expect(
@@ -164,14 +164,19 @@ test("a different window cannot invoke privileged session commands", async ({
             "data:text/html,<html><body>Untrusted</body></html>",
           );
           return (await untrusted.webContents.executeJavaScript(
-            "window.rewind.sessions.start()",
+            "Promise.all([window.rewind.sessions.start(), window.rewind.privacy.update({collectionConsent:true,excludedApplications:[]}), window.rewind.timeline.query({limit:10}), window.rewind.runtime.retry()])",
           )) as unknown;
         } finally {
           untrusted.destroy();
         }
       },
     );
-    expect(response).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    expect(response).toEqual(
+      Array.from({ length: 4 }, () => ({
+        ok: false,
+        error: { code: "FORBIDDEN", message: expect.any(String) },
+      })),
+    );
     await expect(page.getByTestId("session-status")).toHaveText("not started");
   } finally {
     await application.close();

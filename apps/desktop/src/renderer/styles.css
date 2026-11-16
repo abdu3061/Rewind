@@ -21,7 +21,9 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 button {
@@ -46,6 +48,51 @@ input:focus-visible,
 select:focus-visible {
   outline: 3px solid #87a9d4;
   outline-offset: 3px;
+}
+.recording-preferences {
+  margin-top: 20px;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+.filter-grid input,
+.filter-grid select {
+  display: block;
+  width: 100%;
+  margin-top: 9px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.timeline-events {
+  list-style: none;
+  padding: 0;
+}
+.timeline-events li {
+  padding: 18px 0;
+  border-top: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+.timeline-events time {
+  display: block;
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.timeline-events p {
+  white-space: pre-wrap;
+  margin-bottom: 0;
 }
 .app-shell {
   display: grid;

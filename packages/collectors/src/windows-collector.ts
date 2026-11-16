@@ -63,8 +63,13 @@ export class WindowsCollector implements Collector {
         );
       // Establish adapter readiness, but do not emit before the coordinator's commit point.
       try {
-        await this.queryWindow();
+        await this.queryWindow(settings.data.excludedApplications);
       } catch {
+        try {
+          await this.strategy.close?.();
+        } catch {
+          /* Keep the lifecycle unavailable. */
+        }
         return failure("UNAVAILABLE", "Window query is unavailable.");
       }
       if (ticket !== this.epoch)
@@ -90,6 +95,7 @@ export class WindowsCollector implements Collector {
     this.invalidate();
     return this.enqueue(async () => {
       await this.polling;
+      await this.strategy.close?.();
       return ok();
     });
   }
@@ -107,8 +113,10 @@ export class WindowsCollector implements Collector {
     this.lifecycle = result;
     return result;
   }
-  private async queryWindow(): Promise<ActiveWindowInfo | null> {
-    const info = await this.strategy.getActiveWindow();
+  private async queryWindow(
+    exclusions: readonly string[],
+  ): Promise<ActiveWindowInfo | null> {
+    const info = await this.strategy.getActiveWindow(exclusions);
     if (
       info !== null &&
       (!info ||
@@ -137,7 +145,7 @@ export class WindowsCollector implements Collector {
       return failure("FORBIDDEN", "Collection generation changed.");
     let info;
     try {
-      info = await this.queryWindow();
+      info = await this.queryWindow(context.settings.excludedApplications);
     } catch {
       if (context === this.activeContext) {
         const reported = await context.emit([

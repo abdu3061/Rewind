@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { SessionAction, SessionState } from "@rewind/contracts";
+import {
+  RecordedHistory,
+  RecordingPreferences,
+  useRecordingRuntime,
+} from "./recording";
 
 const pages = [
   "Dashboard",
@@ -18,6 +23,7 @@ function formatTime(value: string): string {
 }
 
 export function App() {
+  const { runtime, runtimeError } = useRecordingRuntime();
   const [page, setPage] = useState<Page>("Dashboard");
   const [state, setState] = useState<SessionState>({ session: null });
   const [ready, setReady] = useState(false);
@@ -100,6 +106,13 @@ export function App() {
     const observedEvents = sessionEvents.current;
 
     try {
+      if (window.rewind?.runtime) {
+        const retried = await window.rewind.runtime.retry();
+        if (!retried.ok) {
+          setError(retried.error.message);
+          return;
+        }
+      }
       const result = await window.rewind.sessions.get();
 
       if (result.ok) {
@@ -115,6 +128,8 @@ export function App() {
   const session = state.session;
   const status = session?.status ?? "not started";
   const canStart = !session || session.status === "ended";
+  const serviceReady =
+    ready && (!window.rewind?.runtime || runtime?.service === "ready");
 
   return (
     <div className="app-shell">
@@ -146,15 +161,21 @@ export function App() {
 
         <div className="sidebar-note">
           <span className="privacy-dot" />
-          Collection off
+          <span data-testid="collection-status">
+            Collection {runtime?.collection ?? "off"}
+          </span>
           <p>
-            Nothing is being monitored.
+            {runtime?.collection === "active"
+              ? "Windows activity is being recorded."
+              : runtime?.collection === "unavailable"
+                ? "Recording service requires attention."
+                : "No active recording authorization."}
             <br />
             Cloud AI is disabled.
           </p>
         </div>
 
-        <div className="build-label">v0.1 · Development starter</div>
+        <div className="build-label">v0.1 · Development build</div>
       </aside>
 
       <main>
@@ -164,16 +185,34 @@ export function App() {
             <h1>{page}</h1>
           </div>
 
-          <span className="badge">Local development</span>
+          <span className="badge">
+            {runtime?.synthetic
+              ? "Synthetic verification mode"
+              : "Local development"}
+          </span>
         </header>
 
         <div className="notice">
-          <strong>Initialization build</strong>
+          <strong>
+            {runtime?.secureStorage
+              ? "Encrypted local history"
+              : "Secure storage unavailable"}
+          </strong>
           <span>
-            Session controls work in memory. Activity collection, file
-            protection, and history storage are not connected.
+            Windows recording requires approval for this launch and an active
+            session. Cloud AI, browser visits, folder protection and recovery
+            are unavailable.
           </span>
         </div>
+
+        {(runtimeError || runtime?.error) && (
+          <div className="error" role="alert">
+            <p>{runtimeError ?? runtime?.error?.message}</p>
+            <button onClick={() => void retryConnection()}>
+              Reconnect recording service
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="error" role="alert">
@@ -209,15 +248,15 @@ export function App() {
               </div>
 
               <p>
-                Start a session to try the lifecycle. Starting does not enable
-                monitoring or protect files in this build.
+                Starting without permission records no activity. Approve Windows
+                activity below before starting or resuming a recording session.
               </p>
 
               <div className="controls" aria-label="Session controls">
                 <button
                   className="primary"
                   onClick={() => void run("start")}
-                  disabled={!ready || busy || !canStart}
+                  disabled={!serviceReady || busy || !canStart}
                   aria-busy={pendingAction === "start"}
                 >
                   {pendingAction === "start" ? "Starting..." : "Start session"}
@@ -234,7 +273,7 @@ export function App() {
 
                 <button
                   onClick={() => void run("resume")}
-                  disabled={!ready || busy || status !== "paused"}
+                  disabled={!serviceReady || busy || status !== "paused"}
 
                   aria-busy={pendingAction === "resume"}
                 >
@@ -260,10 +299,12 @@ export function App() {
                     )}
                   </>
                 ) : (
-                  "No session started in this app process."
+                  "No session has been started."
                 )}
               </div>
             </section>
+
+            <RecordingPreferences runtime={runtime} />
 
             <div className="card-grid">
               <section className="panel">
@@ -271,8 +312,8 @@ export function App() {
                 <h2>Timeline</h2>
 
                 <p>
-                  Timeline events will appear here once collectors and encrypted
-                  storage are ready.
+                  View recorded Windows observations, capture gaps and previous
+                  sessions from encrypted storage.
                 </p>
 
                 <button
@@ -299,37 +340,15 @@ export function App() {
             </div>
 
             <p className="footnote">
-              Sessions reset when Rewind exits. Closing the window quits this
-              starter.
+              Sessions and history persist. Closing the window ends the session
+              and quits Rewind. Recording permission expires on restart.
             </p>
           </>
         )}
 
-        {page === "Timeline" && (
-          <EmptyState
-            title="Your timeline will start here"
-            description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
-          />
-        )}
+        {page === "Timeline" && <RecordedHistory runtime={runtime} />}
 
-        {page === "Search" && (
-          <section className="panel">
-            <h2>Search your recorded evidence</h2>
-            <p>
-              Search will become available after activity collection and
-              encrypted storage are connected. Cloud AI is disabled.
-            </p>
-            <label htmlFor="search">Search history</label>
-            <div className="search-row">
-              <input
-                id="search"
-                placeholder="Search is not available yet"
-                disabled
-              />
-              <button disabled>Search</button>
-            </div>
-          </section>
-        )}
+        {page === "Search" && <RecordedHistory runtime={runtime} search />}
 
         {page === "Checkpoints" && (
           <EmptyState
@@ -341,23 +360,26 @@ export function App() {
         {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
+            <RecordingPreferences runtime={runtime} />
             <div className="notice">
               <strong>Privacy settings</strong>
               <span>
-                Activity collection is currently disabled. These settings are
-                for interface preview only.
+                Recording permission and application exclusions above are saved
+                by the engine. Other capabilities below remain unavailable.
               </span>
             </div>
 
             <p>
-              These are planned defaults, shown for reference. Settings editing
-              and persistence are not available yet.
+              History is encrypted and protected by this Windows account.
+              Automatic cleanup, full quota management and history deletion are
+              not implemented yet. Record only nonsensitive development
+              activity.
             </p>
 
             <dl className="settings-list">
               <div>
                 <dt>Activity collection</dt>
-                <dd>Off · unavailable</dd>
+                <dd>{runtime?.collection ?? "unavailable"}</dd>
               </div>
 
               <div>
@@ -401,14 +423,19 @@ export function App() {
               </div>
 
               <div>
-                <dt>Stored history / snapshots</dt>
-                <dd>Not implemented</dd>
+                <dt>History / snapshots</dt>
+                <dd>
+                  {runtime?.secureStorage
+                    ? "Encrypted history available"
+                    : "History unavailable"}{" "}
+                  / snapshots unavailable
+                </dd>
               </div>
             </dl>
 
             <p className="footnote">
               No keystrokes, clipboard contents, screenshots, or private browser
-              activity will be captured. Encryption is a release requirement.
+              activity is captured. Browser window titles are skipped.
             </p>
           </section>
         )}

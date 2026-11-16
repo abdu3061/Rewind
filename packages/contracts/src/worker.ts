@@ -83,7 +83,9 @@ export function boundedWorkerMessage(value: unknown): boolean {
     )
       return workerInputSchema.safeParse(value).success;
     return (
-      new TextEncoder().encode(JSON.stringify(value)).byteLength <= 512 * 1024
+      // Fits 100 maximum-size escaped title DTOs; ingestion keeps its stricter 256 KiB bound.
+      new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+      2 * 1024 * 1024
     );
   } catch {
     return false;

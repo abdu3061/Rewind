@@ -9,10 +9,15 @@ import {
 import { sessionSchema } from "./session";
 import { userSettingsSchema } from "./settings";
 
-export const collectionPreferencesSchema = userSettingsSchema.pick({
-  collectionConsent: true,
-  excludedApplications: true,
-});
+export const collectionPreferencesSchema = userSettingsSchema
+  .pick({
+    collectionConsent: true,
+    excludedApplications: true,
+  })
+  .extend({
+    excludedApplications:
+      userSettingsSchema.shape.excludedApplications.max(200),
+  });
 export type CollectionPreferences = z.infer<typeof collectionPreferencesSchema>;
 export const timelineQuerySchema = z
   .strictObject({

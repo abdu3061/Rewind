@@ -266,8 +266,12 @@ export class SessionCoordinator {
   }
   private invalidate(): void {
     this.epoch++;
+    const wasRunning =
+      this.run !== null ||
+      this.status.collection === "starting" ||
+      this.status.collection === "stopping";
     this.run = null;
-    this.status.collection = "off";
+    this.status.collection = wasRunning ? "stopping" : "off";
     this.notify();
   }
   private notify(): void {
@@ -438,6 +442,7 @@ export class SessionCoordinator {
           permissionKey: JSON.stringify(settings),
         };
         this.status.collection = "starting";
+        this.notify();
         for (const [source, collector] of Object.entries(
           this.options.collectors,
         )) {
@@ -517,6 +522,7 @@ export class SessionCoordinator {
   private async quiesce(): Promise<Result<void>> {
     this.run = null;
     this.status.collection = "stopping";
+    this.notify();
     const lateWork = this.operations.unsettled;
     const stopped = await this.stopCollectors();
     if (!stopped.ok)
@@ -532,6 +538,7 @@ export class SessionCoordinator {
         return this.fail(restopped.error.code, restopped.error.message);
     }
     this.status.collection = "off";
+    this.notify();
     return ok();
   }
   private async stopWithoutTransition(): Promise<Result<SessionState>> {

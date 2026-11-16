@@ -6,16 +6,15 @@ Implementation branch: `feature/secure-storage-collection`. Work remains local; 
 
 1. Encrypted storage foundation: implemented in `df4f24e`. Native encrypted SQLite, strict checksummed migrations, integrity validation, encrypted WAL/FTS, Windows-protected key port and fail-closed reopen tests are present. See ADR 0010.
 2. Utility process and consent: implemented locally. Main supervises a bounded, validated worker protocol; SQL and collection run in the worker. Launch-scoped consent, persisted exclusions, revoke/drain, restart recovery and synthetic packaged fixtures are connected. See ADR 0011.
-3. Recording UI and timeline: in progress. The packaged worker/session smoke passes, but the current renderer still needs real consent and query controls before the workflow is complete.
+3. Windows recording UI and timeline: implemented locally. Launch-scoped approval, persisted exclusions, truthful collection/error status, encrypted history, session/date/type/keyword filters, composite paging and live committed-write notifications are connected. A lazy PowerShell helper compiles once per recording run, checks exclusions before reading titles, and closes on pause/end. Tests replace every native window API with synthetic observations.
 
 ## Current verification
 
-- Root quality suite before the final coordinator regression additions: types, lint, format and 156 tests passed.
-- Focused coordinator/worker tests after the additions: 47 tests passed.
+- Root quality suite: types, lint, format and 161 tests passed across 23 files.
 - Windows x64 build with packaged native codec and utility entry: passed.
-- Packaged worker/preload/session/navigation smoke: passed, using only the isolated synthetic source.
+- Packaged Windows suite: nine tests passed, including actual approval/recording/paging/search/pause/resume/revoke/exclusions/end/restart, worker crash/reconnect/capture gap, missing protected key, exact bridge/isolation/unauthorized window, disconnected UI and delayed-response ordering. All activity is synthetic.
 
-These checks do not establish full workflow completion. Full checks and packaged failure/workflow tests will be rerun after integration.
+Screenshots are generated in ignored `test-results/`; the recording dashboard was visually inspected. Full checks and packaged tests will be rerun after the related browser transport slice and final documentation.
 
 ## Remote review
 

@@ -123,6 +123,15 @@ it("detects ciphertext tampering and never reinitializes corrupted content", asy
   expect((await adapter().open()).ok).toBe(false);
   expect(readFileSync(file)).toEqual(corrupt);
 });
+it("rejects a mismatched external-content search index rather than returning incomplete history", async () => {
+  const first = adapter();
+  await populate(first);
+  await first.close();
+  const db = inspect();
+  db.exec("INSERT INTO activity_fts(activity_fts) VALUES ('delete-all')");
+  db.close();
+  expect((await adapter().open()).ok).toBe(false);
+});
 it("refuses plaintext and unavailable locations rather than selecting another adapter", async () => {
   writeFileSync(file, "SQLite format 3\0" + "synthetic plaintext".repeat(20));
   expect((await adapter().open()).ok).toBe(false);

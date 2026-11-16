@@ -1,61 +1,99 @@
-import { promisify } from "node:util";
-import { expect, it, vi } from "vitest";
+import { spawn } from "node:child_process";
+import { afterEach, expect, it } from "vitest";
 import { WindowsWindowQueryStrategy } from "./window-strategy";
 
-const runner = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", async (original) => {
-  const actual = await original<typeof import("node:child_process")>();
-  const { promisify: utilPromisify } = await import("node:util");
-  return {
-    ...actual,
-    execFile: Object.assign(() => {}, { [utilPromisify.custom]: runner }),
-  };
+const strategies: WindowsWindowQueryStrategy[] = [];
+afterEach(async () => {
+  for (const strategy of strategies.splice(0)) await strategy.close();
 });
-it("reports child-process failure without echoing upstream diagnostic text", async () => {
-  runner.mockRejectedValueOnce(new Error("Synthetic private diagnostic"));
-  await expect(
-    new WindowsWindowQueryStrategy().getActiveWindow(),
-  ).rejects.toThrow("WINDOW_QUERY_UNAVAILABLE");
-});
-
-it.runIf(process.platform === "win32")(
-  "queries a synthetic window without assigning a PowerShell automatic variable",
-  async () => {
-    const actual =
-      await vi.importActual<typeof import("node:child_process")>(
-        "node:child_process",
+function fixture(
+  options: ConstructorParameters<typeof WindowsWindowQueryStrategy>[0],
+) {
+  const strategy = new WindowsWindowQueryStrategy(options);
+  strategies.push(strategy);
+  return strategy;
+}
+it("reports child failure and timeouts without upstream diagnostics or leaving a helper", async () => {
+  const failed = fixture({
+    spawnProcess: () =>
+      spawn(
+        process.execPath,
+        [
+          "-e",
+          "console.error('Synthetic private diagnostic'); process.exit(1)",
+        ],
+        { stdio: "pipe", windowsHide: true },
+      ),
+  });
+  await expect(failed.getActiveWindow()).rejects.toThrow(
+    "WINDOW_QUERY_UNAVAILABLE",
+  );
+  let child: ReturnType<typeof spawn> | undefined;
+  const hung = fixture({
+    timeoutMs: 100,
+    spawnProcess: () => {
+      const processChild = spawn(
+        process.execPath,
+        ["-e", "process.stdin.resume()"],
+        { stdio: "pipe", windowsHide: true },
       );
-    const syntheticWindow = `
+      child = processChild;
+      return processChild;
+    },
+  });
+  await expect(hung.getActiveWindow()).rejects.toThrow(
+    "WINDOW_QUERY_UNAVAILABLE",
+  );
+  await hung.close();
+  expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
+});
+it.runIf(process.platform === "win32")(
+  "reuses one real PowerShell helper and excludes before any title read",
+  async () => {
+    let starts = 0;
+    const stub = `
 Add-Type -TypeDefinition @'
 using System;
 using System.Text;
 public class ActiveWindow {
-    public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
-    public static int GetWindowText(IntPtr handle, StringBuilder text, int size) {
-        text.Append("Synthetic audit window"); return text.Length;
-    }
-    public static uint GetWindowThreadProcessId(IntPtr handle, out uint processId) {
-        processId = (uint)System.Diagnostics.Process.GetCurrentProcess().Id; return 1;
-    }
+  static int count = 0;
+  public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
+  public static int GetWindowText(IntPtr handle, StringBuilder text, int size) { count++; text.Append("Synthetic title " + count); return text.Length; }
+  public static uint GetWindowThreadProcessId(IntPtr handle, out uint processId) { processId = (uint)System.Diagnostics.Process.GetCurrentProcess().Id; return 1; }
 }
 '@
 `;
-    runner.mockImplementation(async (_file: string, args: string[]) => {
-      const script = args.at(-1);
-      if (!script) throw new Error("Missing window-query script.");
-      // The stub replaces every window API before the production script runs.
-      // Only this child PowerShell process and synthetic text are observed.
-      return promisify(actual.execFile)(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", syntheticWindow + script],
-        { timeout: 10_000, windowsHide: true },
-      );
+    const strategy = fixture({
+      timeoutMs: 8000,
+      spawnProcess: (script) => {
+        starts++;
+        // Every user32 call is replaced before the production helper is evaluated.
+        return spawn(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            Buffer.from(stub + script, "utf16le").toString("base64"),
+          ],
+          { stdio: "pipe", windowsHide: true },
+        );
+      },
     });
-    expect(
-      await new WindowsWindowQueryStrategy().getActiveWindow(),
-    ).toMatchObject({
-      windowTitle: "Synthetic audit window",
+    expect(await strategy.getActiveWindow()).toMatchObject({
+      application: "powershell",
+      windowTitle: "Synthetic title 1",
     });
+    expect(await strategy.getActiveWindow(["PowerShell.exe"])).toBeNull();
+    expect(await strategy.getActiveWindow()).toMatchObject({
+      windowTitle: "Synthetic title 2",
+    });
+    expect(starts).toBe(1);
+    await strategy.close();
+    expect(await strategy.getActiveWindow()).toMatchObject({
+      windowTitle: "Synthetic title 1",
+    });
+    expect(starts).toBe(2);
   },
-  15_000,
+  20000,
 );

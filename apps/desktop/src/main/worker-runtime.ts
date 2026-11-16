@@ -91,14 +91,14 @@ export class WorkerRuntime {
       );
       if (!recovered.ok)
         return await this.initializationFailure(recovered.error);
+      let syntheticSequence = 0;
       const strategy =
         this.options.strategy ??
         (this.options.synthetic
           ? {
               getActiveWindow: async () => ({
                 application: "SyntheticEditor.exe",
-                windowTitle:
-                  "Synthetic work item — encrypted recording fixture",
+                windowTitle: `Synthetic work item ${++syntheticSequence} — encrypted recording fixture`,
               }),
             }
           : undefined);
@@ -190,6 +190,7 @@ export class WorkerRuntime {
             ...this.settings,
             ...command.value,
           };
+          if (!candidate.collectionConsent) this.settings = candidate;
           const updated = await this.coordinator.updateSettings(
             candidate,
             async () => {
