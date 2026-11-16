@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -17,8 +18,9 @@ import {
   SESSION_CHANGED_CHANNEL,
   type SessionAction,
 } from "@rewind/contracts";
-import { SessionService } from "@rewind/engine";
+import { SessionCoordinator, SessionService } from "@rewind/engine";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
+import { QuitGuard } from "./quit-guard";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -27,9 +29,12 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const sessions = new SessionService({
-  newId: randomUUID,
-  now: () => new Date().toISOString(),
+const sessions = new SessionCoordinator({
+  mode: "session-only",
+  service: new SessionService({
+    newId: randomUUID,
+    now: () => new Date().toISOString(),
+  }),
 });
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -48,9 +53,10 @@ function publishState(): void {
   updateTray();
 }
 
-function runTrayAction(action: SessionAction): void {
-  const result = sessions.execute(action);
+async function runTrayAction(action: SessionAction): Promise<void> {
+  const result = await sessions.execute(action);
   if (result.ok) publishState();
+  else dialog.showErrorBox("Rewind session unavailable", result.error.message);
 }
 
 function updateTray(): void {
@@ -160,7 +166,9 @@ app
   .whenReady()
   .then(async () => {
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
-    ipcMain.handle(SESSION_CHANNEL, (event, ...args: unknown[]) => {
+    const initialized = await sessions.initialize();
+    if (!initialized.ok) throw new Error("Session initialization failed.");
+    ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (
         !mainWindow ||
         event.sender !== mainWindow.webContents ||
@@ -178,7 +186,7 @@ app
           "INVALID_INPUT",
           "Exactly one session command is required.",
         );
-      const result = dispatchSessionRequest(sessions, args[0]);
+      const result = await dispatchSessionRequest(sessions, args[0]);
       if (result.ok) publishState();
       return result;
     });
@@ -200,10 +208,22 @@ app
     app.exit(1);
   });
 
-app.on("before-quit", () => {
-  const status = sessions.getState().session?.status;
-  if (status === "active" || status === "paused") sessions.execute("end");
-  tray?.destroy();
-  tray = null;
+const quitGuard = new QuitGuard({
+  shutdown: () => sessions.shutdown(),
+  quit: () => {
+    tray?.destroy();
+    tray = null;
+    app.quit();
+  },
+  failed: () => {
+    console.error(
+      JSON.stringify({ level: "error", code: "DESKTOP_SHUTDOWN_FAILED" }),
+    );
+    dialog.showErrorBox(
+      "Rewind could not finish shutting down",
+      "Background cleanup could not be verified. Collection is disabled. Retry Quit to finish safely.",
+    );
+  },
 });
+app.on("before-quit", (event) => quitGuard.beforeQuit(event));
 app.on("window-all-closed", () => app.quit());

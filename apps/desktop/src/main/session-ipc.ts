@@ -1,19 +1,37 @@
 import {
   failure,
   sessionCommandSchema,
+  sessionResponseSchema,
   type Result,
+  type SessionAction,
   type SessionState,
 } from "@rewind/contracts";
-import type { SessionService } from "@rewind/engine";
+export interface SessionCommands {
+  execute(
+    action: SessionAction,
+  ): Result<SessionState> | Promise<Result<SessionState>>;
+}
 
-export function dispatchSessionRequest(
-  service: SessionService,
+export async function dispatchSessionRequest(
+  service: SessionCommands,
   input: unknown,
-): Result<SessionState> {
+): Promise<Result<SessionState>> {
   const parsed = sessionCommandSchema.safeParse(input);
   if (!parsed.success)
     return failure("INVALID_INPUT", "A valid session command is required.");
-  return service.execute(parsed.data.action);
+  try {
+    const response = sessionResponseSchema.safeParse(
+      await service.execute(parsed.data.action),
+    );
+    return response.success
+      ? response.data
+      : failure(
+          "INTERNAL",
+          "The session service returned an invalid response.",
+        );
+  } catch {
+    return failure("UNAVAILABLE", "The session service is unavailable.");
+  }
 }
 
 export function isTrustedRendererUrl(

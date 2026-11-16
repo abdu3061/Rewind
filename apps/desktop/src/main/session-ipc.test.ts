@@ -3,19 +3,48 @@ import { SessionService } from "@rewind/engine";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 
 describe("session IPC dispatcher", () => {
-  it("validates untrusted requests before changing the engine", () => {
+  it("turns rejected operations and malformed successful responses into structured failures", async () => {
+    expect(
+      await dispatchSessionRequest(
+        {
+          execute: async () => {
+            throw new Error("private synthetic text");
+          },
+        },
+        { action: "start" },
+      ),
+    ).toEqual({
+      ok: false,
+      error: {
+        code: "UNAVAILABLE",
+        message: "The session service is unavailable.",
+      },
+    });
+    const malformed = {
+      execute: async () => ({ ok: true, value: { session: "invalid" } }),
+    };
+    expect(
+      await dispatchSessionRequest(
+        malformed as unknown as Parameters<typeof dispatchSessionRequest>[0],
+        { action: "get" },
+      ),
+    ).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+  });
+  it("validates untrusted requests before changing the engine", async () => {
     const service = new SessionService({
       newId: () => "00000000-0000-4000-8000-000000000001",
       now: () => "2026-01-01T00:00:00.000Z",
     });
     expect(
-      dispatchSessionRequest(service, { action: "start", extra: true }),
+      await dispatchSessionRequest(service, { action: "start", extra: true }),
     ).toMatchObject({
       ok: false,
       error: { code: "INVALID_INPUT" },
     });
     expect(service.getState()).toEqual({ session: null });
-    expect(dispatchSessionRequest(service, { action: "start" })).toMatchObject({
+    expect(
+      await dispatchSessionRequest(service, { action: "start" }),
+    ).toMatchObject({
       ok: true,
       value: { session: { status: "active" } },
     });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SessionAction, SessionState } from "@rewind/contracts";
 
 const pages = [
@@ -27,6 +27,7 @@ export function App() {
     "get"
   > | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sessionEvents = useRef(0);
   useEffect(() => {
     let mounted = true;
 
@@ -38,17 +39,19 @@ export function App() {
 
     const unsubscribe = window.rewind.sessions.onChanged((next) => {
       if (mounted) {
+        sessionEvents.current++;
         setState(next);
       }
     });
 
+    const observedEvents = sessionEvents.current;
     void window.rewind.sessions
       .get()
       .then((result) => {
         if (!mounted) return;
 
         if (result.ok) {
-          setState(result.value);
+          if (sessionEvents.current === observedEvents) setState(result.value);
         } else {
           setError(result.error.message);
         }
@@ -74,12 +77,13 @@ export function App() {
     setBusy(true);
     setPendingAction(action);
     setError(null);
+    const observedEvents = sessionEvents.current;
 
     try {
       const result = await window.rewind.sessions[action]();
 
       if (result.ok) {
-        setState(result.value);
+        if (sessionEvents.current === observedEvents) setState(result.value);
       } else {
         setError(result.error.message);
       }
@@ -93,12 +97,13 @@ export function App() {
   async function retryConnection(): Promise<void> {
     setReady(false);
     setError(null);
+    const observedEvents = sessionEvents.current;
 
     try {
       const result = await window.rewind.sessions.get();
 
       if (result.ok) {
-        setState(result.value);
+        if (sessionEvents.current === observedEvents) setState(result.value);
         setReady(true);
       } else {
         setError(result.error.message);

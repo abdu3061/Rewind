@@ -1,10 +1,25 @@
 import path from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { _electron as electron, expect, test } from "@playwright/test";
 import type { DesktopApi } from "@rewind/contracts";
 
 const executablePath = path.resolve(
   `apps/desktop/out/Rewind-${process.platform}-${process.arch}/Rewind.exe`,
 );
+function removeBridgeFixture(directory: string): void {
+  const relative = path.relative(
+    path.resolve(tmpdir()),
+    path.resolve(directory),
+  );
+  if (
+    !relative.startsWith("rewind-bridge-test-") ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  )
+    throw new Error("Refusing cleanup outside the generated bridge fixture.");
+  rmSync(directory, { recursive: true, force: true });
+}
 // Some development hosts run Electron as a Node executable. Tests need the GUI runtime.
 const launchEnvironment: Record<string, string> = {};
 for (const [key, value] of Object.entries(process.env)) {
@@ -207,3 +222,100 @@ test("an unavailable preload bridge leaves an honest disconnected screen", async
     await application.close();
   }
 });
+test("concurrent session commands stay serialized and a clean quit never resumes a shell session", async () => {
+  let application = await electron.launch({
+    executablePath,
+    env: launchEnvironment,
+  });
+  try {
+    let page = await application.firstWindow();
+    await expect(page.getByTestId("session-status")).toHaveText("not started");
+    const results = await page.evaluate(async () => {
+      const sessions = (window as unknown as { rewind: DesktopApi }).rewind
+        .sessions;
+      return Promise.all([sessions.start(), sessions.start()]);
+    });
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toMatchObject([
+      { ok: false, error: { code: "INVALID_TRANSITION" } },
+    ]);
+    await expect(page.getByTestId("session-status")).toHaveText("active");
+    const closed = application.waitForEvent("close");
+    await application.evaluate(({ app }) => app.quit());
+    await closed;
+    application = await electron.launch({
+      executablePath,
+      env: launchEnvironment,
+    });
+    page = await application.firstWindow();
+    await expect(page.getByTestId("session-status")).toHaveText("not started");
+    await expect(
+      page.getByRole("complementary").getByText("Collection off"),
+    ).toBeVisible();
+  } finally {
+    await application.close();
+  }
+});
+for (const hydrateActive of [true, false])
+  test(
+    hydrateActive
+      ? "newer session events survive delayed hydration"
+      : "newer command events survive delayed responses",
+    async () => {
+      const directory = mkdtempSync(path.join(tmpdir(), "rewind-bridge-test-"));
+      const preload = path.join(directory, "synthetic-preload.cjs");
+      writeFileSync(
+        preload,
+        `
+    const { contextBridge } = require('electron');
+    const active = { session: { id: '00000000-0000-4000-8000-000000000001', status: 'active',
+      startedAt: '2026-11-16T10:00:00.000Z', updatedAt: '2026-11-16T10:00:00.000Z', endedAt: null } };
+    const paused = { session: { ...active.session, status: 'paused' } };
+    const ended = { session: { ...active.session, status: 'ended', endedAt: active.session.updatedAt } };
+    const listeners = new Set();
+    const delayed = () => new Promise(resolve => setTimeout(() => resolve({ ok: true, value: active }), 80));
+    contextBridge.exposeInMainWorld('rewind', { sessions: {
+      get: () => new Promise(resolve => setTimeout(() => resolve({ ok: true, value: ${hydrateActive ? "active" : "paused"} }), 80)), start: delayed, pause: delayed, end: delayed,
+      resume: () => { for (const listener of listeners) listener(ended); return delayed(); },
+      onChanged: listener => { listeners.add(listener); setTimeout(() => listener(paused), 10); return () => listeners.delete(listener); }
+    } });
+  `,
+      );
+      const application = await electron.launch({
+        executablePath,
+        env: launchEnvironment,
+      });
+      try {
+        await application.firstWindow();
+        const nextWindow = application.waitForEvent("window");
+        await application.evaluate(
+          async ({ BrowserWindow }, fixturePreload) => {
+            const synthetic = new BrowserWindow({
+              show: false,
+              webPreferences: {
+                preload: fixturePreload,
+                contextIsolation: true,
+                sandbox: true,
+                nodeIntegration: false,
+              },
+            });
+            await synthetic.loadURL("rewind://app/index.html");
+          },
+          preload,
+        );
+        const page = await nextWindow;
+        await expect(
+          page.getByRole("button", { name: "Resume", exact: true }),
+        ).toBeEnabled();
+        await expect(page.getByTestId("session-status")).toHaveText("paused");
+        await page.getByRole("button", { name: "Resume", exact: true }).click();
+        await expect(
+          page.getByRole("button", { name: "Start session", exact: true }),
+        ).toBeEnabled();
+        await expect(page.getByTestId("session-status")).toHaveText("ended");
+      } finally {
+        await application.close();
+        removeBridgeFixture(directory);
+      }
+    },
+  );
