@@ -57,7 +57,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     expect(bridge).toMatchObject({
       node: "undefined",
       process: "undefined",
-      keys: ["sessions"],
+      keys: ["sessions", "assistant"],
       invalid: { ok: false, error: { code: "INVALID_INPUT" } },
       invalidTransition: { ok: false, error: { code: "INVALID_TRANSITION" } },
     });
