@@ -57,8 +57,10 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
   }
 
   async save(checkpoint: Checkpoint): Promise<Result<void>> {
+    let transactionStarted = false;
     try {
       this.db.exec("BEGIN");
+      transactionStarted = true;
 
       // 1. Insert or update the main checkpoint record
       const stmt = this.db.prepare(`
@@ -116,7 +118,13 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       this.db.exec("COMMIT");
       return { ok: true, value: undefined };
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure if rollback is no longer possible.
+        }
+      }
       return failure(
         "INTERNAL",
         `Failed to save checkpoint: ${error instanceof Error ? error.message : String(error)}`,

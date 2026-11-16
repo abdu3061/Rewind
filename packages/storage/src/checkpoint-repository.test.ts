@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type {
   Checkpoint,
   FileReference,
@@ -14,6 +14,10 @@ import { SqliteSessionRepository } from "./session-repository";
 
 describe("SqliteCheckpointRepository", () => {
   let db: DatabaseSync;
+
+  afterEach(() => {
+    if (db?.isOpen) db.close();
+  });
   let sessionRepo: SqliteSessionRepository;
   let fileRepo: SqliteFileRepository;
   let checkpointRepo: SqliteCheckpointRepository;
@@ -131,6 +135,26 @@ describe("SqliteCheckpointRepository", () => {
       expect(listResult.value).toHaveLength(2);
       expect(listResult.value[0]!.name).toBe("Checkpoint 2 (New)"); // Newest first!
       expect(listResult.value[1]!.name).toBe("Checkpoint 1 (Old)");
+    }
+  });
+
+  it("preserves a caller transaction when a nested save cannot begin", async () => {
+    db.exec("BEGIN");
+    try {
+      const result = await checkpointRepo.save({
+        id: "40000000-0000-4000-8000-000000000099",
+        sessionId: validSessionId,
+        name: "Synthetic checkpoint",
+        createdAt: "2026-10-25T00:10:00.000Z",
+        kept: false,
+        fileVersionIds: [],
+        browserVisitIds: [],
+        projectReferences: [],
+      });
+      expect(result.ok).toBe(false);
+      expect(db.isTransaction).toBe(true);
+    } finally {
+      if (db.isTransaction) db.exec("ROLLBACK");
     }
   });
 });

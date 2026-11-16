@@ -36,8 +36,10 @@ export class SqliteActivityRepository implements ActivityRepository {
       return { ok: true, value: undefined };
     }
 
+    let transactionStarted = false;
     try {
       this.db.exec("BEGIN");
+      transactionStarted = true;
 
       const stmt = this.db.prepare(`
         INSERT INTO activities (id, session_id, type, source, occurred_at, payload)
@@ -58,7 +60,13 @@ export class SqliteActivityRepository implements ActivityRepository {
       this.db.exec("COMMIT");
       return { ok: true, value: undefined };
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure if rollback is no longer possible.
+        }
+      }
       return failure(
         "INTERNAL",
         `Failed to append activities: ${error instanceof Error ? error.message : String(error)}`,

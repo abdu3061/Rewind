@@ -1,13 +1,17 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { ActivityEvent, Session } from "@rewind/contracts";
 import { SqliteActivityRepository } from "./activity-repository";
 import { SqliteSessionRepository } from "./session-repository";
 
 describe("SqliteActivityRepository", () => {
   let db: DatabaseSync;
+
+  afterEach(() => {
+    if (db?.isOpen) db.close();
+  });
   let sessionRepo: SqliteSessionRepository;
   let activityRepo: SqliteActivityRepository;
 
@@ -74,6 +78,42 @@ describe("SqliteActivityRepository", () => {
       expect(listResult.value[1]!.id).toBe(events[0]!.id);
       expect(listResult.value[1]!.payload).toEqual(events[0]!.payload);
     }
+  });
+
+  it("preserves the caller transaction when starting a nested transaction fails", async () => {
+    db.exec("BEGIN");
+    try {
+      const result = await activityRepo.append([
+        {
+          id: "10000000-0000-4000-8000-000000000099",
+          sessionId: validSessionId,
+          occurredAt: "2026-10-25T00:01:00.000Z",
+          source: "windows",
+          type: "idle",
+          payload: { state: "entered" },
+        },
+      ]);
+      expect(result.ok).toBe(false);
+      expect(db.isTransaction).toBe(true);
+    } finally {
+      if (db.isTransaction) db.exec("ROLLBACK");
+    }
+  });
+
+  it("returns a structured failure when the database is closed", async () => {
+    db.close();
+    await expect(
+      activityRepo.append([
+        {
+          id: "10000000-0000-4000-8000-000000000099",
+          sessionId: validSessionId,
+          occurredAt: "2026-10-25T00:01:00.000Z",
+          source: "windows",
+          type: "idle",
+          payload: { state: "entered" },
+        },
+      ]),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INTERNAL" } });
   });
 
   it("paginates using limit and before cursor", async () => {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type {
   ActivityEvent,
   Checkpoint,
@@ -16,6 +16,10 @@ import { SqliteSessionRepository } from "./session-repository";
 
 describe("SqliteSearchRepository", () => {
   let db: DatabaseSync;
+
+  afterEach(() => {
+    if (db?.isOpen) db.close();
+  });
   let sessionRepo: SqliteSessionRepository;
   let activityRepo: SqliteActivityRepository;
   let fileRepo: SqliteFileRepository;

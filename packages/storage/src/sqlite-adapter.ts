@@ -25,13 +25,37 @@ export class SqliteStorageAdapter implements StorageAdapter {
   }
 
   async open(): Promise<Result<void>> {
+    if (this.db) {
+      return this._repositories
+        ? { ok: true, value: undefined }
+        : failure(
+            "UNAVAILABLE",
+            "Close the failed storage adapter before reopening.",
+          );
+    }
     try {
       this.db = new DatabaseSync(this.dbPath);
       this.db.exec("PRAGMA foreign_keys = ON;");
 
       if (this.migrationPath) {
         const sql = readFileSync(this.migrationPath, "utf8");
+        this.db.exec("BEGIN");
         this.db.exec(sql);
+        this.db.exec("COMMIT");
+      }
+
+      // A successful open must expose usable repositories, even when opening
+      // an existing fixture database without a migration path.
+      for (const table of [
+        "sessions",
+        "activities",
+        "files",
+        "file_versions",
+        "checkpoints",
+        "checkpoint_file_versions",
+        "checkpoint_browser_visits",
+      ]) {
+        this.db.prepare(`SELECT * FROM ${table} LIMIT 0`).all();
       }
 
       this._repositories = {
@@ -43,11 +67,22 @@ export class SqliteStorageAdapter implements StorageAdapter {
       };
 
       return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to open storage adapter: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      this._repositories = null;
+      if (this.db) {
+        try {
+          if (this.db.isTransaction) this.db.exec("ROLLBACK");
+        } catch {
+          // Closing must still be attempted if rollback fails.
+        }
+        try {
+          this.db.close();
+          this.db = null;
+        } catch {
+          // Retain the handle so close() can be retried; never expose repositories.
+        }
+      }
+      return failure("INTERNAL", "Failed to open storage adapter.");
     }
   }
 
