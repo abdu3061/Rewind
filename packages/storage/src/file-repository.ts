@@ -1,12 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
 import {
   failure,
+  fileReferenceSchema,
   type FileReference,
   type FileRepository,
   type FileVersion,
   type Id,
   type Result,
 } from "@rewind/contracts";
+import { writeFileReference } from "./file-reference";
 
 interface FileRow {
   id: string;
@@ -66,44 +68,14 @@ export class SqliteFileRepository implements FileRepository {
   constructor(private readonly db: DatabaseSync) {}
 
   async saveReference(file: FileReference): Promise<Result<void>> {
+    const parsed = fileReferenceSchema.safeParse(file);
+    if (!parsed.success)
+      return failure("INVALID_INPUT", "File reference is invalid.");
     try {
-      const stmt = this.db.prepare(`
-        INSERT INTO files (id, display_name, identity_kind, absolute_path, verified_at, observed_title)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          display_name = excluded.display_name,
-          identity_kind = excluded.identity_kind,
-          absolute_path = excluded.absolute_path,
-          verified_at = excluded.verified_at,
-          observed_title = excluded.observed_title
-      `);
-
-      let absPath: string | null = null;
-      let verAt: string | null = null;
-      let obsTitle: string | null = null;
-
-      if (file.identity.kind === "verified-path") {
-        absPath = file.identity.absolutePath;
-        verAt = file.identity.verifiedAt;
-      } else {
-        obsTitle = file.identity.observedTitle;
-      }
-
-      stmt.run(
-        file.id,
-        file.displayName,
-        file.identity.kind,
-        absPath,
-        verAt,
-        obsTitle,
-      );
-
+      writeFileReference(this.db, parsed.data);
       return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to save file reference: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to save file reference.");
     }
   }
 

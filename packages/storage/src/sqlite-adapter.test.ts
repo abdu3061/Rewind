@@ -24,6 +24,58 @@ describe("SqliteStorageAdapter", () => {
     __dirname,
     "../../../db/migrations/001_initial.sql",
   );
+  it("does not claim usable storage usage before opening", async () => {
+    expect((await new SqliteStorageAdapter().usage()).ok).toBe(false);
+  });
+  it("refuses an existing database whose table names hide missing required columns", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "rewind-audit-"));
+    const databasePath = resolve(directory, "synthetic.sqlite");
+    const broken = new DatabaseSync(databasePath);
+    for (const name of [
+      "sessions",
+      "activities",
+      "files",
+      "file_versions",
+      "checkpoints",
+      "checkpoint_file_versions",
+      "checkpoint_browser_visits",
+    ])
+      broken.exec(`CREATE TABLE ${name} (id TEXT)`);
+    broken.close();
+    const adapter = new SqliteStorageAdapter(databasePath);
+    try {
+      expect((await adapter.open()).ok).toBe(false);
+      expect(() => adapter.repositories).toThrow();
+    } finally {
+      await adapter.close();
+      removeFixtureDirectory(directory);
+    }
+  });
+  it("rolls back a valid but incomplete migration when readiness checks fail", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "rewind-audit-"));
+    const databasePath = resolve(directory, "synthetic.sqlite");
+    const incomplete = resolve(directory, "incomplete.sql");
+    writeFileSync(incomplete, "CREATE TABLE incomplete_fixture (id TEXT);");
+    const adapter = new SqliteStorageAdapter(databasePath, incomplete);
+    try {
+      expect((await adapter.open()).ok).toBe(false);
+      const inspection = new DatabaseSync(databasePath);
+      try {
+        expect(
+          inspection
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'incomplete_fixture'",
+            )
+            .get(),
+        ).toBeUndefined();
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      await adapter.close();
+      removeFixtureDirectory(directory);
+    }
+  });
 
   it("keeps the same repositories and data when open is called twice", async () => {
     const adapter = new SqliteStorageAdapter(":memory:", migrationPath);

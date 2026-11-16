@@ -79,6 +79,16 @@ describe("SqliteSearchRepository", () => {
       },
     };
     await fileRepo.saveReference(file);
+    const versionId = "30000000-0000-4000-8000-000000000001";
+    await fileRepo.addVersion({
+      id: versionId,
+      fileId: file.id,
+      sessionId: validSessionId,
+      capturedAt: "2026-10-25T00:10:00.000Z",
+      contentHash: "a".repeat(64),
+      byteLength: 100,
+      mediaType: "application/pdf",
+    });
 
     // 3. Add a checkpoint
     const checkpoint: Checkpoint = {
@@ -109,6 +119,16 @@ describe("SqliteSearchRepository", () => {
       expect(kinds).toContain("activity");
       expect(kinds).toContain("file-version");
       expect(kinds).toContain("checkpoint");
+      expect(
+        searchResult.value.find(
+          (result) => result.source.kind === "file-version",
+        )?.source,
+      ).toEqual({
+        kind: "file-version",
+        fileId: file.id,
+        fileVersionId: versionId,
+      });
+      expect((await fileRepo.getVersion(versionId)).ok).toBe(true);
     }
   });
 

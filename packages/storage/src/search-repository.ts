@@ -1,6 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import {
   failure,
+  activityEventSchema,
+  searchQuerySchema,
+  searchResultSchema,
   type Result,
   type SearchQuery,
   type SearchRepository,
@@ -11,12 +14,15 @@ interface ActivitySearchRow {
   id: string;
   session_id: string;
   type: string;
+  source: string;
   occurred_at: string;
   payload: string;
 }
 
 interface FileSearchRow {
   id: string;
+  version_id: string;
+  captured_at: string;
   display_name: string;
   identity_kind: "verified-path" | "unverified";
   absolute_path: string | null;
@@ -35,9 +41,15 @@ export class SqliteSearchRepository implements SearchRepository {
   constructor(private readonly db: DatabaseSync) {}
 
   async search(query: SearchQuery): Promise<Result<SearchResult[]>> {
+    const parsedQuery = searchQuerySchema.safeParse(query);
+    if (!parsedQuery.success)
+      return failure("INVALID_INPUT", "Search query is invalid.");
+    query = parsedQuery.data;
+    if (query.mode !== "keyword")
+      return failure("NOT_IMPLEMENTED", "Only keyword search is available.");
     try {
       const results: SearchResult[] = [];
-      const term = query.text.trim();
+      const term = query.text.replace(/[\\%_]/g, "\\$&");
 
       if (!term) {
         return { ok: true, value: [] };
@@ -45,9 +57,9 @@ export class SqliteSearchRepository implements SearchRepository {
 
       // 1. Search Activities (matching payload text)
       let actSql = `
-        SELECT id, session_id, type, occurred_at, payload
+        SELECT id, session_id, type, source, occurred_at, payload
         FROM activities
-        WHERE payload LIKE '%' || ? || '%'
+        WHERE payload LIKE '%' || ? || '%' ESCAPE '\\'
       `;
       const actParams: (string | number)[] = [term];
 
@@ -63,7 +75,7 @@ export class SqliteSearchRepository implements SearchRepository {
         actSql += ` AND occurred_at <= ?`;
         actParams.push(query.to);
       }
-      actSql += ` ORDER BY occurred_at DESC LIMIT ?`;
+      actSql += ` ORDER BY occurred_at DESC, id DESC LIMIT ?`;
       actParams.push(query.limit);
 
       const actRows = this.db
@@ -73,34 +85,71 @@ export class SqliteSearchRepository implements SearchRepository {
       for (const row of actRows) {
         let title = `Activity: ${row.type}`;
         try {
-          const parsed = JSON.parse(row.payload);
-          if (parsed.windowTitle) title = String(parsed.windowTitle);
-          else if (parsed.application) title = String(parsed.application);
+          const parsed = activityEventSchema.safeParse({
+            id: row.id,
+            sessionId: row.session_id,
+            type: row.type,
+            source: row.source,
+            occurredAt: row.occurred_at,
+            payload: JSON.parse(row.payload),
+          });
+          if (!parsed.success)
+            return failure(
+              "INTEGRITY_FAILURE",
+              "Stored search evidence is invalid.",
+            );
+          const event = parsed.data;
+          if (event.type === "foreground")
+            title = event.payload.windowTitle || event.payload.application;
+          else if (event.type === "browser-visit") title = event.payload.title;
+          else if (event.type === "file-opened")
+            title = event.payload.displayName;
         } catch {
-          // fallback to default title
+          return failure(
+            "INTEGRITY_FAILURE",
+            "Stored search evidence is invalid.",
+          );
         }
 
         results.push({
           source: { kind: "activity", activityId: row.id },
           occurredAt: row.occurred_at,
           title,
-          excerpt: row.payload.slice(0, 300),
+          excerpt: title.slice(0, 300),
           evidence: "recorded",
         });
       }
 
       // 2. Search Files (matching display name or path)
+      let scope = "1 = 1";
+      const fileParams: (string | number)[] = [];
+      if (query.sessionId) {
+        scope += " AND session_id = ?";
+        fileParams.push(query.sessionId);
+      }
+      if (query.from) {
+        scope += " AND captured_at >= ?";
+        fileParams.push(query.from);
+      }
+      if (query.to) {
+        scope += " AND captured_at <= ?";
+        fileParams.push(query.to);
+      }
       const fileSql = `
-        SELECT id, display_name, identity_kind, absolute_path, verified_at, observed_title
-        FROM files
-        WHERE display_name LIKE '%' || ? || '%'
-           OR (absolute_path IS NOT NULL AND absolute_path LIKE '%' || ? || '%')
-           OR (observed_title IS NOT NULL AND observed_title LIKE '%' || ? || '%')
-        LIMIT ?
-      `;
+        WITH scoped AS (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY file_id ORDER BY captured_at DESC, id DESC) AS position
+          FROM file_versions WHERE ${scope}
+        )
+        SELECT f.*, fv.id AS version_id, fv.captured_at FROM files f
+        JOIN scoped fv ON fv.file_id = f.id AND fv.position = 1
+        WHERE (display_name LIKE '%' || ? || '%' ESCAPE '\\'
+           OR absolute_path LIKE '%' || ? || '%' ESCAPE '\\'
+           OR observed_title LIKE '%' || ? || '%' ESCAPE '\\')
+        ORDER BY fv.captured_at DESC, fv.id DESC LIMIT ?`;
+      fileParams.push(term, term, term, query.limit);
       const fileRows = this.db
         .prepare(fileSql)
-        .all(term, term, term, query.limit) as unknown as FileSearchRow[];
+        .all(...fileParams) as unknown as FileSearchRow[];
 
       for (const row of fileRows) {
         const isVerified = row.identity_kind === "verified-path";
@@ -108,13 +157,13 @@ export class SqliteSearchRepository implements SearchRepository {
           source: {
             kind: "file-version",
             fileId: row.id,
-            fileVersionId: row.id, // reference fallback
+            fileVersionId: row.version_id,
           },
-          occurredAt: row.verified_at ?? new Date(0).toISOString(),
+          occurredAt: row.captured_at,
           title: row.display_name,
           excerpt: isVerified
-            ? (row.absolute_path ?? "")
-            : (row.observed_title ?? ""),
+            ? (row.absolute_path ?? "").slice(0, 4000)
+            : (row.observed_title ?? "").slice(0, 4000),
           evidence: isVerified ? "verified-path" : "title-only",
         });
       }
@@ -123,14 +172,22 @@ export class SqliteSearchRepository implements SearchRepository {
       let cpSql = `
         SELECT id, session_id, name, created_at
         FROM checkpoints
-        WHERE name LIKE '%' || ? || '%'
+        WHERE name LIKE '%' || ? || '%' ESCAPE '\\'
       `;
       const cpParams: (string | number)[] = [term];
       if (query.sessionId) {
         cpSql += ` AND session_id = ?`;
         cpParams.push(query.sessionId);
       }
-      cpSql += ` ORDER BY created_at DESC LIMIT ?`;
+      if (query.from) {
+        cpSql += " AND created_at >= ?";
+        cpParams.push(query.from);
+      }
+      if (query.to) {
+        cpSql += " AND created_at <= ?";
+        cpParams.push(query.to);
+      }
+      cpSql += ` ORDER BY created_at DESC, id DESC LIMIT ?`;
       cpParams.push(query.limit);
 
       const cpRows = this.db
@@ -148,15 +205,23 @@ export class SqliteSearchRepository implements SearchRepository {
       }
 
       // Sort all combined results by occurredAt DESC and apply limit
-      results.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      results.sort((a, b) => {
+        const left = `${a.occurredAt}:${JSON.stringify(a.source)}`;
+        const right = `${b.occurredAt}:${JSON.stringify(b.source)}`;
+        return left === right ? 0 : left < right ? 1 : -1;
+      });
       const sliced = results.slice(0, query.limit);
+      if (
+        sliced.some((result) => !searchResultSchema.safeParse(result).success)
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "Stored search evidence is invalid.",
+        );
 
       return { ok: true, value: sliced };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to execute search: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to execute search.");
     }
   }
 }

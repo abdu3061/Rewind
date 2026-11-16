@@ -41,22 +41,22 @@ export class SqliteStorageAdapter implements StorageAdapter {
         const sql = readFileSync(this.migrationPath, "utf8");
         this.db.exec("BEGIN");
         this.db.exec(sql);
-        this.db.exec("COMMIT");
       }
 
       // A successful open must expose usable repositories, even when opening
       // an existing fixture database without a migration path.
-      for (const table of [
-        "sessions",
-        "activities",
-        "files",
-        "file_versions",
-        "checkpoints",
-        "checkpoint_file_versions",
-        "checkpoint_browser_visits",
+      for (const query of [
+        "SELECT id, status, started_at, updated_at, ended_at FROM sessions LIMIT 0",
+        "SELECT id, session_id, type, source, occurred_at, payload FROM activities LIMIT 0",
+        "SELECT id, display_name, identity_kind, absolute_path, verified_at, observed_title FROM files LIMIT 0",
+        "SELECT id, session_id, file_id, captured_at, content_hash, byte_length, media_type FROM file_versions LIMIT 0",
+        "SELECT id, session_id, name, created_at, kept, project_references FROM checkpoints LIMIT 0",
+        "SELECT checkpoint_id, file_version_id FROM checkpoint_file_versions LIMIT 0",
+        "SELECT checkpoint_id, browser_visit_id FROM checkpoint_browser_visits LIMIT 0",
       ]) {
-        this.db.prepare(`SELECT * FROM ${table} LIMIT 0`).all();
+        this.db.prepare(query).all();
       }
+      if (this.db.isTransaction) this.db.exec("COMMIT");
 
       this._repositories = {
         sessions: new SqliteSessionRepository(this.db),
@@ -87,6 +87,7 @@ export class SqliteStorageAdapter implements StorageAdapter {
   }
 
   async close(): Promise<Result<void>> {
+    this._repositories = null;
     try {
       if (this.db) {
         this.db.close();
@@ -94,26 +95,20 @@ export class SqliteStorageAdapter implements StorageAdapter {
         this._repositories = null;
       }
       return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to close storage adapter: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to close storage adapter.");
     }
   }
 
   async usage(): Promise<
     Result<{ metadataBytes: number; snapshotBytes: number }>
   > {
+    if (!this.db || !this._repositories)
+      return failure("UNAVAILABLE", "Storage is not open.");
     try {
       let metadataBytes = 0;
       if (this.dbPath !== ":memory:") {
-        try {
-          const stats = statSync(this.dbPath);
-          metadataBytes = stats.size;
-        } catch {
-          // File may not be created yet
-        }
+        metadataBytes = statSync(this.dbPath).size;
       }
 
       return {
@@ -123,11 +118,8 @@ export class SqliteStorageAdapter implements StorageAdapter {
           snapshotBytes: 0,
         },
       };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to calculate storage usage: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to calculate storage usage.");
     }
   }
 }

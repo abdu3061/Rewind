@@ -1,4 +1,4 @@
-import type { ActivityEvent } from "./activity";
+import type { ActivityCursor, ActivityEvent } from "./activity";
 import type { Id, Result, Timestamp } from "./common";
 import type { Checkpoint, FileReference, FileVersion } from "./files";
 import type { SearchQuery, SearchResult } from "./search";
@@ -15,7 +15,8 @@ export interface ActivityRepository {
   list(
     sessionId: Id,
     limit: number,
-    before?: Timestamp,
+    // Timestamp remains an exclusive time boundary; complete pagination uses both fields.
+    before?: Timestamp | ActivityCursor,
   ): Promise<Result<ActivityEvent[]>>;
 }
 export interface FileRepository {
@@ -41,6 +42,13 @@ export interface Repositories {
   search: SearchRepository;
 }
 
+/** Lifecycle ownership for the engine; real-data composition still requires encrypted storage. */
+export interface SessionStorage {
+  readonly repositories: Pick<Repositories, "sessions" | "activities">;
+  open(): Promise<Result<void>>;
+  close(): Promise<Result<void>>;
+}
+
 export interface CollectorContext {
   sessionId: Id;
   // Short-lived per-run generation; stale queued events must be rejected by the engine.
@@ -54,4 +62,11 @@ export interface Collector {
   pause(): Promise<Result<void>>;
   resume(context: CollectorContext): Promise<Result<void>>;
   stop(): Promise<Result<void>>;
+}
+
+/** Engine-owned lifecycle ports; infrastructure cannot grant collection consent. */
+export interface CollectorRegistry {
+  windows: Collector;
+  browser: Collector;
+  folders: Collector;
 }

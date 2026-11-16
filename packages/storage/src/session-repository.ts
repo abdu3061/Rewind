@@ -1,6 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import {
   failure,
+  idSchema,
+  sessionSchema,
   type Id,
   type Result,
   type Session,
@@ -15,20 +17,27 @@ interface SessionRow {
   ended_at: string | null;
 }
 
-function rowToSession(row: SessionRow): Session {
-  return {
+function rowToSession(row: SessionRow): Result<Session> {
+  const parsed = sessionSchema.safeParse({
     id: row.id,
     status: row.status,
     startedAt: row.started_at,
     updatedAt: row.updated_at,
     endedAt: row.ended_at,
-  };
+  });
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : failure("INTEGRITY_FAILURE", "Stored session is invalid.");
 }
 
 export class SqliteSessionRepository implements SessionRepository {
   constructor(private readonly db: DatabaseSync) {}
 
   async save(session: Session): Promise<Result<void>> {
+    const parsed = sessionSchema.safeParse(session);
+    if (!parsed.success)
+      return failure("INVALID_INPUT", "Session input is invalid.");
+    session = parsed.data;
     try {
       const stmt = this.db.prepare(`
         INSERT INTO sessions (id, status, started_at, updated_at, ended_at)
@@ -37,26 +46,29 @@ export class SqliteSessionRepository implements SessionRepository {
           status = excluded.status,
           updated_at = excluded.updated_at,
           ended_at = excluded.ended_at
+        WHERE sessions.started_at = excluded.started_at
+          AND (sessions.status != 'ended' OR excluded.status = 'ended')
       `);
 
-      stmt.run(
+      const saved = stmt.run(
         session.id,
         session.status,
         session.startedAt,
         session.updatedAt,
         session.endedAt,
       );
+      if (saved.changes === 0)
+        return failure("CONFLICT", "Session identity cannot be changed.");
 
       return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to save session: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to save session.");
     }
   }
 
   async get(id: Id): Promise<Result<Session | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "Session ID is invalid.");
     try {
       const stmt = this.db.prepare(`
         SELECT id, status, started_at, updated_at, ended_at
@@ -65,12 +77,9 @@ export class SqliteSessionRepository implements SessionRepository {
       `);
 
       const row = stmt.get(id) as unknown as SessionRow | undefined;
-      return { ok: true, value: row ? rowToSession(row) : null };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to get session: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return row ? rowToSession(row) : { ok: true, value: null };
+    } catch {
+      return failure("INTERNAL", "Failed to get session.");
     }
   }
 
@@ -79,17 +88,14 @@ export class SqliteSessionRepository implements SessionRepository {
       const stmt = this.db.prepare(`
         SELECT id, status, started_at, updated_at, ended_at
         FROM sessions
-        ORDER BY started_at DESC
+        ORDER BY started_at DESC, id DESC
         LIMIT 1
       `);
 
       const row = stmt.get() as unknown as SessionRow | undefined;
-      return { ok: true, value: row ? rowToSession(row) : null };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to get latest session: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return row ? rowToSession(row) : { ok: true, value: null };
+    } catch {
+      return failure("INTERNAL", "Failed to get latest session.");
     }
   }
 }
