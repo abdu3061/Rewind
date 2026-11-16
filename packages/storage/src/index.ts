@@ -1,6 +1,6 @@
 import type { Repositories, Result, Timestamp } from "@rewind/contracts";
 
-/** A future encrypted adapter must satisfy this interface. No database is opened today. */
+/** Future encrypted adapter boundary. The desktop does not open the SQLite prototype. */
 export interface StorageAdapter {
   readonly repositories: Repositories;
   open(): Promise<Result<void>>;

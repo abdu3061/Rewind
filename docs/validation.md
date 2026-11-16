@@ -1,5 +1,7 @@
 # Initialization validation
 
+These are historical initialization results. See [repository status](repository-status.md) for the 16 November 2026 maintenance checks, branch review, and current audit findings.
+
 Local validation date: 17 October 2026. Platform: Windows x64; Node 22.16.0, npm 11.7.0. These results apply to the starter and generated dependency lockfile, not to future native modules or production features. No remote CI run or release has been performed.
 
 | Command / check     | Result                                                                                                                                                                                                                    |

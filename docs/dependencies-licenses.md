@@ -8,7 +8,7 @@ Direct package licenses below were checked against the installed package metadat
 
 | Dependency                                  | Role                                | License / action                                                                                      |
 | ------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Electron 44.9.0                             | Desktop runtime                     | MIT for Electron; preserve its license and bundled Chromium/third-party notices in distributed builds |
+| Electron 44.11.3                            | Desktop runtime                     | MIT for Electron; preserve its license and bundled Chromium/third-party notices in distributed builds |
 | Electron Forge 8.0.1 plugins/CLI/ZIP maker  | Build/package tooling               | MIT; preserve applicable notices                                                                      |
 | React / React DOM 19.3.1                    | Renderer UI                         | MIT; preserve license/copyright in distribution                                                       |
 | Vite 8.3.4 / React plugin                   | Bundling and development            | MIT; review bundled/transitive notices                                                                |

@@ -9,7 +9,7 @@ Rewind is a Windows desktop application that will help users remember their work
 - Tray session controls and status. Collection is always off. Closing the window quits the starter; session state resets on exit.
 - Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
 
-No activity is collected. No folders are protected. SQLite, file versions/recovery, checkpoints, search, editable settings, encryption, retention cleanup, utility-process services, native browser transport, and Gemini are **not implemented**. Other screens show honest empty states. ASAR packaging is not data encryption.
+No activity is collected. No folders are protected. SQLite schema/repository prototypes are exercised with synthetic test data and are not connected to the desktop. Durable history, file versions/recovery, checkpoints, search, editable settings, encryption, retention cleanup, utility-process services, native browser transport, and Gemini are **not implemented in the app**. Other screens show honest empty states. ASAR packaging is not data encryption.
 
 ## Windows / PowerShell setup
 
@@ -40,7 +40,7 @@ If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; cha
 | `npm run build:extension`                 | Build inactive extension into `apps/browser-extension/dist`           |
 | `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser       |
 
-The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`. These outputs are ignored by Git. ARM64 is not yet verified. The Windows CI workflow runs the same checks plus packaged application tests; its first remote run will occur only after the owner authorizes a push.
+The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`. These outputs are ignored by Git. ARM64 is not yet verified. The Windows CI workflow runs the same checks plus packaged application tests. See [repository status](docs/repository-status.md) for the latest branch review and local verification.
 
 To inspect the inactive extension, enable Developer mode at `chrome://extensions` or `edge://extensions`, choose **Load unpacked**, and select `apps/browser-extension/dist`. It requests no browser/page/native permissions and excludes incognito. The popup explains the missing functionality. No native-host registration is performed. See [browser integration](docs/browser-integration.md) for the proposed shipping design.
 
@@ -51,7 +51,7 @@ apps/desktop/          Electron main + sandboxed preload + React renderer (Forge
 apps/browser-extension/  Inactive Chrome/Edge Manifest V3 starter
 packages/contracts/   Validated domain models, ports, public desktop API
 packages/engine/      Tested in-memory session state machine
-packages/storage/     Storage adapter boundary; no persistence
+packages/storage/     SQLite repository prototypes; no desktop persistence
 packages/collectors/  Collector lifecycle boundary; no monitoring
 packages/assistant/   Validated-tool design boundary; no cloud requests
 tests/app/            Packaged Electron integration tests
@@ -71,7 +71,7 @@ UI → narrow preload API → authorized main-process handler → engine. Future
 | Mohammad Poorhamadi | Windows/folder collectors, Chrome/Edge extension and native transport                |
 | Abdullah            | UX/Figma, navigation, tokens/components, privacy and recovery flows                  |
 
-Start with [team tasks](docs/team-tasks.md) and [development plan](docs/development-plan.md). All substantial work uses feature branches and reviewed PRs. Rasit controls final merges. `CODEOWNERS` alone does not enforce this: the owner must configure repository rules and collaborator permissions as described in [contributing](docs/contributing.md).
+Start with [repository status](docs/repository-status.md), [team tasks](docs/team-tasks.md), and [development plan](docs/development-plan.md). All substantial work uses feature branches and reviewed PRs. Rasit controls final merges. `CODEOWNERS` alone does not enforce this: the owner must configure repository rules and collaborator permissions as described in [contributing](docs/contributing.md).
 
 ## Project references
 

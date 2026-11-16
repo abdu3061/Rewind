@@ -1,6 +1,6 @@
 # Team tasks and backlog
 
-Status as of 17 October 2026. P0 = must precede dependent/sensitive work; P1 = core version-one deliverable; P2 = polish or follow-up. Status values: Planned, In Progress, In Review, Blocked, Done. Done in this local initialization does not mean remotely merged or released. All implementation tasks require reviewed PRs; Rasit has final technical/merge approval.
+Task acceptance status reviewed on 16 November 2026; see [repository status](repository-status.md) for merged prototypes and open-branch blockers. P0 = must precede dependent/sensitive work; P1 = core version-one deliverable; P2 = polish or follow-up. Status values: Planned, In Progress, In Review, Blocked, Done. A merged prototype does not satisfy a task's full acceptance criteria. All implementation tasks require reviewed PRs; Rasit has final technical/merge approval.
 
 Each row includes the task ID, single accountable owner, priority, dependencies, expected modules, acceptance criteria, branch, and status. Owners may pair on reviews while keeping implementation responsibility clear. Existing contracts enable synthetic test adapters; those adapters must stay in tests or be explicitly labeled development fixtures.
 

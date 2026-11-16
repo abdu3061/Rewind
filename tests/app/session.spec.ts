@@ -27,6 +27,9 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     page.on("pageerror", (error) => errors.push(error.message));
     await expect(page.getByTestId("session-status")).toHaveText("not started");
     await expect(
+      page.getByRole("heading", { name: "Your timeline will start here" }),
+    ).toHaveCount(0);
+    await expect(
       page.getByRole("button", { name: "Pause", exact: true }),
     ).toBeDisabled();
     await page
@@ -36,6 +39,26 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(page.getByTestId("session-status")).toHaveText("active");
+    await page
+      .getByRole("button", { name: "End session", exact: true })
+      .click();
+    await expect(page.getByTestId("session-status")).toHaveText("ended");
+
+    const sessionState = await page.evaluate(() =>
+      (window as unknown as { rewind: DesktopApi }).rewind.sessions.get(),
+    );
+    expect(sessionState).toMatchObject({
+      ok: true,
+      value: { session: { status: "ended" } },
+    });
+
+    // Changes made through the bridge must reach the UI through its subscription.
+    await page.evaluate(() =>
+      (window as unknown as { rewind: DesktopApi }).rewind.sessions.start(),
+    );
+    await expect(page.getByTestId("session-status")).toHaveText("active");
+    await page.reload();
     await expect(page.getByTestId("session-status")).toHaveText("active");
     await page
       .getByRole("button", { name: "End session", exact: true })
@@ -79,6 +102,26 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     ] as const) {
       await page.getByRole("button", { name: new RegExp(screen) }).click();
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(screen);
+      if (screen === "Search") {
+        await expect(page.getByLabel("Search history")).toBeDisabled();
+        await expect(
+          page
+            .getByRole("main")
+            .getByRole("button", { name: "Search", exact: true }),
+        ).toBeDisabled();
+      }
+      if (screen !== "Timeline") {
+        await expect(
+          page.getByRole("heading", { name: "Your timeline will start here" }),
+        ).toHaveCount(0);
+      }
+      if (screen === "Settings") {
+        await expect(page.getByLabel("Data retention period")).toBeDisabled();
+        await expect(
+          page.getByLabel("Storage limit", { exact: true }),
+        ).toBeDisabled();
+      }
     }
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.screenshot({

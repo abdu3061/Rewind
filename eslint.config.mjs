@@ -13,6 +13,8 @@ export default tseslint.config(
       "**/out/**",
       "test-results/**",
       "playwright-report/**",
+      "artifacts/**",
+      "Rewind/**",
     ],
   },
   js.configs.recommended,

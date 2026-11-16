@@ -20,7 +20,7 @@ flowchart LR
   B[Chrome/Edge extension] -. proposed native host and pipe .-> U
 ```
 
-Solid arrows describe existing calls/dependencies. Dotted arrows are planned runtime integration, with no worker, native host, database, collector, or cloud request currently running.
+Solid arrows describe existing calls/dependencies. Dotted arrows are planned runtime integration, with no worker, native host, database, collector, or cloud request currently running. SQLite schema/repository prototypes exist under `db` and `packages/storage`, with synthetic tests using Node's stock SQLite. They are not connected to desktop composition and do not satisfy the encryption gate in ADR 0005.
 
 | Module            | Allowed responsibility / dependency                                                                                                                                                           |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -5,6 +5,8 @@ node_modules/
 coverage/
 test-results/
 playwright-report/
+artifacts/
+/Rewind/
 *.log
 .env
 .env.*

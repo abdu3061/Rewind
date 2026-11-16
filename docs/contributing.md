@@ -6,7 +6,7 @@ Use Node 22.13+ in the 22.x line, npm 10+, Windows PowerShell, and the root work
 
 `main` is the stable integration branch. Substantial work happens on feature branches such as `feature/session-engine`, `feature/database-schema`, `feature/timeline-ui`, and `feature/browser-collector`. Keep changes small enough to review and connect each PR to a task ID from [team tasks](team-tasks.md).
 
-After the owner's initial repository bootstrap, never commit directly to `main`. This local initialization is on `feature/project-initialization` and makes no commit, push, or remote PR. The repository originally had an unborn `main` and an existing origin; the owner must decide/authorize the first baseline before normal PR development. Do not assume remote history is empty or force-push over it. Inspect/fetch under the owner's workflow before connecting histories.
+Never commit directly to `main`. The shared baseline exists on `origin/main`; fetch it and branch from the current baseline before starting work. Inspect the working tree first and preserve uncommitted work. Do not force-push or overwrite another branch's history. See [repository status](repository-status.md) for the latest integration review.
 
 When a baseline exists, a normal local workflow is:
 
@@ -34,7 +34,7 @@ Use descriptive commits, preferably `feat(scope): ...`, `fix(scope): ...`, `test
 The repository owner must configure rulesets/branch protection and collaborator roles in GitHub. No remote settings were changed here. As a target configuration:
 
 - Require PRs for `main`, required checks from `CI / windows-checks`, up-to-date branch checks, resolved conversations, and code-owner review.
-- Assign the actual required check name after the first authorized CI run; GitHub may display the job name `windows-checks`.
+- Use the existing `CI` workflow's `windows-checks` job when configuring required checks; verify the exact name shown by GitHub.
 - Restrict protected-branch updates/merges to Rasit (`@RXD3`) using the repository's available rules/permissions. Give others feature-branch collaboration rights without bypass rights. Disable force pushes/deletion and unreviewed bypasses.
 - Require a fresh review after material changes. Use least-privilege repository roles and an owner-controlled merge process. Check the actual plan's ruleset features and test restrictions with a teammate account.
 - `CODEOWNERS` currently names only `@RXD3`; add real teammate usernames later. It requests reviews and can support a required-review rule, but **alone it enforces neither approval nor exclusive merge authority**.

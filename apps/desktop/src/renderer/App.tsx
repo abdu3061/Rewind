@@ -27,35 +27,6 @@ export function App() {
     "get"
   > | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [timelineSearch, setTimelineSearch] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCheckpoint, setSelectedCheckpoint] = useState<string | null>(
-    null,
-  );
-  const [previewFile, setPreviewFile] = useState<string | null>(null);
-  const searchHasResults = [
-    "visual studio code",
-    "application",
-    "react project",
-    "chrome",
-    "website",
-    "react documentation",
-    "project notes",
-    "file",
-    "project document",
-  ].some((text) => text.includes(searchQuery.toLowerCase().trim()));
-  const timelineHasResults = [
-    "visual studio code",
-    "application",
-    "react project",
-    "chrome",
-    "website",
-    "react documentation",
-    "project notes",
-    "file",
-    "project document",
-  ].some((text) => text.includes(timelineSearch.toLowerCase().trim()));
-
   useEffect(() => {
     let mounted = true;
 
@@ -324,261 +295,27 @@ export function App() {
         )}
 
         {page === "Timeline" && (
-          <section className="panel">
-            <p className="eyebrow">ACTIVITY TIMELINE</p>
-            <h2>Your work activity</h2>
-
-            <p>
-              See the applications, websites, and files used during your work
-              sessions.
-            </p>
-
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                These are example activities for the interface design. Real
-                activity collection is not connected yet.
-              </span>
-            </div>
-
-            <input
-              type="search"
-              className="timeline-search"
-              placeholder="Search activities..."
-              aria-label="Search timeline activities"
-              value={timelineSearch}
-              onChange={(e) => setTimelineSearch(e.target.value)}
-            />
-            <div className="timeline-list">
-              {["visual studio code", "application", "react project"].some(
-                (text) => text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:30 AM</span>
-                  <div>
-                    <h3>Visual Studio Code</h3>
-                    <p>Application · Working on a React project</p>
-                  </div>
-                </div>
-              )}
-
-              {["chrome", "website", "react documentation"].some((text) =>
-                text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:15 AM</span>
-                  <div>
-                    <h3>Chrome</h3>
-                    <p>Website · Reading React documentation</p>
-                  </div>
-                </div>
-              )}
-
-              {["project notes", "file", "project document"].some((text) =>
-                text.includes(timelineSearch.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">09:45 AM</span>
-                  <div>
-                    <h3>Project Notes</h3>
-                    <p>File · Opened a project document</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {!timelineHasResults && (
-              <p role="status">No activities found. Try a different search.</p>
-            )}
-          </section>
+          <EmptyState
+            title="Your timeline will start here"
+            description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
+          />
         )}
-
-        <EmptyState
-          title="Your timeline will start here"
-          description="No activity has been collected. Application, website, file-change, idle, and lock events are planned; there is no persistent history yet."
-        />
 
         {page === "Search" && (
           <section className="panel">
-            <p className="eyebrow">SEARCH ACTIVITY</p>
             <h2>Search your recorded evidence</h2>
-
             <p>
-              Search for applications, websites, and files from your work
-              sessions. Keyword search requires SQLite FTS5. Optional Gemini
-              evidence search comes later, after explicit opt-in.
+              Search will become available after activity collection and
+              encrypted storage are connected. Cloud AI is disabled.
             </p>
-
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                Search results below are examples. Real activity history is not
-                connected yet.
-              </span>
-            </div>
-
+            <label htmlFor="search">Search history</label>
             <div className="search-row">
               <input
-                type="search"
-                placeholder="Search your activity..."
-                aria-label="Search activity"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                id="search"
+                placeholder="Search is not available yet"
+                disabled
               />
-              <button
-                type="button"
-                onClick={() =>
-                  document
-                    .querySelector<HTMLInputElement>(
-                      'input[aria-label="Search activity"]',
-                    )
-                    ?.focus()
-                }
-              >
-                Search
-              </button>
-              id="search" placeholder="Search is not available yet" disabled /
               <button disabled>Search</button>
-            </div>
-
-            <div className="timeline-list">
-              {["visual studio code", "application", "react project"].some(
-                (text) => text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:30 AM</span>
-                  <div>
-                    <h3>Visual Studio Code</h3>
-                    <p>Application · Working on a React project</p>
-                  </div>
-                </div>
-              )}
-
-              {["chrome", "website", "react documentation"].some((text) =>
-                text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">10:15 AM</span>
-                  <div>
-                    <h3>Chrome</h3>
-                    <p>Website · Reading React documentation</p>
-                  </div>
-                </div>
-              )}
-
-              {["project notes", "file", "project document"].some((text) =>
-                text.includes(searchQuery.toLowerCase().trim()),
-              ) && (
-                <div className="timeline-card">
-                  <span className="timeline-time">09:45 AM</span>
-                  <div>
-                    <h3>Project Notes</h3>
-                    <p>File · Opened a project document</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            {!searchHasResults && (
-              <p role="status">No results found. Try a different search.</p>
-            )}
-          </section>
-        )}
-
-        {page === "Checkpoints" && (
-          <section className="panel">
-            <p className="eyebrow">FILE CHECKPOINTS</p>
-            <h2>Your saved checkpoints</h2>
-
-            <p>View saved versions of your files and restore previous work.</p>
-
-            <div className="notice">
-              <strong>Preview only</strong>
-              <span>
-                These checkpoints are examples for the interface design. File
-                backup and recovery are not connected yet.
-              </span>
-            </div>
-
-            <div className="timeline-list">
-              <div className="timeline-card">
-                <span className="timeline-time">Today · 10:30 AM</span>
-                <div>
-                  <h3>React Project</h3>
-                  <p>3 files · Example checkpoint</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedCheckpoint(
-                        selectedCheckpoint === "react" ? null : "react",
-                      )
-                    }
-                  >
-                    {selectedCheckpoint === "react"
-                      ? "Hide details"
-                      : "View details"}
-                  </button>
-
-                  {selectedCheckpoint === "react" && (
-                    <div>
-                      <p>Example saved files:</p>
-                      <p>App.tsx · styles.css · package.json</p>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPreviewFile(
-                            previewFile === "App.tsx" ? null : "App.tsx",
-                          )
-                        }
-                      >
-                        {previewFile === "App.tsx"
-                          ? "Close preview"
-                          : "Preview App.tsx"}
-                      </button>
-
-                      {previewFile === "App.tsx" && (
-                        <div className="timeline-card checkpoint-preview">
-                          <div>
-                            <h3>App.tsx — Version preview</h3>
-                            <p>Example version: Today at 10:30 AM</p>
-                            <p>Status: Saved version preview (demo)</p>
-                            <p>Restore is not available yet.</p>
-                          </div>
-                        </div>
-                      )}
-                      <p>Preview only — file recovery is not available yet.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="timeline-card">
-                <span className="timeline-time">Yesterday · 04:15 PM</span>
-                <div>
-                  <h3>Project Documents</h3>
-                  <p>2 files · Example checkpoint</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedCheckpoint(
-                        selectedCheckpoint === "documents" ? null : "documents",
-                      )
-                    }
-                  >
-                    {selectedCheckpoint === "documents"
-                      ? "Hide details"
-                      : "View details"}
-                  </button>
-
-                  {selectedCheckpoint === "documents" && (
-                    <div>
-                      <p>Example saved files:</p>
-                      <p>ProjectReport.docx · Notes.pdf</p>
-                      <p>Preview only — file recovery is not available yet.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           </section>
         )}
@@ -589,6 +326,7 @@ export function App() {
             description="Future checkpoints will group captured file versions, websites, and project references. They cannot restore arbitrary unsaved application state."
           />
         )}
+
         {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
