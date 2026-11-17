@@ -16,6 +16,7 @@ let requests = 0;
 let lastHeartbeat = Date.now();
 let ending = false;
 function send(message: WorkerOutput): void {
+  if (ending) return;
   if (
     boundedWorkerMessage(message) &&
     workerOutputSchema.safeParse(message).success

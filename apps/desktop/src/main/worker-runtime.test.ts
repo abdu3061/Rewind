@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import { join } from "node:path";
 import { WorkerRuntime } from "./worker-runtime";
+import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
   newSecureFixture,
   removeSecureFixture,
@@ -14,7 +15,7 @@ afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.shutdown();
   for (const directory of directories.splice(0)) removeSecureFixture(directory);
 });
-function fixture() {
+function fixture(strategy?: WindowQueryStrategy) {
   const root = newSecureFixture();
   directories.push(root);
   const key = randomBytes(32);
@@ -23,6 +24,7 @@ function fixture() {
     root,
     key,
     synthetic: true,
+    ...(strategy ? { strategy } : {}),
     onSnapshot: vi.fn(),
     onActivity: vi.fn(),
   });
@@ -159,4 +161,48 @@ it("enforces application exclusions on the actual recording pipeline", async () 
   expect(
     await f.runtime.execute({ kind: "timeline", query: { limit: 10 } }),
   ).toEqual({ ok: true, value: [] });
+});
+it("retains a capture gap and readable history when the active window source becomes unavailable", async () => {
+  let queries = 0;
+  const f = fixture({
+    getActiveWindow: async () => {
+      if (++queries > 1)
+        throw new Error("Synthetic private upstream diagnostic");
+      return {
+        application: "SyntheticEditor.exe",
+        windowTitle: "Synthetic readiness",
+      };
+    },
+  });
+  await f.runtime.initialize();
+  await f.runtime.execute({
+    kind: "preferences.update",
+    value: { collectionConsent: true, excludedApplications: [] },
+  });
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  await vi.waitFor(() =>
+    expect(f.runtime.snapshot().service).toBe("unavailable"),
+  );
+  expect(f.runtime.snapshot().secureStorage).toBe(true);
+  const result = await f.runtime.execute({
+    kind: "timeline",
+    query: { limit: 10 },
+  });
+  expect(result).toMatchObject({
+    ok: true,
+    value: [
+      {
+        type: "capture-gap",
+        payload: { collectorId: "windows", reason: "unavailable" },
+      },
+    ],
+  });
+  const stoppedAt = queries;
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  expect(queries).toBe(stoppedAt);
+  expect(JSON.stringify(f.runtime.snapshot())).not.toContain(
+    "Synthetic private upstream diagnostic",
+  );
 });

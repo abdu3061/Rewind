@@ -10,5 +10,5 @@ export type {
   WindowsCollectorOptions,
 } from "./types";
 
-// A Windows prototype exists; the desktop registers no native collectors or watchers.
-export const collectorImplementationStatus = "prototype-unintegrated" as const;
+// Only Windows foreground collection is composed; browser and folder adapters remain unavailable.
+export const collectorImplementationStatus = "windows-consent-gated" as const;

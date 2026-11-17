@@ -88,7 +88,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
     ).toBe(true);
     await page.screenshot({
       path: "test-results/recording-timeline.png",
-      fullPage: true,
+      fullPage: false,
     });
     await page.getByLabel("Search history").fill("nonexistent-fixture-token");
     await page.getByRole("button", { name: "Apply filters" }).click();
@@ -135,10 +135,53 @@ test("explicit approval records encrypted synthetic history with real filters, p
         }),
       ),
     ).toEqual(excluded);
+    if (!excluded.ok)
+      throw new Error("Expected readable history while excluded.");
+    await page.getByLabel("Excluded applications (one name per line)").fill("");
+    await page
+      .getByRole("button", { name: "Save exclusions", exact: true })
+      .click();
+    await expect(page.getByTestId("session-status")).toHaveText("paused");
+    await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const result = await page.evaluate(() =>
+          (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
+            limit: 100,
+          }),
+        );
+        return result.ok ? result.value[0]?.id : null;
+      })
+      .not.toBe(excluded.value[0]?.id);
     await page
       .getByRole("button", { name: "End session", exact: true })
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("ended");
+    await expect(page.getByTestId("collection-status")).toHaveText(
+      "Collection off",
+    );
+    const finalEvents = await page.evaluate(() =>
+      (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
+        limit: 100,
+      }),
+    );
+    await page.waitForTimeout(250);
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
+          limit: 100,
+        }),
+      ),
+    ).toEqual(finalEvents);
+    await page
+      .getByLabel("Excluded applications (one name per line)")
+      .fill("SyntheticEditor.exe");
+    await page
+      .getByRole("button", { name: "Save exclusions", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Save exclusions", exact: true }),
+    ).toBeEnabled();
     const session = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.sessions.get(),
     );
@@ -180,7 +223,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
           limit: 100,
         }),
       ),
-    ).toEqual(excluded);
+    ).toEqual(finalEvents);
     await page.screenshot({
       path: "test-results/recording-dashboard.png",
       fullPage: true,
