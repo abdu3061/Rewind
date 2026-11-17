@@ -20,6 +20,8 @@ The wire format follows the official [Chrome Native Messaging documentation](htt
 
 The focused-tab provider is now implemented separately and verified with its real controller in both installed browsers, using only generated profiles and routed synthetic pages. It checks authority between nonpopulated window/active-tab/focus APIs and preserves lazy URL/title access for controller exclusions. Sixteen unit cases cover pending-query revocation and private/unfocused contexts; the combined browser suite now has four passing tests. The normal background still does not register this provider or request any permissions. Setup, background connection/consent, worker and public UI integration remain in progress.
 
+The separate native client session now manages explicit approval, handshake, polling, expiry/revocation, drained stop acknowledgement and explicit reconnect. Thirteen new unit cases and two additional actual Chrome/Edge tests verify the complete native/client/engine/cipher-storage path, including FTS, live database/WAL confidentiality markers, pause/resume/end, client-denial gap and encrypted reopen. The accumulated suite has six browser tests. No normal background activation or production host registration is implied; owned setup, popup/consent and worker/public UI composition remain in progress.
+
 ## Starter behavior
 
 `npm run build:extension` creates `apps/browser-extension/dist` with `manifest.json`, a module service worker, and a status popup. Load this directory unpacked in Chrome/Edge developer mode. The service worker only sets the action title on installation. It registers no tab/navigation/content listeners, stores no history, opens no network/native connection, and requests no permissions. `incognito: not_allowed` excludes private use.
