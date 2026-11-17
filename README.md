@@ -1,19 +1,20 @@
 # Rewind
 
-Rewind is a Windows desktop work-session memory project. This local development branch provides consent-driven Windows activity recording and encrypted history; it is not the complete version-one product or a release. See the [implementation and verification report](docs/audit/secure-storage-collection-integration.md).
+Rewind is a Windows desktop work-session memory project. This local development branch provides consent-driven activity recording, encrypted history and protected-folder saved versions; it is not the complete version-one product or a release. See the [current implementation report](docs/audit/core-functionality-integration.md).
 
 ## What works today
 
-- Electron + React desktop shell with Dashboard, Timeline, Search, Checkpoints, and Settings.
+- Electron + React desktop shell with Dashboard, Timeline, Search, Files, Checkpoints, and Settings.
 - Persistent Start → Pause → Resume → End controls through a validated preload bridge and supervised utility process. Invalid transitions and failed writes return errors.
 - Collection starts off. Explicit Windows activity approval plus an active session records permitted application names, window titles and timestamps. Approval expires on every app/worker restart; application exclusions persist. Known browser windows and Rewind are skipped.
 - Timeline and local keyword search read encrypted SQLite/FTS history with session/date/type filters, paging and live updates. Interrupted active sessions recover paused with a capture gap. A title does not prove a saved/read file.
+- Select local NTFS folders in Files and separately approve file capture for this launch. Active sessions capture bounded initial/saved bytes into encrypted SQLite BLOBs with verified Windows identities and hashes. Versions survive restart; UTF-8 previews are escaped. DOCX/PDF original bytes are preserved, with document rendering still unavailable. Capture progress, failures and limits are visible; brief intermediate saves can be missed.
 - Tray status and acknowledged shutdown. Closing the window ends the session and quits. A worker failure disables recording and requires reconnect/fresh approval.
 - Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
 
 History now has configurable retention, automatic expiration, usage/quota backpressure and confirmed deletion in Settings; see the [core integration report](docs/audit/core-functionality-integration.md) for policy and verification. Kept checkpoint evidence is protected by cleanup, although checkpoint creation UI remains forthcoming. Quotas include database journals and can temporarily be exceeded during bounded writes/compaction; deletion cannot promise forensic erasure.
 
-No folders are protected yet. Browser visits, snapshots/recovery, checkpoint creation, idle/lock detection and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history uses a keyed native cipher and Windows-protected key instead.
+Browser visits, recovery execution, checkpoint creation, idle/lock detection and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history and captured original bytes use a keyed native cipher and Windows-protected key instead.
 
 ## Windows / PowerShell setup
 

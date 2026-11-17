@@ -241,7 +241,14 @@ app
           "INVALID_INPUT",
           "Exactly one bounded recording command is required.",
         );
-      return dispatchRecordingRequest(sessions, args[0]);
+      return dispatchRecordingRequest(sessions, args[0], async () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return null;
+        const selected = await dialog.showOpenDialog(mainWindow, {
+          title: "Choose a folder for saved file versions",
+          properties: ["openDirectory"],
+        });
+        return selected.canceled ? null : (selected.filePaths[0] ?? null);
+      });
     });
     await sessions.start();
     // A simple native bitmap avoids external icon assets in the initialization build.

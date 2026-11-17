@@ -58,6 +58,7 @@ function fixture(path = ":memory:") {
     getSettings: () => ({
       ...createDefaultSettings(),
       collectionConsent: true,
+      folderCollectionConsent: true,
     }),
     authorizeResource: async () => ({ ok: true, value: undefined }), // Synthetic resource authorization only.
   });

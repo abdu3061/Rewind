@@ -290,7 +290,9 @@ export class SecureStorage implements SessionStorage {
       return failure("UNAVAILABLE", "Secure storage is unavailable.");
     query = parsed.data;
     try {
-      const conditions = ["a.type IN ('foreground', 'capture-gap')"];
+      const conditions = [
+        "a.type IN ('foreground', 'capture-gap', 'file-change')",
+      ];
       const params: SqlValue[] = [];
       if (query.sessionId) {
         conditions.push("a.session_id=?");
@@ -319,7 +321,9 @@ export class SecureStorage implements SessionStorage {
         params.push(...query.types);
       }
       if (query.text) {
-        const terms = query.text.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 30) ?? [];
+        const terms = query.text.match(/[\p{L}\p{N}_]+/gu) ?? [];
+        if (terms.length > 30)
+          return failure("INVALID_INPUT", "Use at most 30 search terms.");
         if (!terms.length) return { ok: true, value: [] };
         conditions.push(
           "a.rowid IN (SELECT rowid FROM activity_fts WHERE activity_fts MATCH ?)",

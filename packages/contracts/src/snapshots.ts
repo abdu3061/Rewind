@@ -19,10 +19,13 @@ export const nativeFolderProofSchema = protectedFolderSchema.pick({
   absolutePath: true,
   osIdentity: true,
 });
-export const nativeFileListingSchema = z.strictObject({
-  paths: z.array(z.string().min(1).max(240)).max(2000),
-  overflow: z.boolean(),
-});
+export const nativeFileListingSchema = z
+  .strictObject({
+    paths: z.array(z.string().min(1).max(240)).max(2000),
+    stamps: z.array(z.string().max(80)).max(2000),
+    overflow: z.boolean(),
+  })
+  .refine((value) => value.paths.length === value.stamps.length);
 export const nativeFileBytesSchema = z.strictObject({
   base64: z
     .string()
@@ -43,7 +46,7 @@ export interface ProtectedFileAccess {
   read(
     folder: ProtectedFolder,
     relativePath: string,
-  ): Promise<Result<{ bytes: Uint8Array; osIdentity: string }>>;
+  ): Promise<Result<{ bytes: Uint8Array<ArrayBuffer>; osIdentity: string }>>;
   close(): Promise<Result<void>>;
 }
 export const snapshotBindingSchema = z.strictObject({
@@ -63,16 +66,21 @@ export const snapshotCaptureSchema = z.strictObject({
   bytes: z
     .instanceof(Uint8Array)
     .refine(
-      (bytes) =>
+      (bytes): boolean =>
         bytes.byteLength <= MAX_SNAPSHOT_BYTES &&
         bytes.buffer instanceof ArrayBuffer,
     ),
 });
 export type SnapshotCapture = z.infer<typeof snapshotCaptureSchema>;
 export interface SnapshotStore {
+  info(versionId: string): Promise<Result<FileVersion | null>>;
   saveFolder(folder: ProtectedFolder): Promise<Result<void>>;
   listFolders(): Promise<Result<ProtectedFolder[]>>;
   removeFolder(id: string): Promise<Result<void>>;
+  resolveFileId(
+    folderId: string,
+    relativePath: string,
+  ): Promise<Result<string | null>>;
   /** Trusted engine port. Filesystem authorization is rechecked at use, never supplied by renderer. */
   capture(
     value: SnapshotCapture,
@@ -83,8 +91,19 @@ export interface SnapshotStore {
     versionId: string,
   ): Promise<Result<{ version: FileVersion; bytes: Uint8Array }>>;
   listVersions(query: {
-    fileId?: string;
+    fileId?: string | undefined;
     limit: number;
-    before?: { capturedAt: string; id: string };
+    before?: { capturedAt: string; id: string } | undefined;
   }): Promise<Result<FileVersion[]>>;
+}
+export interface FileCaptureIngestion {
+  get(
+    event: ActivityEvent,
+    settings: Readonly<import("./settings").UserSettings>,
+  ): Promise<Result<SnapshotCapture>>;
+  save(
+    value: SnapshotCapture,
+    event: ActivityEvent,
+    authorized: () => boolean,
+  ): Promise<Result<FileVersion>>;
 }

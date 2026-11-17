@@ -2,6 +2,7 @@ import { z } from "zod";
 import { appErrorSchema, idSchema, resultSchema } from "./common";
 import { sessionCommandSchema } from "./session";
 import { storageCommandSchema } from "./storage-management";
+import { fileCommandSchema } from "./file-controls";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -11,6 +12,11 @@ import {
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
   ...storageCommandSchema.options,
+  ...fileCommandSchema.options,
+  z.strictObject({
+    kind: z.literal("files.add"),
+    path: z.string().min(4).max(240),
+  }),
   z.strictObject({
     kind: z.literal("session"),
     action: sessionCommandSchema.shape.action,
@@ -72,6 +78,14 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
       "storage.update",
       "storage.cleanup",
       "storage.delete",
+      "files.state",
+      "files.select",
+      "files.add",
+      "files.permission",
+      "files.remove",
+      "versions.list",
+      "versions.preview",
+      "versions.info",
     ]),
     result: resultSchema(z.unknown()),
   }),

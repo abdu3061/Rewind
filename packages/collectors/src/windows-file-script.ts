@@ -11,7 +11,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 public class RewindFolder { public string absolutePath; public string osIdentity; }
-public class RewindListing { public string[] paths; public bool overflow; }
+public class RewindListing { public string[] paths; public string[] stamps; public bool overflow; }
 public class RewindBytes { public string base64; public string osIdentity; public long byteLength; }
 public static class RewindFileAccess {
   [StructLayout(LayoutKind.Sequential)] public struct Info {
@@ -21,6 +21,7 @@ public static class RewindFileAccess {
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
   static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Info info);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int kind, out uint value, uint size);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder name, uint size, uint flags);
   [DllImport("kernel32.dll")] static extern uint GetFileType(SafeFileHandle handle);
   sealed class Lease : IDisposable {
@@ -65,6 +66,7 @@ public static class RewindFileAccess {
         Info info;
         if(!GetFileInformationByHandle(handle,out info) || GetFileType(handle)!=1 || (info.attributes & 0x400)!=0 || ((info.attributes & 0x10)==0)!=lastFile || (!lastFile && !String.Equals(Final(handle),current.TrimEnd('\\'),StringComparison.OrdinalIgnoreCase))) throw new IOException("IDENTITY_POLICY");
         if(lastFile && (info.links!=1 || !String.Equals(Final(handle),full,StringComparison.OrdinalIgnoreCase))) throw new IOException("FILE_IDENTITY_POLICY");
+        if(!lastFile) { uint caseFlags; if(!GetFileInformationByHandleEx(handle,23,out caseFlags,4) || caseFlags!=0) throw new IOException("DIRECTORY_CASE_POLICY"); }
         lease.info = info;
       }
       return lease;
@@ -87,25 +89,31 @@ public static class RewindFileAccess {
     root=PathValue(root);
     using(Lease selected = Root(root,identity)) {
       List<string> files = new List<string>();
+      Dictionary<string,string> stamps = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
       Stack<string> pending = new Stack<string>(); pending.Push(root);
       int visited=0; bool overflow=false;
       while(pending.Count>0 && !overflow) {
         string directory=pending.Pop();
         using(Lease held=LockPath(directory,false)) {
-          foreach(string entry in Directory.EnumerateFileSystemEntries(directory)) {
+          foreach(FileSystemInfo item in new DirectoryInfo(directory).EnumerateFileSystemInfos()) {
+            string entry=item.FullName;
             if(++visited>2000) { overflow=true; break; }
             string name=Path.GetFileName(entry);
             if(Skip(name)) continue;
-            FileAttributes attributes=File.GetAttributes(entry);
+            FileAttributes attributes=item.Attributes;
             if((attributes & (FileAttributes.ReparsePoint|FileAttributes.Hidden|FileAttributes.System))!=0) continue;
             string relative=entry.Substring(root.Length+1);
             if(relative.Split('\\').Length>16 || entry.Length>240) { overflow=true; continue; }
-            if((attributes & FileAttributes.Directory)!=0) pending.Push(entry); else files.Add(relative);
+            if((attributes & FileAttributes.Directory)!=0) pending.Push(entry); else {
+              files.Add(relative); stamps[relative]=((FileInfo)item).Length.ToString()+":"+item.LastWriteTimeUtc.Ticks.ToString();
+            }
           }
         }
       }
       files.Sort(StringComparer.OrdinalIgnoreCase);
-      return new RewindListing { paths=files.ToArray(), overflow=overflow };
+      string[] fingerprints=new string[files.Count];
+      for(int i=0; i<files.Count; i++) fingerprints[i]=stamps[files[i]];
+      return new RewindListing { paths=files.ToArray(), stamps=fingerprints, overflow=overflow };
     }
   }
   public static RewindBytes Read(string root, string identity, string relative) {
@@ -125,7 +133,7 @@ public static class RewindFileAccess {
           int offset=0;
           while(offset<bytes.Length) { int count=stream.Read(bytes,offset,bytes.Length-offset); if(count==0) throw new IOException("SHORT_READ"); offset+=count; }
           Info after;
-          if(stream.ReadByte()!=-1 || !GetFileInformationByHandle(held.last,out after) || Identity(before)!=Identity(after) || before.sizeHigh!=after.sizeHigh || before.sizeLow!=after.sizeLow || before.writtenHigh!=after.writtenHigh || before.writtenLow!=after.writtenLow) throw new IOException("FILE_CHANGED");
+          if(stream.ReadByte()!=-1 || !GetFileInformationByHandle(held.last,out after) || after.links!=1 || Identity(before)!=Identity(after) || before.sizeHigh!=after.sizeHigh || before.sizeLow!=after.sizeLow || before.writtenHigh!=after.writtenHigh || before.writtenLow!=after.writtenLow) throw new IOException("FILE_CHANGED");
           return new RewindBytes { base64=Convert.ToBase64String(bytes), osIdentity=Identity(before), byteLength=(long)size };
         }
       } finally { Array.Clear(bytes,0,bytes.Length); }

@@ -2,6 +2,8 @@ import type { DatabaseConnection } from "./database";
 import {
   failure,
   fileReferenceSchema,
+  fileVersionSchema,
+  idSchema,
   type FileReference,
   type FileRepository,
   type FileVersion,
@@ -80,6 +82,8 @@ export class SqliteFileRepository implements FileRepository {
   }
 
   async getReference(fileId: Id): Promise<Result<FileReference | null>> {
+    if (!idSchema.safeParse(fileId).success)
+      return failure("INVALID_INPUT", "A file ID is required.");
     try {
       const stmt = this.db.prepare(`
         SELECT id, display_name, identity_kind, absolute_path, verified_at, observed_title
@@ -88,16 +92,23 @@ export class SqliteFileRepository implements FileRepository {
       `);
 
       const row = stmt.get(fileId) as unknown as FileRow | undefined;
-      return { ok: true, value: row ? rowToFileReference(row) : null };
-    } catch (error) {
+      return {
+        ok: true,
+        value: row ? fileReferenceSchema.parse(rowToFileReference(row)) : null,
+      };
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to get file reference: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored file identity is unavailable or invalid.",
       );
     }
   }
 
   async addVersion(version: FileVersion): Promise<Result<void>> {
+    const parsed = fileVersionSchema.safeParse(version);
+    if (!parsed.success)
+      return failure("INVALID_INPUT", "File version metadata is invalid.");
+    version = parsed.data;
     try {
       const stmt = this.db.prepare(`
         INSERT INTO file_versions (id, session_id, file_id, captured_at, content_hash, byte_length, media_type)
@@ -115,15 +126,14 @@ export class SqliteFileRepository implements FileRepository {
       );
 
       return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to add file version: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "File version metadata could not be saved.");
     }
   }
 
   async getVersion(id: Id): Promise<Result<FileVersion | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "A version ID is required.");
     try {
       const stmt = this.db.prepare(`
         SELECT id, session_id, file_id, captured_at, content_hash, byte_length, media_type
@@ -132,16 +142,21 @@ export class SqliteFileRepository implements FileRepository {
       `);
 
       const row = stmt.get(id) as unknown as FileVersionRow | undefined;
-      return { ok: true, value: row ? rowToFileVersion(row) : null };
-    } catch (error) {
+      return {
+        ok: true,
+        value: row ? fileVersionSchema.parse(rowToFileVersion(row)) : null,
+      };
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to get file version: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored file version metadata is unavailable or invalid.",
       );
     }
   }
 
   async listVersions(fileId: Id): Promise<Result<FileVersion[]>> {
+    if (!idSchema.safeParse(fileId).success)
+      return failure("INVALID_INPUT", "A file ID is required.");
     try {
       const stmt = this.db.prepare(`
         SELECT id, session_id, file_id, captured_at, content_hash, byte_length, media_type
@@ -151,11 +166,16 @@ export class SqliteFileRepository implements FileRepository {
       `);
 
       const rows = stmt.all(fileId) as unknown as FileVersionRow[];
-      return { ok: true, value: rows.map(rowToFileVersion) };
-    } catch (error) {
+      return {
+        ok: true,
+        value: rows.map((row) =>
+          fileVersionSchema.parse(rowToFileVersion(row)),
+        ),
+      };
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to list file versions: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored file versions are unavailable or invalid.",
       );
     }
   }

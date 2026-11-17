@@ -142,6 +142,33 @@ export class SnapshotRepository implements SnapshotStore {
       return failure("UNAVAILABLE", "Protected folder could not be removed.");
     }
   }
+  async resolveFileId(
+    folderId: string,
+    relativePath: string,
+  ): Promise<Result<string | null>> {
+    if (
+      !idSchema.safeParse(folderId).success ||
+      !relativePath ||
+      relativePath.length > 240
+    )
+      return failure(
+        "INVALID_INPUT",
+        "A selected relative file identity is required.",
+      );
+    try {
+      const row = this.db
+        .prepare(
+          "SELECT file_id FROM file_bindings WHERE folder_id=? AND relative_path=? COLLATE NOCASE",
+        )
+        .get(folderId, relativePath);
+      return { ok: true, value: row ? idSchema.parse(row.file_id) : null };
+    } catch {
+      return failure(
+        "INTEGRITY_FAILURE",
+        "Saved file identity could not be resolved.",
+      );
+    }
+  }
   async capture(
     input: SnapshotCapture,
     observation: ActivityEvent,
@@ -158,9 +185,11 @@ export class SnapshotRepository implements SnapshotStore {
       v.byteLength !== value.bytes.byteLength ||
       event.data.type !== "file-change" ||
       event.data.payload.fileId !== v.fileId ||
+      (event.data.payload.displayName !== undefined &&
+        event.data.payload.displayName !== value.file.displayName) ||
       event.data.sessionId !== v.sessionId ||
       event.data.occurredAt !== v.capturedAt ||
-      !["created", "updated"].includes(event.data.payload.change)
+      !["created", "updated", "captured"].includes(event.data.payload.change)
     )
       return failure(
         "INVALID_INPUT",
@@ -194,8 +223,8 @@ export class SnapshotRepository implements SnapshotStore {
       if (
         !folder ||
         value.file.identity.kind !== "verified-path" ||
-        path.join(String(folder.absolute_path), relative).toLowerCase() !==
-          value.file.identity.absolutePath.toLowerCase()
+        path.join(String(folder.absolute_path), relative) !==
+          value.file.identity.absolutePath
       )
         throw new Error("FOLDER_SCOPE");
       const session = this.db
@@ -238,7 +267,7 @@ export class SnapshotRepository implements SnapshotStore {
         this.db.exec("ROLLBACK");
         transaction = false;
         return failure(
-          "UNAVAILABLE",
+          "STORAGE_LIMIT",
           "Snapshot quota would be exceeded. Free storage or increase the limit.",
         );
       }
@@ -265,7 +294,12 @@ export class SnapshotRepository implements SnapshotStore {
         )
         .get(v.fileId, v.sessionId);
       let captured = v;
-      if (latest && latest.content_hash === v.contentHash)
+      if (
+        latest &&
+        latest.content_hash === v.contentHash &&
+        Date.parse(v.capturedAt) - Date.parse(String(latest.captured_at)) <
+          (settings.retentionHours * 3600_000) / 4
+      )
         captured = version(latest);
       else
         this.db
@@ -319,6 +353,27 @@ export class SnapshotRepository implements SnapshotStore {
           /* Owner closes a failed connection. */
         }
       }
+    }
+  }
+  async info(versionId: string): Promise<Result<FileVersion | null>> {
+    if (!idSchema.safeParse(versionId).success)
+      return failure("INVALID_INPUT", "A version ID is required.");
+    try {
+      const row = this.db
+        .prepare(
+          "SELECT v.*,length(b.bytes) AS stored_length FROM file_versions v JOIN snapshot_blobs b ON b.content_hash=v.blob_hash WHERE v.id=?",
+        )
+        .get(versionId);
+      if (!row) return { ok: true, value: null };
+      const value = version(row);
+      if (row.stored_length !== value.byteLength)
+        throw new Error("LENGTH_INTEGRITY");
+      return { ok: true, value };
+    } catch {
+      return failure(
+        "INTEGRITY_FAILURE",
+        "Captured version metadata could not be verified.",
+      );
     }
   }
   async read(

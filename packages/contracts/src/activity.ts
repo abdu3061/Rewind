@@ -46,7 +46,14 @@ export const activityEventSchema = z
       source: z.literal("filesystem"),
       payload: z.strictObject({
         fileId: idSchema,
-        change: z.enum(["created", "updated", "deleted", "renamed"]),
+        displayName: z.string().min(1).max(255).optional(),
+        change: z.enum([
+          "created",
+          "updated",
+          "deleted",
+          "renamed",
+          "captured",
+        ]),
       }),
     }),
     eventBase.extend({

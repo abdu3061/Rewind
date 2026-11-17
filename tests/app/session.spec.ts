@@ -87,6 +87,8 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       node: "undefined",
       process: "undefined",
       keys: [
+        "files",
+        "versions",
         "storage",
         "runtime",
         "privacy",
@@ -110,6 +112,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     for (const [screen, heading] of [
       ["Timeline", "Recorded activity"],
       ["Search", "Search your recorded evidence"],
+      ["Files", "Protected folders"],
       ["Checkpoints", "No checkpoints yet"],
       ["Settings", "Privacy comes first"],
     ] as const) {
@@ -171,7 +174,7 @@ test("a different window cannot invoke privileged session commands", async ({
             "data:text/html,<html><body>Untrusted</body></html>",
           );
           return (await untrusted.webContents.executeJavaScript(
-            "Promise.all([window.rewind.sessions.start(), window.rewind.privacy.update({collectionConsent:true,excludedApplications:[]}), window.rewind.timeline.query({limit:10}), window.rewind.runtime.retry()])",
+            "Promise.all([window.rewind.sessions.start(), window.rewind.privacy.update({collectionConsent:true,excludedApplications:[]}), window.rewind.timeline.query({limit:10}), window.rewind.runtime.retry(),window.rewind.files.selectFolder(),window.rewind.versions.list({limit:10})])",
           )) as unknown;
         } finally {
           untrusted.destroy();
@@ -179,7 +182,7 @@ test("a different window cannot invoke privileged session commands", async ({
       },
     );
     expect(response).toEqual(
-      Array.from({ length: 4 }, () => ({
+      Array.from({ length: 6 }, () => ({
         ok: false,
         error: { code: "FORBIDDEN", message: expect.any(String) },
       })),

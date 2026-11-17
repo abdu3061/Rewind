@@ -12,6 +12,7 @@ export const errorCodeSchema = z.enum([
   "NOT_FOUND",
   "NOT_IMPLEMENTED",
   "UNAVAILABLE",
+  "STORAGE_LIMIT",
   "INTEGRITY_FAILURE",
   "CONFLICT",
   "INTERNAL",

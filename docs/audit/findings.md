@@ -1,6 +1,8 @@
 # Engineering findings
 
-The active [core integration follow-up](core-functionality-integration.md) adds encrypted-history retention, FTS deletion, physical usage/quota backpressure, explicit stop/drain/deletion controls and stricter checkpoint membership. F12 advances through transitive retention and FK/session validation; creation/recovery UI and actual snapshot bytes remain dependent work. Historical entries below retain their inspected-revision scope.
+The active [core integration follow-up](core-functionality-integration.md) adds encrypted-history retention, FTS deletion, physical usage/quota backpressure, explicit stop/drain/deletion controls and stricter checkpoint membership. F12 advances through transitive retention and FK/session validation; checkpoint creation and recovery UI remain dependent work. Historical entries below retain their inspected-revision scope.
+
+The next local slice implements bounded original-byte capture and Files UI, advancing F13/F28 with persistent bindings, native current-use scope/identity checks, atomic encrypted bytes and saved-file evidence, source-specific approval, verified text previews and restart tests. Renames/moves, document rendering, recovery execution and checkpoint UI remain separate work. Unicode name separation, retention freshness, preview invalidation and failed-close retry have regressions. This does not repair or merge the old remote collector composition.
 
 ## Subsequent implementation status
 

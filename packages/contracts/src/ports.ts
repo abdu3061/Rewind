@@ -55,6 +55,8 @@ export interface CollectorContext {
   generationId: Id;
   settings: Readonly<UserSettings>;
   emit(events: readonly ActivityEvent[]): Promise<Result<void>>;
+  /** A source may revoke its current run on failure; stale contexts cannot affect a newer run. */
+  reportUnavailable?(): void;
 }
 export interface Collector {
   readonly id: string;

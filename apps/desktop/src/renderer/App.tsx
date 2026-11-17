@@ -7,11 +7,13 @@ import {
 } from "./recording";
 
 import { StorageManagement } from "./storage-management";
+import { Files } from "./files";
 
 const pages = [
   "Dashboard",
   "Timeline",
   "Search",
+  "Files",
   "Checkpoints",
   "Settings",
 ] as const;
@@ -168,7 +170,9 @@ export function App() {
           </span>
           <p>
             {runtime?.collection === "active"
-              ? "Windows activity is being recorded."
+              ? runtime.filePermission
+                ? "Approved sources are recording; see Files for capture progress."
+                : "Windows activity is being recorded."
               : runtime?.collection === "unavailable"
                 ? "Recording service requires attention."
                 : "No active recording authorization."}
@@ -201,9 +205,9 @@ export function App() {
               : "Secure storage unavailable"}
           </strong>
           <span>
-            Windows recording requires approval for this launch and an active
-            session. Cloud AI, browser visits, folder protection and recovery
-            are unavailable.
+            Windows activity and selected-folder capture need separate approval
+            for this launch and an active session. Cloud AI, browser visits and
+            recovery are unavailable.
           </span>
         </div>
 
@@ -328,16 +332,20 @@ export function App() {
 
               <section className="panel">
                 <p className="eyebrow">FILE PROTECTION</p>
-                <h2>No folders protected</h2>
+                <h2>Saved file versions</h2>
 
                 <p>
-                  Folder selection, saved versions, and reviewed recovery are
-                  planned for a later milestone.
+                  Select folders and approve capture to preserve supported saved
+                  bytes. Inspect capture progress and verified versions in
+                  Files.
                 </p>
 
-                <span className="subtle-label">
-                  Not available in this build
-                </span>
+                <button
+                  className="text-button"
+                  onClick={() => setPage("Files")}
+                >
+                  Open file protection
+                </button>
               </section>
             </div>
 
@@ -351,6 +359,7 @@ export function App() {
         {page === "Timeline" && <RecordedHistory runtime={runtime} />}
 
         {page === "Search" && <RecordedHistory runtime={runtime} search />}
+        {page === "Files" && <Files runtime={runtime} />}
 
         {page === "Checkpoints" && (
           <EmptyState
@@ -367,7 +376,8 @@ export function App() {
               <strong>Privacy settings</strong>
               <span>
                 Recording permission and application exclusions above are saved
-                by the engine. Other capabilities below remain unavailable.
+                by the engine. Manage encrypted history below and protected
+                folders in Files.
               </span>
             </div>
 

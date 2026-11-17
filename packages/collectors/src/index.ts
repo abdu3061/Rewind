@@ -13,3 +13,4 @@ export type {
 // Only Windows foreground collection is composed; browser and folder adapters remain unavailable.
 export const collectorImplementationStatus = "windows-consent-gated" as const;
 export { WindowsProtectedFileAccess } from "./windows-file-access";
+export { ProtectedFolderCollector } from "./protected-folder-collector";

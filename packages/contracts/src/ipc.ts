@@ -3,6 +3,14 @@ import { resultSchema, type Result } from "./common";
 import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
+import type { ProtectedFolder } from "./snapshots";
+import type { FileVersion } from "./files";
+import type {
+  FileProtectionState,
+  VersionListQuery,
+  CapturedVersionSummary,
+  VersionPreview,
+} from "./file-controls";
 import type {
   StoragePreferences,
   StorageUsage,
@@ -22,6 +30,17 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Recovery/AI/filesystem IPC will need lead review.
 export interface DesktopApi {
+  files: {
+    state(): Promise<Result<FileProtectionState>>;
+    selectFolder(): Promise<Result<ProtectedFolder | null>>;
+    permission(enabled: boolean): Promise<Result<FileProtectionState>>;
+    removeFolder(id: string): Promise<Result<FileProtectionState>>;
+  };
+  versions: {
+    info(id: string): Promise<Result<FileVersion | null>>;
+    list(query: VersionListQuery): Promise<Result<CapturedVersionSummary[]>>;
+    preview(id: string): Promise<Result<VersionPreview>>;
+  };
   storage: {
     usage(): Promise<Result<StorageUsage>>;
     update(value: StoragePreferences): Promise<Result<StorageUsage>>;

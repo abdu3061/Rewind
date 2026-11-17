@@ -4,6 +4,7 @@ import recording from "../../../db/migrations/002_recording.sql?raw";
 import searchText from "../../../db/migrations/003_activity_search_text.sql?raw";
 import checkpointIntegrity from "../../../db/migrations/004_checkpoint_integrity.sql?raw";
 import snapshotBytes from "../../../db/migrations/005_snapshot_bytes.sql?raw";
+import fileSearch from "../../../db/migrations/006_file_activity_search.sql?raw";
 import type { DatabaseConnection } from "./database";
 
 export interface Migration {
@@ -17,6 +18,7 @@ export const secureMigrations: readonly Migration[] = [
   { version: 3, name: "activity-search-text", sql: searchText },
   { version: 4, name: "checkpoint-integrity", sql: checkpointIntegrity },
   { version: 5, name: "snapshot-bytes", sql: snapshotBytes },
+  { version: 6, name: "file-activity-search", sql: fileSearch },
 ];
 export function applySecureMigrations(
   db: DatabaseConnection,

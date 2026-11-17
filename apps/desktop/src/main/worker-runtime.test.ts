@@ -2,7 +2,9 @@ import { randomBytes } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import { join } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { WorkerRuntime } from "./worker-runtime";
+import { versionListResponseSchema } from "@rewind/contracts";
 import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
   newSecureFixture,
@@ -16,8 +18,9 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) removeSecureFixture(directory);
 });
 function fixture(strategy?: WindowQueryStrategy) {
-  const root = newSecureFixture();
-  directories.push(root);
+  const profile = newSecureFixture();
+  directories.push(profile);
+  const root = join(profile, "secure");
   const key = randomBytes(32);
   const retainedKey = Buffer.from(key);
   const runtime = new WorkerRuntime({
@@ -29,8 +32,140 @@ function fixture(strategy?: WindowQueryStrategy) {
     onActivity: vi.fn(),
   });
   runtimes.push(runtime);
-  return { runtime, root, key: retainedKey };
+  return { runtime, root, profile, key: retainedKey };
 }
+it("captures real synthetic folder saves with file-only approval, drains pause/revoke and reopens encrypted versions", async () => {
+  const query = vi.fn(async () => ({
+    application: "Synthetic.exe",
+    windowTitle: "Must not be sampled",
+  }));
+  const f = fixture({ getActiveWindow: query });
+  const source = join(f.profile, "protected");
+  mkdirSync(source);
+  const target = join(source, "synthetic.txt");
+  writeFileSync(target, "SyntheticAlphaBytes9482");
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "files.add", path: f.profile })).ok,
+  ).toBe(false);
+  expect(
+    (await f.runtime.execute({ kind: "files.add", path: source })).ok,
+  ).toBe(true);
+  expect(f.runtime.snapshot().filePermission).toBe(false);
+  expect(
+    (await f.runtime.execute({ kind: "files.permission", enabled: true })).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  const list = async () => {
+    const result = await f.runtime.execute({
+      kind: "versions.list",
+      query: { limit: 100 },
+    });
+    if (!result.ok || !Array.isArray(result.value))
+      throw new Error("Synthetic captures unavailable");
+    return result.value as {
+      version: { id: string; fileId: string };
+      displayName: string;
+    }[];
+  };
+  await vi.waitFor(async () => expect(await list()).toHaveLength(1), {
+    timeout: 8000,
+  });
+  const first = (await list())[0]!;
+  expect(
+    await f.runtime.execute({ kind: "versions.preview", id: first.version.id }),
+  ).toMatchObject({ ok: true, value: { text: "SyntheticAlphaBytes9482" } });
+  expect(query).not.toHaveBeenCalled();
+  expect(
+    await f.runtime.execute({
+      kind: "timeline",
+      query: { limit: 10, text: "synthetic", types: ["file-change"] },
+    }),
+  ).toMatchObject({
+    ok: true,
+    value: [
+      expect.objectContaining({
+        type: "file-change",
+        payload: expect.objectContaining({ displayName: "synthetic.txt" }),
+      }),
+    ],
+  });
+  expect(
+    await f.runtime.execute({
+      kind: "timeline",
+      query: {
+        limit: 10,
+        text: Array.from({ length: 31 }, () => "term").join(" "),
+      },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+  writeFileSync(target, "SyntheticBetaBytes9482");
+  await vi.waitFor(async () => expect(await list()).toHaveLength(2), {
+    timeout: 8000,
+  });
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "pause" })).ok,
+  ).toBe(true);
+  writeFileSync(target, "SyntheticGammaBytes9482");
+  await new Promise((resolve) => setTimeout(resolve, 2200));
+  expect(await list()).toHaveLength(2);
+  await f.runtime.execute({ kind: "session", action: "resume" });
+  await vi.waitFor(async () => expect(await list()).toHaveLength(3), {
+    timeout: 8000,
+  });
+  expect(
+    (await f.runtime.execute({ kind: "files.permission", enabled: false })).ok,
+  ).toBe(true);
+  writeFileSync(target, "SyntheticDeltaBytes9482");
+  await new Promise((resolve) => setTimeout(resolve, 2200));
+  expect(await list()).toHaveLength(3);
+  expect(f.runtime.snapshot().collection).toBe("off");
+  await f.runtime.shutdown();
+  expect(
+    readFileSync(join(f.root, "history.sqlite")).includes(
+      Buffer.from("SyntheticAlphaBytes9482"),
+    ),
+  ).toBe(false);
+  const restarted = new WorkerRuntime({
+    root: f.root,
+    key: new Uint8Array(f.key),
+    synthetic: true,
+    onSnapshot: vi.fn(),
+    onActivity: vi.fn(),
+  });
+  runtimes.push(restarted);
+  expect((await restarted.initialize()).ok).toBe(true);
+  expect(restarted.snapshot().filePermission).toBe(false);
+  expect(await restarted.execute({ kind: "files.state" })).toMatchObject({
+    ok: true,
+    value: {
+      permission: false,
+      folders: [expect.objectContaining({ absolutePath: source })],
+    },
+  });
+  expect(
+    await restarted.execute({ kind: "versions.preview", id: first.version.id }),
+  ).toMatchObject({ ok: true, value: { text: "SyntheticAlphaBytes9482" } });
+  await restarted.execute({ kind: "files.permission", enabled: true });
+  await restarted.execute({ kind: "session", action: "start" });
+  await vi.waitFor(
+    async () => {
+      const history = await restarted.execute({
+        kind: "versions.list",
+        query: { limit: 100 },
+      });
+      const parsed = versionListResponseSchema.parse(history);
+      if (!parsed.ok)
+        throw new Error("Synthetic restarted captures unavailable");
+      expect(parsed.value).toHaveLength(4);
+      expect(parsed.value[0]!.version.fileId).toBe(first.version.fileId);
+    },
+    { timeout: 8000 },
+  );
+  expect(query).not.toHaveBeenCalled();
+}, 30000);
 it("a later revoke supersedes a grant still checking storage", async () => {
   const f = fixture();
   await f.runtime.initialize();

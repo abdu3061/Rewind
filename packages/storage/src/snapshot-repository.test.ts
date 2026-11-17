@@ -356,6 +356,41 @@ it("keeps a shared blob until its final kept reference is explicitly deleted", a
     db.close();
   }
 });
+it("resolves persisted file IDs without Unicode normalization and refreshes verified unchanged bytes for retention", async () => {
+  const f = await fixture();
+  await f.store.saveSettings({ ...createDefaultSettings(), retentionHours: 1 });
+  const a = f.capture(Buffer.from("unchanged"), "\u0130.txt"),
+    b = f.capture(Buffer.from("other"), "i\u0307.txt");
+  await f.store.snapshots.capture(a, f.event(a), () => true);
+  await f.store.snapshots.capture(b, f.event(b), () => true);
+  expect(
+    await f.store.snapshots.resolveFileId(f.folderId, "\u0130.txt"),
+  ).toEqual({ ok: true, value: a.file.id });
+  expect(
+    await f.store.snapshots.resolveFileId(f.folderId, "i\u0307.txt"),
+  ).toEqual({ ok: true, value: b.file.id });
+  const fresh = {
+    ...a,
+    version: {
+      ...a.version,
+      id: randomUUID(),
+      capturedAt: "2026-11-10T10:21:00.000Z",
+    },
+  };
+  expect(
+    await f.store.snapshots.capture(fresh, f.event(fresh), () => true),
+  ).toEqual({ ok: true, value: fresh.version });
+  await f.store.cleanup(new Date("2026-11-10T11:10:00.000Z"));
+  expect(await f.store.snapshots.info(a.version.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+  expect(await f.store.snapshots.info(fresh.version.id)).toEqual({
+    ok: true,
+    value: fresh.version,
+  });
+  expect((await f.store.snapshots.read(fresh.version.id)).ok).toBe(true);
+});
 it("enforces capture admission headroom and enumerates equal-time versions without losses", async () => {
   const f = await fixture();
   await f.store.saveSettings({
@@ -365,7 +400,7 @@ it("enforces capture admission headroom and enumerates equal-time versions witho
   const oversized = f.capture(Buffer.alloc(4 * 1024 ** 2, 17));
   expect(
     await f.store.snapshots.capture(oversized, f.event(oversized), () => true),
-  ).toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+  ).toMatchObject({ ok: false, error: { code: "STORAGE_LIMIT" } });
   const a = f.capture(),
     b = f.capture(Buffer.from("second"), "second.txt");
   await f.store.snapshots.capture(a, f.event(a), () => true);

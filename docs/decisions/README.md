@@ -2,6 +2,8 @@
 
 [ADR 0012](0012-retention-and-snapshot-storage.md) records local retention, explicit deletion, quota/backpressure and the transactional encrypted snapshot direction for the current core integration run.
 
+[ADR 0013](0013-protected-folder-capture.md) records independent file approval, native scoped identity/read guards, bounded reconciliation, atomic encrypted capture, preview expiry and retention freshness.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

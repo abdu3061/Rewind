@@ -11,6 +11,7 @@ const ready = (): RuntimeSnapshot => ({
   service: "ready",
   collection: "off",
   secureStorage: true,
+  filePermission: false,
   synthetic: true,
   preferences: { collectionConsent: false, excludedApplications: [] },
   session: null,

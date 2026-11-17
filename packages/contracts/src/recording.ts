@@ -9,6 +9,7 @@ import {
 import { sessionSchema } from "./session";
 import { userSettingsSchema } from "./settings";
 import { storageCommandSchema } from "./storage-management";
+import { fileCommandSchema } from "./file-controls";
 
 export const collectionPreferencesSchema = userSettingsSchema
   .pick({
@@ -29,9 +30,9 @@ export const timelineQuerySchema = z
     to: timestampSchema.optional(),
     text: z.string().trim().max(2000).optional(),
     types: z
-      .array(z.enum(["foreground", "capture-gap"]))
+      .array(z.enum(["foreground", "capture-gap", "file-change"]))
       .min(1)
-      .max(2)
+      .max(3)
       .optional(),
   })
   .refine(
@@ -52,6 +53,7 @@ export const runtimeSnapshotSchema = z.strictObject({
   session: sessionSchema.nullable(),
   preferences: collectionPreferencesSchema,
   secureStorage: z.boolean(),
+  filePermission: z.boolean(),
   synthetic: z.boolean(),
   error: appErrorSchema.nullable(),
   revision: z.number().int().nonnegative().safe(),
@@ -74,6 +76,7 @@ export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
 export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
 export const recordingCommandSchema = z.discriminatedUnion("kind", [
   ...storageCommandSchema.options,
+  ...fileCommandSchema.options,
   z.strictObject({ kind: z.literal("runtime.get") }),
   z.strictObject({ kind: z.literal("runtime.retry") }),
   z.strictObject({ kind: z.literal("privacy.get") }),

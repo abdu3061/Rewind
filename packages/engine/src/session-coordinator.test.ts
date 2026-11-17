@@ -6,6 +6,8 @@ import {
   type CollectorContext,
   type Result,
   type Session,
+  type SnapshotCapture,
+  type FileCaptureIngestion,
 } from "@rewind/contracts";
 import { SessionCoordinator } from "./session-coordinator";
 import { SessionService } from "./session-service";
@@ -38,7 +40,11 @@ function fixture(consent = true, timeout = 1000) {
     newId: () => id(nextId++),
     now: () => now,
   });
-  const settings = { ...createDefaultSettings(), collectionConsent: consent };
+  const settings = {
+    ...createDefaultSettings(),
+    collectionConsent: consent,
+    folderCollectionConsent: consent,
+  };
   const contexts: CollectorContext[] = [];
   const makeCollector = () => {
     const collector = {
@@ -123,6 +129,158 @@ function fixture(consent = true, timeout = 1000) {
 }
 afterEach(() => {
   vi.useRealTimers();
+});
+
+it("requires folder approval separately and does not activate Windows polling for folder-only consent", async () => {
+  const f = fixture(false);
+  f.settings.folderCollectionConsent = true;
+  await f.coordinator.execute("start");
+  expect(f.collectors.folders.start).toHaveBeenCalledOnce();
+  expect(f.collectors.windows.start).not.toHaveBeenCalled();
+  expect(f.collectors.browser.start).not.toHaveBeenCalled();
+  await f.coordinator.revokeConsent();
+  await f.coordinator.execute("resume");
+  expect(f.collectors.folders.resume).not.toHaveBeenCalled();
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
+  const windowsOnly = fixture();
+  windowsOnly.settings.folderCollectionConsent = false;
+  await windowsOnly.coordinator.execute("start");
+  expect(windowsOnly.collectors.windows.start).toHaveBeenCalledOnce();
+  expect(windowsOnly.collectors.folders.start).not.toHaveBeenCalled();
+  await windowsOnly.coordinator.shutdown();
+});
+
+function snapshotFixture() {
+  const f = fixture();
+  const observation: ActivityEvent = {
+    id: id(100),
+    sessionId: id(1),
+    occurredAt: now,
+    source: "filesystem",
+    type: "file-change",
+    payload: { fileId: id(500), change: "updated" },
+  };
+  const capture: SnapshotCapture = {
+    file: {
+      id: id(500),
+      displayName: "synthetic.txt",
+      identity: {
+        kind: "verified-path",
+        absolutePath: "C:\\synthetic\\synthetic.txt",
+        verifiedAt: now,
+      },
+    },
+    version: {
+      id: id(501),
+      sessionId: id(1),
+      fileId: id(500),
+      capturedAt: now,
+      contentHash: "a".repeat(64),
+      byteLength: 3,
+      mediaType: "text/plain",
+    },
+    binding: {
+      folderId: id(502),
+      relativePath: "synthetic.txt",
+      osIdentity: "synthetic:file",
+    },
+    bytes: new Uint8Array([1, 2, 3]),
+  };
+  const get = vi.fn(async (): Promise<Result<SnapshotCapture>> => ({
+    ok: true,
+    value: capture,
+  }));
+  const save = vi.fn<FileCaptureIngestion["save"]>(
+    async (_value, _event, authorized) =>
+      authorized()
+        ? { ok: true, value: capture.version }
+        : failure("FORBIDDEN", "Expired synthetic authority"),
+  );
+  const coordinator = new SessionCoordinator({
+    mode: "repository",
+    service: f.service,
+    storage: f.storage,
+    collectors: f.collectors,
+    getSettings: () => f.settings,
+    authorizeResource: ok,
+    fileCaptures: { get, save },
+  });
+  return { ...f, coordinator, observation, capture, get, save };
+}
+it("publishes each captured version through its atomic port without duplicating the activity append", async () => {
+  const f = snapshotFixture();
+  await f.coordinator.execute("start");
+  expect((await f.contexts[2]!.emit([f.observation])).ok).toBe(true);
+  expect(f.save).toHaveBeenCalledOnce();
+  expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  expect((await f.contexts[2]!.emit([f.observation, f.observation])).ok).toBe(
+    false,
+  );
+  expect(f.save).toHaveBeenCalledOnce();
+  await f.coordinator.shutdown();
+});
+it("accepts source failure only from the current generation and interrupts active adapters", async () => {
+  const f = fixture();
+  await f.coordinator.execute("start");
+  const old = f.contexts[2]!;
+  await f.coordinator.execute("pause");
+  await f.coordinator.execute("resume");
+  old.reportUnavailable?.();
+  expect(f.coordinator.getStatus().collection).toBe("active");
+  f.contexts.at(-1)!.reportUnavailable?.();
+  await turn();
+  expect(f.coordinator.getStatus().unavailable).toBe(true);
+  expect(
+    Object.values(f.collectors).every((collector) => !collector.running),
+  ).toBe(true);
+  await f.coordinator.shutdown();
+});
+it("drains pending snapshot preparation and rejects its stale bytes before pause acknowledges", async () => {
+  const f = snapshotFixture();
+  const entered = deferred(),
+    release = deferred();
+  f.get.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return { ok: true, value: f.capture };
+  });
+  await f.coordinator.execute("start");
+  const emission = f.contexts[2]!.emit([f.observation]);
+  await entered.promise;
+  let stopped = false;
+  const pause = f.coordinator.execute("pause").then((result) => {
+    stopped = true;
+    return result;
+  });
+  await turn();
+  expect(stopped).toBe(false);
+  release.resolve();
+  expect((await emission).ok).toBe(false);
+  expect((await pause).ok).toBe(true);
+  expect(f.save).not.toHaveBeenCalled();
+  await f.coordinator.shutdown();
+});
+it("stops the run after failed snapshot publication and rejects inconsistent evidence", async () => {
+  for (const invalidReply of [false, true]) {
+    const f = snapshotFixture();
+    f.save.mockResolvedValueOnce(
+      invalidReply
+        ? {
+            ok: true,
+            value: { ...f.capture.version, contentHash: "b".repeat(64) },
+          }
+        : failure("UNAVAILABLE", "Synthetic full disk"),
+    );
+    await f.coordinator.execute("start");
+    expect((await f.contexts[2]!.emit([f.observation])).ok).toBe(false);
+    await turn();
+    expect(f.coordinator.getStatus().unavailable).toBe(true);
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+    await f.coordinator.shutdown();
+  }
 });
 it("interrupts collector authority even when read work saturates the lifecycle queue", async () => {
   const f = fixture();

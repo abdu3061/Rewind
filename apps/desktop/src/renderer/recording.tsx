@@ -89,7 +89,8 @@ export function RecordingPreferences({
         Approval expires when Rewind or its recording service restarts. Changing
         preferences pauses an active session; start or resume explicitly
         afterward. Browser windows, Rewind itself and excluded applications are
-        skipped. Browser visits and folder collection are unavailable.
+        skipped. File protection has its own selection and launch approval in
+        Files. Browser visits remain unavailable.
       </p>
       <label htmlFor="application-exclusions">
         Excluded applications (one name per line)
@@ -144,7 +145,7 @@ export function RecordingPreferences({
             ? "Preferences saved. Recording never resumes automatically."
             : allowed
               ? "Windows activity approved for this launch."
-              : "Recording permission is off."}
+              : "Windows activity permission is off."}
       </p>
       {error && (
         <p className="error" role="alert">
@@ -353,6 +354,7 @@ export function RecordedHistory({
               <option value="">All recorded types</option>
               <option value="foreground">Application activity</option>
               <option value="capture-gap">Capture gaps</option>
+              <option value="file-change">Saved file changes</option>
             </select>
           </label>
           <label>
@@ -382,7 +384,7 @@ export function RecordedHistory({
             disabled={!canRead}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Search application names and window titles"
+            placeholder="Search applications, window titles and captured file names"
           />
           <button type="submit" disabled={!canRead || loading}>
             {search ? "Search" : "Apply filters"}
@@ -425,6 +427,14 @@ export function RecordedHistory({
               <>
                 <strong>{event.payload.application}</strong>
                 <p>{event.payload.windowTitle || "Untitled window"}</p>
+              </>
+            ) : event.type === "file-change" ? (
+              <>
+                <strong>{event.payload.displayName ?? "Protected file"}</strong>
+                <p>
+                  Saved-file observation. Inspect captured versions in Files.
+                  This does not prove that the file was read.
+                </p>
               </>
             ) : event.type === "capture-gap" ? (
               <>

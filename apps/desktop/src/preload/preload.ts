@@ -25,6 +25,12 @@ import {
   storageUsageResponseSchema,
   storagePreferencesSchema,
   deleteHistorySchema,
+  fileProtectionResponseSchema,
+  folderSelectionResponseSchema,
+  versionListQuerySchema,
+  versionListResponseSchema,
+  versionPreviewResponseSchema,
+  versionInfoResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -77,6 +83,75 @@ function command(action: SessionAction) {
 }
 
 const api: DesktopApi = {
+  files: {
+    state: noArgs({ kind: "files.state" }, fileProtectionResponseSchema),
+    selectFolder: noArgs(
+      { kind: "files.select" },
+      folderSelectionResponseSchema,
+    ),
+    permission(...args: unknown[]) {
+      return args.length === 1 && typeof args[0] === "boolean"
+        ? recording(
+            { kind: "files.permission", enabled: args[0] },
+            fileProtectionResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "An explicit file permission choice is required.",
+            ),
+          );
+    },
+    removeFolder(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "files.remove", id: parsed.data },
+            fileProtectionResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A selected folder ID is required."),
+          );
+    },
+  },
+  versions: {
+    info(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "versions.info", id: parsed.data },
+            versionInfoResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A captured version ID is required."),
+          );
+    },
+    list(...args: unknown[]) {
+      const parsed = versionListQuerySchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "versions.list", query: parsed.data },
+            versionListResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "A valid captured-version query is required.",
+            ),
+          );
+    },
+    preview(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "versions.preview", id: parsed.data },
+            versionPreviewResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A captured version ID is required."),
+          );
+    },
+  },
   storage: {
     usage: noArgs({ kind: "storage.usage" }, storageUsageResponseSchema),
     cleanup: noArgs({ kind: "storage.cleanup" }, storageUsageResponseSchema),

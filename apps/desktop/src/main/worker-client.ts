@@ -74,6 +74,7 @@ export class WorkerClient {
         excludedApplications: createDefaultSettings().excludedApplications,
       },
       secureStorage: false,
+      filePermission: false,
       synthetic: options.synthetic,
       error: null,
       revision: 0,
@@ -110,6 +111,7 @@ export class WorkerClient {
       service: "starting",
       collection: "off",
       secureStorage: false,
+      filePermission: false,
       error: null,
       preferences: { ...this.state.preferences, collectionConsent: false },
     });
@@ -225,6 +227,7 @@ export class WorkerClient {
       service: "unavailable",
       collection: "unavailable",
       secureStorage: false,
+      filePermission: false,
       preferences: { ...this.state.preferences, collectionConsent: false },
       error,
     });
@@ -273,6 +276,7 @@ export class WorkerClient {
         !message.state.secureStorage ||
         message.state.collection !== "off" ||
         message.state.preferences.collectionConsent ||
+        message.state.filePermission ||
         message.state.synthetic !== this.options.synthetic
       ) {
         this.fail({
@@ -292,7 +296,8 @@ export class WorkerClient {
         message.state.synthetic !== this.options.synthetic ||
         (message.state.collection === "active" &&
           (!message.state.secureStorage ||
-            !message.state.preferences.collectionConsent ||
+            (!message.state.preferences.collectionConsent &&
+              !message.state.filePermission) ||
             message.state.service !== "ready"))
       ) {
         this.fail({
@@ -326,6 +331,9 @@ export class WorkerClient {
       command.kind === "storage.delete" ||
       command.kind === "storage.update" ||
       command.kind === "storage.cleanup" ||
+      command.kind === "files.remove" ||
+      command.kind === "files.add" ||
+      (command.kind === "files.permission" && !command.enabled) ||
       (command.kind === "preferences.update" &&
         !command.value.collectionConsent) ||
       (command.kind === "session" &&
@@ -338,6 +346,10 @@ export class WorkerClient {
         "preferences.get",
         "snapshot",
         "storage.usage",
+        "files.state",
+        "versions.list",
+        "versions.preview",
+        "versions.info",
       ].includes(command.kind);
     if (this.pending.size >= 64 && allowedStop) {
       // Stop authority cannot wait behind a saturated public request map.
@@ -425,6 +437,7 @@ export class WorkerClient {
         service: "stopping",
         collection: "off",
         secureStorage: false,
+        filePermission: false,
       });
       return { ok: true, value: undefined };
     } finally {

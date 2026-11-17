@@ -74,7 +74,11 @@ it.runIf(process.platform === "win32")(
     const listing = await f.access.list(folder);
     expect(listing).toEqual({
       ok: true,
-      value: { paths: ["nested\\synthetic.pdf"], overflow: false },
+      value: {
+        paths: ["nested\\synthetic.pdf"],
+        stamps: [expect.any(String)],
+        overflow: false,
+      },
     });
     const first = await f.access.read(folder, "nested\\synthetic.pdf");
     expect(first.ok && Buffer.from(first.value.bytes)).toEqual(bytes);
@@ -143,7 +147,11 @@ it.runIf(process.platform === "win32")(
     writeFileSync(join(nested, "captured.txt"), "Synthetic included");
     expect(await f.access.list(folder)).toEqual({
       ok: true,
-      value: { paths: ["captured.txt"], overflow: false },
+      value: {
+        paths: ["captured.txt"],
+        stamps: [expect.any(String)],
+        overflow: false,
+      },
     });
     renameSync(nested, join(f.root, "previous"));
     mkdirSync(nested);

@@ -15,7 +15,12 @@ import {
   type StorageUsage,
 } from "@rewind/contracts";
 import { SessionCoordinator, SessionService } from "@rewind/engine";
-import { WindowsCollector, type WindowQueryStrategy } from "@rewind/collectors";
+import {
+  WindowsCollector,
+  ProtectedFolderCollector,
+  type WindowQueryStrategy,
+} from "@rewind/collectors";
+import { FileOperations } from "./file-operations";
 import { SecureStorage } from "@rewind/storage";
 import {
   preparePrivateDirectory,
@@ -42,6 +47,7 @@ export class WorkerRuntime {
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private maintenancePending = false;
   private preferenceRevision = 0;
+  private files: FileOperations | null = null;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
@@ -69,8 +75,17 @@ export class WorkerRuntime {
         excludedApplications: [...this.settings.excludedApplications],
       },
       secureStorage: this.ready,
+      filePermission: this.settings.folderCollectionConsent,
       synthetic: this.options.synthetic,
-      error: this.fault ?? health?.error ?? null,
+      error:
+        this.fault ??
+        (health?.error?.code === "STORAGE_LIMIT"
+          ? {
+              code: "STORAGE_LIMIT",
+              message:
+                "File capture needs more free space or a larger quota. Adjust storage in Settings before approving capture again.",
+            }
+          : (health?.error ?? null)),
       revision: 0,
     };
   }
@@ -85,6 +100,7 @@ export class WorkerRuntime {
       this.settings = {
         ...settings.value,
         collectionConsent: false,
+        folderCollectionConsent: false,
         cloudAiEnabled: false,
         articleExtractionEnabled: false,
       };
@@ -165,6 +181,14 @@ export class WorkerRuntime {
           };
         },
       };
+      const folders = new ProtectedFolderCollector({
+        getFolders: () => this.storage.snapshots.listFolders(),
+        resolveFileId: (folderId, relativePath) =>
+          this.storage.snapshots.resolveFileId(folderId, relativePath),
+        onChanged: () => {
+          if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+      });
       this.coordinator = new SessionCoordinator({
         mode: "repository",
         storage: engineStorage,
@@ -172,10 +196,70 @@ export class WorkerRuntime {
           newId: randomUUID,
           now: () => new Date().toISOString(),
         }),
-        collectors: { windows },
+        collectors: { windows, folders },
         getSettings: () => this.settings,
+        authorizeResource: async (event, settings) => {
+          if (event.type !== "file-change")
+            return failure("FORBIDDEN", "This resource source is unavailable.");
+          const capture = await folders.captureFor(event, settings);
+          return capture.ok ? { ok: true, value: undefined } : capture;
+        },
+        fileCaptures: {
+          get: (event, settings) => folders.captureFor(event, settings),
+          save: async (capture, event, authorized) => {
+            const saved = await this.storage.snapshots.capture(
+              capture,
+              event,
+              authorized,
+            );
+            if (saved.ok) {
+              try {
+                this.options.onActivity(event.sessionId);
+              } catch {
+                /* Notifications cannot undo publication. */
+              }
+            }
+            return saved;
+          },
+        },
         onChanged: () => {
           if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+      });
+      this.files = new FileOperations({
+        storage: this.storage,
+        folders,
+        coordinator: this.coordinator,
+        root: this.options.root,
+        synthetic: this.options.synthetic,
+        getSettings: () => this.settings,
+        changeSettings: async (candidate, write) => {
+          if (!candidate.folderCollectionConsent)
+            this.settings = {
+              ...this.settings,
+              folderCollectionConsent: false,
+            };
+          const updated = await this.coordinator!.updateSettings(
+            candidate,
+            async () => {
+              if (write) {
+                const written = await write();
+                if (!written.ok) return written;
+              }
+              const saved = await this.storage.saveSettings(candidate);
+              if (saved.ok) this.settings = candidate;
+              return saved;
+            },
+          );
+          if (!updated.ok) {
+            this.settings = {
+              ...this.settings,
+              collectionConsent: false,
+              folderCollectionConsent: false,
+            };
+            return updated;
+          }
+          return { ok: true, value: undefined };
         },
       });
       const initialized = await this.coordinator.initialize();
@@ -215,6 +299,29 @@ export class WorkerRuntime {
       );
     try {
       switch (command.kind) {
+        case "files.state":
+        case "files.select":
+        case "files.add":
+        case "files.permission":
+        case "files.remove":
+        case "versions.list":
+        case "versions.info":
+        case "versions.preview": {
+          const mutation =
+            command.kind === "files.add" ||
+            command.kind === "files.permission" ||
+            command.kind === "files.remove";
+          const revision = mutation
+            ? ++this.preferenceRevision
+            : this.preferenceRevision;
+          const result = await this.files!.execute(
+            command,
+            () => !mutation || revision === this.preferenceRevision,
+          );
+          return command.kind.startsWith("versions.")
+            ? this.readResult(result)
+            : result;
+        }
         case "storage.usage":
           return this.coordinator.read(() => this.storage.usage());
         case "storage.update":
@@ -225,6 +332,7 @@ export class WorkerRuntime {
             ...this.settings,
             ...(command.kind === "storage.update" ? command.value : {}),
             collectionConsent: false,
+            folderCollectionConsent: false,
           };
           this.settings = candidate;
           let outcome: Result<StorageUsage> = failure(
@@ -273,6 +381,9 @@ export class WorkerRuntime {
           const candidate: UserSettings = {
             ...this.settings,
             ...command.value,
+            ...(!command.value.collectionConsent
+              ? { folderCollectionConsent: false }
+              : {}),
           };
           if (!candidate.collectionConsent) this.settings = candidate;
           const updated = await this.coordinator.updateSettings(
@@ -284,7 +395,11 @@ export class WorkerRuntime {
             },
           );
           if (!updated.ok) {
-            this.settings = { ...this.settings, collectionConsent: false };
+            this.settings = {
+              ...this.settings,
+              collectionConsent: false,
+              folderCollectionConsent: false,
+            };
             return updated;
           }
           return { ok: true, value: this.snapshot().preferences };
@@ -308,6 +423,7 @@ export class WorkerRuntime {
         message: "The secure recording operation failed.",
       };
       this.settings.collectionConsent = false;
+      this.settings.folderCollectionConsent = false;
       void this.coordinator.revokeConsent();
       return { ok: false, error: this.fault };
     } finally {
@@ -331,6 +447,7 @@ export class WorkerRuntime {
       const result = await this.coordinator.read(() => this.storage.cleanup());
       if (!result.ok || result.value.overQuota) {
         this.settings.collectionConsent = false;
+        this.settings.folderCollectionConsent = false;
         await this.coordinator.revokeConsent();
         if (!result.ok) this.readResult(result);
       }
@@ -342,10 +459,16 @@ export class WorkerRuntime {
     }
   }
   private readResult<T>(result: Result<T>): Result<T> {
-    if (!result.ok && result.error.code !== "INVALID_INPUT") {
+    if (
+      !result.ok &&
+      ["UNAVAILABLE", "INTEGRITY_FAILURE", "INTERNAL"].includes(
+        result.error.code,
+      )
+    ) {
       this.fault = result.error;
       this.ready = false;
       this.settings.collectionConsent = false;
+      this.settings.folderCollectionConsent = false;
       void this.coordinator?.revokeConsent();
     }
     return result;
@@ -355,6 +478,7 @@ export class WorkerRuntime {
     this.maintenanceTimer = null;
     this.closing = true;
     this.settings.collectionConsent = false;
+    this.settings.folderCollectionConsent = false;
     const stopped = this.coordinator
       ? await this.coordinator.shutdown()
       : await this.storage.close();

@@ -6,6 +6,8 @@ import {
   idSchema,
   sessionSchema,
   userSettingsSchema,
+  snapshotCaptureSchema,
+  fileVersionSchema,
   type ActivityEvent,
   type AppError,
   type CollectorContext,
@@ -16,6 +18,7 @@ import {
   type SessionState,
   type SessionStorage,
   type UserSettings,
+  type FileCaptureIngestion,
 } from "@rewind/contracts";
 import { Operations } from "./operations";
 import { SessionService } from "./session-service";
@@ -35,6 +38,7 @@ export type SessionCoordinatorOptions = CommonOptions &
         storage: SessionStorage;
         collectors: CollectorRegistry;
         getSettings: () => UserSettings;
+        fileCaptures?: FileCaptureIngestion;
         /** Engine authorization; a collector's path or URL assertion is insufficient. Denied if absent. */
         authorizeResource?: (
           event: ActivityEvent,
@@ -59,6 +63,8 @@ const maxCommands = 64;
 const maxBatches = 32;
 const maxBatchEvents = 128;
 const maxBatchBytes = 256 * 1024;
+const hasConsent = (settings: UserSettings) =>
+  settings.collectionConsent || settings.folderCollectionConsent;
 
 /** Adapted from PR #5; lifecycle ports remain independent of Electron and native adapters. */
 export class SessionCoordinator {
@@ -165,7 +171,7 @@ export class SessionCoordinator {
     this.interruptCollectors();
     const parsed = userSettingsSchema.safeParse(settings);
     // Denial applies immediately. A new grant is installed only after stop and persistence.
-    if (!parsed.success || !parsed.data.collectionConsent)
+    if (!parsed.success || !hasConsent(parsed.data))
       this.settingsOverride = parsed.success
         ? structuredClone(parsed.data)
         : createDefaultSettings();
@@ -184,7 +190,7 @@ export class SessionCoordinator {
           : await this.stopWithoutTransition();
       if (!parsed.success)
         return failure("INVALID_INPUT", "Collection settings are invalid.");
-      if (!result.ok && parsed.data.collectionConsent) return result;
+      if (!result.ok && hasConsent(parsed.data)) return result;
       if (persist) {
         const saved = await this.operations.run(
           "Collection settings save",
@@ -194,6 +200,7 @@ export class SessionCoordinator {
           this.settingsOverride = {
             ...structuredClone(parsed.data),
             collectionConsent: false,
+            folderCollectionConsent: false,
           };
           this.fail(saved.error.code, saved.error.message);
           this.requestCleanup();
@@ -215,6 +222,7 @@ export class SessionCoordinator {
     return this.updateSettings({
       ...(this.readSettings() ?? createDefaultSettings()),
       collectionConsent: false,
+      folderCollectionConsent: false,
     });
   }
 
@@ -422,7 +430,7 @@ export class SessionCoordinator {
           candidate,
           failure("CONFLICT", "Transition superseded by a stop."),
         );
-      if (this.options.mode === "repository" && settings.collectionConsent) {
+      if (this.options.mode === "repository" && hasConsent(settings)) {
         let generation: string;
         try {
           generation = (this.options.newGenerationId ?? randomUUID)();
@@ -453,6 +461,12 @@ export class SessionCoordinator {
         for (const [source, collector] of Object.entries(
           this.options.collectors,
         )) {
+          if (
+            source === "folders"
+              ? !settings.folderCollectionConsent
+              : !settings.collectionConsent
+          )
+            continue;
           const started = await this.operations.run("Collector startup", () =>
             collector[action === "start" ? "start" : "resume"](
               this.context(run, source),
@@ -581,13 +595,23 @@ export class SessionCoordinator {
       generationId: run.id,
       settings: structuredClone(run.settings),
       emit: (events) => this.admit(run, source, events),
+      reportUnavailable: () => {
+        if (this.run !== run || this.closing) return;
+        this.fail(
+          "UNAVAILABLE",
+          "A collector could not confirm its operation. Recording has stopped.",
+        );
+        this.interruptCollectors();
+        this.requestCleanup();
+      },
     };
   }
   private allowed(run: Run): boolean {
     const session = this.getState().session;
     const settings = this.readSettings();
     const permitted =
-      settings?.collectionConsent === true &&
+      settings !== null &&
+      hasConsent(settings) &&
       JSON.stringify(settings) === run.permissionKey;
     if (
       this.run === run &&
@@ -611,6 +635,14 @@ export class SessionCoordinator {
       return Promise.resolve(
         failure("FORBIDDEN", "Collection generation is not authorized."),
       );
+    if (
+      source === "folders"
+        ? !run.settings.folderCollectionConsent
+        : !run.settings.collectionConsent
+    )
+      return Promise.resolve(
+        failure("FORBIDDEN", "This collection source is not approved."),
+      );
     if (!Array.isArray(events) || events.length > maxBatchEvents)
       return Promise.resolve(
         failure("INVALID_INPUT", "Activity batch capacity exceeded."),
@@ -626,6 +658,18 @@ export class SessionCoordinator {
     let parsed: ActivityEvent[];
     try {
       parsed = events.map((event) => activityEventSchema.parse(event));
+      if (
+        this.options.mode === "repository" &&
+        this.options.fileCaptures &&
+        parsed.length > 1 &&
+        parsed.some((event) => event.type === "file-change")
+      )
+        return Promise.resolve(
+          failure(
+            "INVALID_INPUT",
+            "File captures require an individual atomic observation.",
+          ),
+        );
       if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > maxBatchBytes)
         return Promise.resolve(
           failure("INVALID_INPUT", "Activity batch is too large."),
@@ -719,6 +763,64 @@ export class SessionCoordinator {
         "Collection permission changed before persistence.",
       );
     if (!accepted.length) return ok();
+    if (
+      accepted.length === 1 &&
+      accepted[0]!.type === "file-change" &&
+      this.options.fileCaptures
+    ) {
+      const event = accepted[0]!;
+      const port = this.options.fileCaptures;
+      const capture = await this.operations.run(
+        "File capture authorization",
+        () => port.get(event, structuredClone(run.settings)),
+      );
+      if (!capture.ok) return capture;
+      const checked = snapshotCaptureSchema.safeParse(capture.value);
+      if (
+        !checked.success ||
+        checked.data.version.sessionId !== run.sessionId ||
+        checked.data.version.fileId !==
+          (event.type === "file-change" ? event.payload.fileId : null)
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "File capture evidence is invalid.",
+        );
+      if (!this.allowed(run))
+        return failure(
+          "FORBIDDEN",
+          "File capture authority changed before publication.",
+        );
+      const saved = await this.operations.run("Snapshot publication", () =>
+        this.allowed(run)
+          ? port.save(checked.data, event, () => this.allowed(run))
+          : Promise.resolve(
+              failure("FORBIDDEN", "File capture authority expired."),
+            ),
+      );
+      if (!saved.ok) {
+        this.fail(saved.error.code, saved.error.message);
+        this.requestCleanup();
+        return saved;
+      }
+      const committed = fileVersionSchema.safeParse(saved.value);
+      if (
+        !committed.success ||
+        committed.data.fileId !== checked.data.version.fileId ||
+        committed.data.sessionId !== run.sessionId ||
+        committed.data.contentHash !== checked.data.version.contentHash ||
+        committed.data.byteLength !== checked.data.version.byteLength ||
+        committed.data.capturedAt > event.occurredAt
+      ) {
+        const invalid = this.fail(
+          "INTEGRITY_FAILURE",
+          "Snapshot publication returned inconsistent evidence.",
+        );
+        this.requestCleanup();
+        return invalid;
+      }
+      return ok();
+    }
     const repositories = this.options.storage.repositories;
     const result = await this.operations.run("Activity append", () =>
       this.allowed(run)

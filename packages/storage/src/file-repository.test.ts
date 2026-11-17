@@ -136,4 +136,29 @@ describe("SqliteFileRepository", () => {
       expect(listResult.value[1]).toEqual(version1);
     }
   });
+  it("rejects invalid version writes and corrupted stored identities without returning raw SQL details", async () => {
+    await fileRepo.saveReference({
+      id: fileId,
+      displayName: "synthetic.txt",
+      identity: { kind: "unverified", observedTitle: "Synthetic" },
+    });
+    const invalid = {
+      id: "30000000-0000-4000-8000-000000000001",
+      sessionId: validSessionId,
+      fileId,
+      capturedAt: "2026-10-25T10:00:00.000Z",
+      contentHash: "invalid",
+      byteLength: -1,
+      mediaType: "text/plain",
+    };
+    expect(await fileRepo.addVersion(invalid)).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_INPUT" },
+    });
+    db.prepare("UPDATE files SET display_name='' WHERE id=?").run(fileId);
+    expect(await fileRepo.getReference(fileId)).toMatchObject({
+      ok: false,
+      error: { message: "Stored file identity is unavailable or invalid." },
+    });
+  });
 });
