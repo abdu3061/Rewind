@@ -1,5 +1,7 @@
 # Dependency-ordered development roadmap
 
+Browser setup advances through ADR 0021: actual host/extension packaging, bounded asset verification and owned per-user registration primitives are implemented and exercised with generated names. Next finish durable ownership receipts and verified installation generations, then utility composition/public browser controls and packaged browser flows. Optional overwrite with durable current-file preservation remains required; Gemini stays conditional on completing and verifying the core.
+
 Current run: [core functionality integration](core-functionality-integration.md) advances RWA-700 with real retention/deletion/quota controls and preserves the secure recording baseline. Continue with RWA-300/301 verified Windows identity and transactional encrypted original-byte capture, then recovery/checkpoints/browser/UI. The overall goal remains active; no remote PR or release acceptance is implied.
 
 RWA-300/301 now have a working bounded Windows file-capture slice with native selection, independent approval, actual identities/bytes, encrypted publication, filename search, paging and text previews. Next implement RWA-302/303 recovery and RWA-403 checkpoint management against these actual captures, then RWA-400 browser transport. Preserve all lifecycle/security/failure tests; arbitrary rename correlation, rich document extraction and release benchmarks remain unverified.

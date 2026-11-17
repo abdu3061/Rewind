@@ -10,6 +10,7 @@ export default tseslint.config(
     ignores: [
       "**/node_modules/**",
       "**/.vite/**",
+      "**/.generated/**",
       "**/dist/**",
       "**/out/**",
       "test-results/**",

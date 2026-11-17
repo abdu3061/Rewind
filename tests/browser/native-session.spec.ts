@@ -102,6 +102,7 @@ for (const [browser, channel, executable] of [
           `/out:${native}`,
           path.resolve("apps/desktop/src/native/browser-process-proof.cs"),
           path.resolve("apps/desktop/src/native/browser-native-program.cs"),
+          path.resolve("apps/desktop/src/native/browser-registration.cs"),
         ],
         { windowsHide: true, timeout: 15000, maxBuffer: 65536 },
       );
@@ -434,8 +435,8 @@ globalThis.probeInstanceId=crypto.randomUUID();
           source.authorize(event, policy),
       });
       expect((await bridge.start(native, config)).ok).toBe(true);
-      registerTestHost(browser, hostName, manifest, false);
       registered = true;
+      await registerTestHost(browser, hostName, manifest, false, native);
       expect((await snapshot()).reads).toBe(0);
       expect((await coordinator.execute("start")).ok).toBe(true);
       await clientPermission(true);
@@ -729,7 +730,8 @@ globalThis.probeInstanceId=crypto.randomUUID();
       }
       storageKey.fill(0);
       try {
-        if (registered) registerTestHost(browser, hostName, manifest, true);
+        if (registered)
+          await registerTestHost(browser, hostName, manifest, true, native);
       } catch (error) {
         cleanupError ??= error;
       }

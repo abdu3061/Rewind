@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import proofSource from "../native/browser-process-proof.cs?raw";
 import programSource from "../native/browser-native-program.cs?raw";
+import registrationSource from "../native/browser-registration.cs?raw";
 import {
   NativeBrowserBridge,
   nativeBridgeConfigSchema,
@@ -24,6 +25,8 @@ beforeAll(() => {
     program = path.join(root, "Program.cs");
   writeFileSync(proof, proofSource);
   writeFileSync(program, programSource);
+  const registration = path.join(root, "Registration.cs");
+  writeFileSync(registration, registrationSource);
   const compiler = path.join(
     process.env.WINDIR ?? "C:\\Windows",
     "Microsoft.NET",
@@ -41,6 +44,7 @@ beforeAll(() => {
       `/out:${executable}`,
       proof,
       program,
+      registration,
     ],
     { windowsHide: true, timeout: 15000, maxBuffer: 65536 },
   );
@@ -85,6 +89,7 @@ namespace Rewind.NativeBrowser {
       `/out:${fixtureExecutable}`,
       proof,
       program,
+      registration,
       driver,
     ],
     { windowsHide: true, timeout: 15000, maxBuffer: 65536 },

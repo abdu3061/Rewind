@@ -35,6 +35,8 @@ After deliberately changing dependencies with `npm install`, run `npm run lock:p
 
 If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; changing the machine execution policy is unnecessary. A main/preload edit requires restarting `npm run dev`; renderer edits use Vite HMR. Close Rewind or press Ctrl+C to stop development. The dev server binds only to loopback.
 
+Development start and packaging also generate the Windows x64 browser-host executable and extension assets. This requires the Windows Framework64 C# compiler (`Microsoft.NET/Framework64/v4.0.30319/csc.exe`). Generated assets are ignored and packaged under `resources/browser`; building does not register a host or enable browser recording. The installed host will use these precompiled assets, without a runtime host compiler. See [ADR 0021](docs/decisions/0021-browser-assets-and-owned-registration.md).
+
 | Command                                   | Purpose                                                               |
 | ----------------------------------------- | --------------------------------------------------------------------- |
 | `npm run dev`                             | Launch desktop via Electron Forge and Vite                            |

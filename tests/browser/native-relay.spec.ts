@@ -101,6 +101,7 @@ for (const [browser, channel, executable] of [
           `/out:${native}`,
           path.resolve("apps/desktop/src/native/browser-process-proof.cs"),
           path.resolve("apps/desktop/src/native/browser-native-program.cs"),
+          path.resolve("apps/desktop/src/native/browser-registration.cs"),
         ],
         { windowsHide: true, timeout: 15000, maxBuffer: 65536 },
       );
@@ -205,8 +206,8 @@ chrome.runtime.onInstalled.addListener(()=>{});
           timeout: 10000,
         })
         .toBe(true);
-      register(browser, hostName, manifest, false);
       registered = true;
+      await register(browser, hostName, manifest, false, native);
       await worker.evaluate(
         (host) =>
           (
@@ -453,7 +454,8 @@ chrome.runtime.onInstalled.addListener(()=>{});
         }
       }
       try {
-        if (registered) register(browser, hostName, manifest, true);
+        if (registered)
+          await register(browser, hostName, manifest, true, native);
       } catch (error) {
         cleanupError ??= error;
       }

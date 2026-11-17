@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { NativeBrowserRegistration } from "../../apps/desktop/src/main/browser-registration";
 
 const registrationScript = String.raw`
 $ErrorActionPreference='Stop'
@@ -11,29 +12,34 @@ $request=[Console]::ReadLine() | ConvertFrom-Json
 if($request.name -notmatch '^com\.rewind\.test\.[a-f0-9]{32}$') {throw 'FIXTURE_HOST_NAME_INVALID'}
 $brand=switch($request.browser) {'chrome' {'Google\Chrome'} 'edge' {'Microsoft\Edge'} default {throw 'FIXTURE_BROWSER_INVALID'}}
 $name='Software\'+$brand+'\NativeMessagingHosts\'+$request.name
-$base=[Microsoft.Win32.Registry]::CurrentUser
-$existing=$base.OpenSubKey($name)
-if($request.remove) {
-  if($null -ne $existing) {
-    try {if($existing.GetValue('') -ne $request.manifest -or $existing.SubKeyCount -ne 0) {throw 'FIXTURE_REGISTRY_CHANGED'}} finally {$existing.Dispose()}
-    $base.DeleteSubKey($name,$false)
-  }
-} else {
-  if($null -ne $existing) {$existing.Dispose();throw 'FIXTURE_REGISTRY_EXISTS'}
-  $created=$base.CreateSubKey($name)
+foreach($view in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)) {
+  $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,$view)
   try {
-    if($created.GetValueNames().Length -ne 0 -or $created.SubKeyCount -ne 0) {throw 'FIXTURE_REGISTRY_RACE'}
-    $created.SetValue('',[string]$request.manifest,[Microsoft.Win32.RegistryValueKind]::String)
-  } finally {$created.Dispose()}
+    $existing=$base.OpenSubKey($name)
+    if($null -ne $existing) {
+      try {if($existing.GetValueNames().Length -ne 0 -or $existing.SubKeyCount -ne 0) {throw 'FIXTURE_REGISTRY_CHANGED'}} finally {$existing.Dispose()}
+      $base.DeleteSubKey($name,$false)
+    }
+  } finally {$base.Dispose()}
 }
 [Console]::WriteLine('{"ok":true}')
 `;
-export function registerTestHost(
-  browser: string,
+export async function registerTestHost(
+  browser: "chrome" | "edge",
   name: string,
   manifest: string,
   remove: boolean,
+  nativeExecutable: string,
 ) {
+  if (!/^com\.rewind\.test\.[a-f0-9]{32}$/.test(name))
+    throw new Error("FIXTURE_HOST_NAME_INVALID");
+  const registration = new NativeBrowserRegistration(nativeExecutable, name);
+  const changed = remove
+    ? await registration.remove(browser, manifest)
+    : await registration.install(browser, manifest, null);
+  if (!changed.ok || changed.value.state !== (remove ? "absent" : "registered"))
+    throw new Error("FIXTURE_REGISTRATION_UNCONFIRMED");
+  if (!remove) return;
   const executable = path.join(
     process.env.WINDIR ?? "C:\\Windows",
     "System32",
@@ -53,7 +59,7 @@ export function registerTestHost(
       windowsHide: true,
       timeout: 10000,
       maxBuffer: 4096,
-      input: JSON.stringify({ browser, name, manifest, remove }) + "\n",
+      input: JSON.stringify({ browser, name }) + "\n",
       encoding: "utf8",
     },
   );
