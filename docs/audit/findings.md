@@ -1,5 +1,7 @@
 # Engineering findings
 
+The active [core integration follow-up](core-functionality-integration.md) adds encrypted-history retention, FTS deletion, physical usage/quota backpressure, explicit stop/drain/deletion controls and stricter checkpoint membership. F12 advances through transitive retention and FK/session validation; creation/recovery UI and actual snapshot bytes remain dependent work. Historical entries below retain their inspected-revision scope.
+
 ## Subsequent implementation status
 
 [Backend stabilization](backend-stabilization.md) and [ADR 0009](../decisions/0009-session-lifecycle-stabilization.md) record local implementation after this audit. F03–F05's coordinator/quit defects are corrected in the selected branch with synthetic concurrency/failure tests. F09's activity cursor and F10's prototype query scope/version references are corrected. F01/F06 fail closed in the selected composition; F07/F08 protections are preserved and extended. F11/F26 now cover validated/sanitized session/activity operations and atomic file-opened references, with broader repository work still pending. F14's existing Windows adapter now drains queries/emits, propagates failures, reports gaps and retries rejected dedup candidates; F15's PID correction is retained. F19's missing-bridge fix is retained and delayed-response races are also corrected. F27/F30 gain corresponding regressions and shared typed registry/storage ports.

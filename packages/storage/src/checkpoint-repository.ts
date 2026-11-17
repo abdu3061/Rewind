@@ -1,6 +1,7 @@
 import type { DatabaseConnection } from "./database";
 import {
   failure,
+  checkpointSchema,
   type Checkpoint,
   type CheckpointRepository,
   type Id,
@@ -42,7 +43,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
     }[];
     const browserVisitIds = bvRows.map((r) => r.browser_visit_id);
 
-    return {
+    return checkpointSchema.parse({
       id: row.id,
       sessionId: row.session_id,
       name: row.name,
@@ -53,10 +54,23 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       projectReferences: row.project_references
         ? JSON.parse(row.project_references)
         : [],
-    };
+    });
   }
 
   async save(checkpoint: Checkpoint): Promise<Result<void>> {
+    const parsed = checkpointSchema.safeParse(checkpoint);
+    if (
+      !parsed.success ||
+      new Set(checkpoint.fileVersionIds).size !==
+        checkpoint.fileVersionIds.length ||
+      new Set(checkpoint.browserVisitIds).size !==
+        checkpoint.browserVisitIds.length
+    )
+      return failure(
+        "INVALID_INPUT",
+        "Checkpoint evidence is invalid or duplicated.",
+      );
+    checkpoint = parsed.data;
     let transactionStarted = false;
     try {
       this.db.exec("BEGIN");
@@ -67,9 +81,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
         INSERT INTO checkpoints (id, session_id, name, created_at, kept, project_references)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          session_id = excluded.session_id,
           name = excluded.name,
-          created_at = excluded.created_at,
           kept = excluded.kept,
           project_references = excluded.project_references
       `);
@@ -117,7 +129,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
 
       this.db.exec("COMMIT");
       return { ok: true, value: undefined };
-    } catch (error) {
+    } catch {
       if (transactionStarted) {
         try {
           this.db.exec("ROLLBACK");
@@ -125,10 +137,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
           // Preserve the original failure if rollback is no longer possible.
         }
       }
-      return failure(
-        "INTERNAL",
-        `Failed to save checkpoint: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return failure("INTERNAL", "Checkpoint could not be saved.");
     }
   }
 
@@ -142,10 +151,10 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
 
       const row = stmt.get(id) as unknown as CheckpointRow | undefined;
       return { ok: true, value: row ? this.hydrateCheckpoint(row) : null };
-    } catch (error) {
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to get checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored checkpoint is unavailable or invalid.",
       );
     }
   }
@@ -162,10 +171,10 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       const rows = stmt.all(sessionId) as unknown as CheckpointRow[];
       const checkpoints = rows.map((r) => this.hydrateCheckpoint(r));
       return { ok: true, value: checkpoints };
-    } catch (error) {
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to list checkpoints: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored checkpoints are unavailable or invalid.",
       );
     }
   }

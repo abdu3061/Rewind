@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { appErrorSchema, idSchema, resultSchema } from "./common";
 import { sessionCommandSchema } from "./session";
+import { storageCommandSchema } from "./storage-management";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -9,6 +10,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...storageCommandSchema.options,
   z.strictObject({
     kind: z.literal("session"),
     action: sessionCommandSchema.shape.action,
@@ -66,6 +68,10 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
       "timeline",
       "history",
       "shutdown",
+      "storage.usage",
+      "storage.update",
+      "storage.cleanup",
+      "storage.delete",
     ]),
     result: resultSchema(z.unknown()),
   }),

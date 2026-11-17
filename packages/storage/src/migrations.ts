@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import initial from "../../../db/migrations/001_initial.sql?raw";
 import recording from "../../../db/migrations/002_recording.sql?raw";
 import searchText from "../../../db/migrations/003_activity_search_text.sql?raw";
+import checkpointIntegrity from "../../../db/migrations/004_checkpoint_integrity.sql?raw";
 import type { DatabaseConnection } from "./database";
 
 export interface Migration {
@@ -13,6 +14,7 @@ export const secureMigrations: readonly Migration[] = [
   { version: 1, name: "initial", sql: initial },
   { version: 2, name: "recording", sql: recording },
   { version: 3, name: "activity-search-text", sql: searchText },
+  { version: 4, name: "checkpoint-integrity", sql: checkpointIntegrity },
 ];
 export function applySecureMigrations(
   db: DatabaseConnection,

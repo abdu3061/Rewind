@@ -6,6 +6,8 @@ import {
   useRecordingRuntime,
 } from "./recording";
 
+import { StorageManagement } from "./storage-management";
+
 const pages = [
   "Dashboard",
   "Timeline",
@@ -369,69 +371,10 @@ export function App() {
               </span>
             </div>
 
+            <StorageManagement runtime={runtime} />
             <p>
-              History is encrypted and protected by this Windows account.
-              Automatic cleanup, full quota management and history deletion are
-              not implemented yet. Record only nonsensitive development
-              activity.
+              Cloud Gemini and article extraction remain off and unavailable.
             </p>
-
-            <dl className="settings-list">
-              <div>
-                <dt>Activity collection</dt>
-                <dd>{runtime?.collection ?? "unavailable"}</dd>
-              </div>
-
-              <div>
-                <dt>Cloud Gemini</dt>
-                <dd>Off · unavailable</dd>
-              </div>
-
-              <div>
-                <dt>Article extraction</dt>
-                <dd>Off · unavailable</dd>
-              </div>
-
-              <div>
-                <dt>Retention</dt>
-                <dd>
-                  <select
-                    aria-label="Data retention period"
-                    defaultValue="72"
-                    disabled
-                  >
-                    <option value="24">24 hours</option>
-                    <option value="48">48 hours</option>
-                    <option value="72">72 hours</option>
-                    <option value="168">7 days</option>
-                  </select>
-                  <span className="subtle-label"> Preview only</span>
-                </dd>
-              </div>
-
-              <div>
-                <dt>Storage limit</dt>
-                <dd>
-                  <select aria-label="Storage limit" defaultValue="2" disabled>
-                    <option value="1">1 GiB</option>
-                    <option value="2">2 GiB</option>
-                    <option value="5">5 GiB</option>
-                    <option value="10">10 GiB</option>
-                  </select>
-                  <span className="subtle-label"> Preview only</span>
-                </dd>
-              </div>
-
-              <div>
-                <dt>History / snapshots</dt>
-                <dd>
-                  {runtime?.secureStorage
-                    ? "Encrypted history available"
-                    : "History unavailable"}{" "}
-                  / snapshots unavailable
-                </dd>
-              </div>
-            </dl>
 
             <p className="footnote">
               No keystrokes, clipboard contents, screenshots, or private browser

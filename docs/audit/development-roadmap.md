@@ -1,5 +1,7 @@
 # Dependency-ordered development roadmap
 
+Current run: [core functionality integration](core-functionality-integration.md) advances RWA-700 with real retention/deletion/quota controls and preserves the secure recording baseline. Continue with RWA-300/301 verified Windows identity and transactional encrypted original-byte capture, then recovery/checkpoints/browser/UI. The overall goal remains active; no remote PR or release acceptance is implied.
+
 ## Local implementation progress after audit
 
 The [secure-storage integration report](secure-storage-collection-integration.md) records RWA-101 metadata/key feasibility, RWA-103 utility supervision and launch-scoped consent, the RWA-200 Windows foreground slice and RWA-402/related UI bounded encrypted timeline/search now implemented locally. RWA-100 lifecycle failure semantics remain intact. Inactive browser framing/origin/URL-policy primitives advance the next transport task. These are reviewable local slices, not remote merges or broad task completion; idle/lock, snapshots, relationship/expiry policy, authenticated browser transport and release gates remain. Ownership is unchanged.

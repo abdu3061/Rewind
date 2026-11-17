@@ -4,6 +4,11 @@ import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
 import type {
+  StoragePreferences,
+  StorageUsage,
+  DeleteHistory,
+} from "./storage-management";
+import type {
   CollectionPreferences,
   HistoryQuery,
   RuntimeSnapshot,
@@ -17,6 +22,12 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Recovery/AI/filesystem IPC will need lead review.
 export interface DesktopApi {
+  storage: {
+    usage(): Promise<Result<StorageUsage>>;
+    update(value: StoragePreferences): Promise<Result<StorageUsage>>;
+    cleanup(): Promise<Result<StorageUsage>>;
+    deleteHistory(value: DeleteHistory): Promise<Result<StorageUsage>>;
+  };
   runtime: {
     get(): Promise<Result<RuntimeSnapshot>>;
     retry(): Promise<Result<RuntimeSnapshot>>;

@@ -323,15 +323,22 @@ export class WorkerClient {
   ): Promise<Result<T>> {
     const allowedStop =
       command.kind === "shutdown" ||
+      command.kind === "storage.delete" ||
+      command.kind === "storage.update" ||
+      command.kind === "storage.cleanup" ||
       (command.kind === "preferences.update" &&
         !command.value.collectionConsent) ||
       (command.kind === "session" &&
         (command.action === "pause" || command.action === "end"));
     const allowedRead =
       this.state.secureStorage &&
-      ["timeline", "history", "preferences.get", "snapshot"].includes(
-        command.kind,
-      );
+      [
+        "timeline",
+        "history",
+        "preferences.get",
+        "snapshot",
+        "storage.usage",
+      ].includes(command.kind);
     if (this.pending.size >= 64 && allowedStop) {
       // Stop authority cannot wait behind a saturated public request map.
       this.fail({

@@ -31,6 +31,65 @@ function fixture(strategy?: WindowQueryStrategy) {
   runtimes.push(runtime);
   return { runtime, root, key: retainedKey };
 }
+it("a later revoke supersedes a grant still checking storage", async () => {
+  const f = fixture();
+  await f.runtime.initialize();
+  const grant = f.runtime.execute({
+    kind: "preferences.update",
+    value: { collectionConsent: true, excludedApplications: [] },
+  });
+  const revoke = f.runtime.execute({
+    kind: "preferences.update",
+    value: { collectionConsent: false, excludedApplications: [] },
+  });
+  const results = await Promise.all([grant, revoke]);
+  expect(results[0]).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(results[1].ok).toBe(true);
+  expect(f.runtime.snapshot().preferences.collectionConsent).toBe(false);
+});
+it("automatically expires encrypted history while open without a timeline query", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date("2026-11-10T10:00:00.000Z"));
+    const f = fixture();
+    await f.runtime.initialize();
+    await f.runtime.execute({ kind: "session", action: "start" });
+    const id = f.runtime.snapshot().session!.id;
+    const db = new NativeDatabase(join(f.root, "history.sqlite"));
+    try {
+      db.pragma("cipher=sqlcipher");
+      db.pragma("legacy=4");
+      db.key(f.key);
+      db.prepare("INSERT INTO activities VALUES (?,?,?,?,?,?)").run(
+        "10000000-0000-4000-8000-000000000099",
+        id,
+        "foreground",
+        "windows",
+        "2026-11-10T10:00:00.000Z",
+        JSON.stringify({
+          application: "Synthetic.exe",
+          windowTitle: "Timer expiry fixture",
+        }),
+      );
+    } finally {
+      db.close();
+    }
+    expect(await f.runtime.execute({ kind: "storage.usage" })).toMatchObject({
+      ok: true,
+      value: { activityCount: 1 },
+    });
+    vi.setSystemTime(new Date("2026-11-17T10:00:00.000Z"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await f.runtime.execute({ kind: "storage.usage" })).toMatchObject({
+      ok: true,
+      value: { activityCount: 0 },
+    });
+    expect(f.runtime.snapshot().preferences.collectionConsent).toBe(false);
+    await f.runtime.shutdown();
+  } finally {
+    vi.useRealTimers();
+  }
+});
 it("persists synthetic observations only after explicit grant and drains pause/end/revocation", async () => {
   const f = fixture();
   expect((await f.runtime.initialize()).ok).toBe(true);

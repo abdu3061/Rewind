@@ -107,9 +107,9 @@ export function RecordingPreferences({
       />
       <p className="footnote">
         Up to 200 names, matched without case or the .exe suffix. No keystrokes,
-        clipboard capture or screenshots. Automatic retention cleanup and
-        history deletion are not available in this development build; do not
-        record sensitive work.
+        clipboard capture or screenshots. Manage retention, storage and history
+        deletion in Settings. Use nonsensitive development sessions while
+        independent security review is pending.
       </p>
       <div className="controls">
         <button

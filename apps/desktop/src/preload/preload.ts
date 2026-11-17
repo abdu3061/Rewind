@@ -22,6 +22,9 @@ import {
   runtimeSnapshotSchema,
   timelineQuerySchema,
   timelineResponseSchema,
+  storageUsageResponseSchema,
+  storagePreferencesSchema,
+  deleteHistorySchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -74,6 +77,28 @@ function command(action: SessionAction) {
 }
 
 const api: DesktopApi = {
+  storage: {
+    usage: noArgs({ kind: "storage.usage" }, storageUsageResponseSchema),
+    cleanup: noArgs({ kind: "storage.cleanup" }, storageUsageResponseSchema),
+    async update(...args: unknown[]) {
+      const parsed = storagePreferencesSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "storage.update", value: parsed.data },
+            storageUsageResponseSchema,
+          )
+        : failure("INVALID_INPUT", "Valid storage settings are required.");
+    },
+    async deleteHistory(...args: unknown[]) {
+      const parsed = deleteHistorySchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "storage.delete", value: parsed.data },
+            storageUsageResponseSchema,
+          )
+        : failure("INVALID_INPUT", "Confirmed history deletion is required.");
+    },
+  },
   runtime: {
     get: noArgs({ kind: "runtime.get" }, runtimeResponseSchema),
     retry: noArgs({ kind: "runtime.retry" }, runtimeResponseSchema),

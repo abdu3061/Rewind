@@ -5,6 +5,7 @@ import {
   recordingCommandSchema,
   timelineResponseSchema,
   type Result,
+  storageUsageResponseSchema,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
@@ -16,6 +17,11 @@ export async function dispatchRecordingRequest(
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "storage.usage":
+    case "storage.update":
+    case "storage.cleanup":
+    case "storage.delete":
+      return backend.request(command, storageUsageResponseSchema);
     case "runtime.get":
       return { ok: true, value: backend.getSnapshot() };
     case "runtime.retry":

@@ -11,7 +11,9 @@ Rewind is a Windows desktop work-session memory project. This local development 
 - Tray status and acknowledged shutdown. Closing the window ends the session and quits. A worker failure disables recording and requires reconnect/fresh approval.
 - Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
 
-No folders are protected. Browser visits, snapshots/recovery, checkpoints, idle/lock detection, Gemini, automatic retention/deletion and full disk quota management remain unavailable. The UI states these limits. Use nonsensitive development sessions only; independent security review, retention, licensing and distribution remain release gates. ASAR packaging is not data encryption: history uses a keyed native cipher and Windows-protected key instead.
+History now has configurable retention, automatic expiration, usage/quota backpressure and confirmed deletion in Settings; see the [core integration report](docs/audit/core-functionality-integration.md) for policy and verification. Kept checkpoint evidence is protected by cleanup, although checkpoint creation UI remains forthcoming. Quotas include database journals and can temporarily be exceeded during bounded writes/compaction; deletion cannot promise forensic erasure.
+
+No folders are protected yet. Browser visits, snapshots/recovery, checkpoint creation, idle/lock detection and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history uses a keyed native cipher and Windows-protected key instead.
 
 ## Windows / PowerShell setup
 

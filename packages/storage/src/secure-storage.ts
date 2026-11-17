@@ -18,7 +18,10 @@ import {
   type SessionStorage,
   type TimelineQuery,
   type UserSettings,
+  type DeleteHistory,
+  type StorageUsage,
 } from "@rewind/contracts";
+import { StorageMaintenance } from "./storage-maintenance";
 import type { DatabaseConnection, SqlValue } from "./database";
 import { createRepositories, verifyRepositorySchema } from "./repositories";
 import { applySecureMigrations } from "./migrations";
@@ -357,5 +360,34 @@ export class SecureStorage implements SessionStorage {
       ]);
     }
     return ok();
+  }
+  async usage(): Promise<Result<StorageUsage>> {
+    const settings = await this.getSettings();
+    if (!settings.ok) return settings;
+    try {
+      return {
+        ok: true,
+        value: new StorageMaintenance(this.db!, this.file).usage(
+          settings.value,
+        ),
+      };
+    } catch {
+      return failure("UNAVAILABLE", "Storage usage could not be verified.");
+    }
+  }
+  async cleanup(now = new Date()): Promise<Result<StorageUsage>> {
+    const settings = await this.getSettings();
+    return settings.ok
+      ? new StorageMaintenance(this.db!, this.file).cleanup(settings.value, now)
+      : settings;
+  }
+  async deleteHistory(input: DeleteHistory): Promise<Result<StorageUsage>> {
+    const settings = await this.getSettings();
+    return settings.ok
+      ? new StorageMaintenance(this.db!, this.file).delete(
+          settings.value,
+          input,
+        )
+      : settings;
   }
 }

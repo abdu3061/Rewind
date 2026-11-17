@@ -86,7 +86,14 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     expect(bridge).toMatchObject({
       node: "undefined",
       process: "undefined",
-      keys: ["runtime", "privacy", "timeline", "history", "sessions"],
+      keys: [
+        "storage",
+        "runtime",
+        "privacy",
+        "timeline",
+        "history",
+        "sessions",
+      ],
       invalid: { ok: false, error: { code: "INVALID_INPUT" } },
       invalidTransition: { ok: false, error: { code: "INVALID_TRANSITION" } },
     });
@@ -123,10 +130,10 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         ).toHaveCount(0);
       }
       if (screen === "Settings") {
-        await expect(page.getByLabel("Data retention period")).toBeDisabled();
+        await expect(page.getByLabel("Data retention period")).toBeEnabled();
         await expect(
           page.getByLabel("Storage limit", { exact: true }),
-        ).toBeDisabled();
+        ).toBeEnabled();
       }
     }
     await page.getByRole("button", { name: /Dashboard/ }).click();
