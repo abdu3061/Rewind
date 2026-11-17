@@ -1,6 +1,6 @@
 # Repository status
 
-The [backend implementation follow-up](audit/backend-stabilization.md) is the current local stabilization evidence. Its feature branch preserves this cleanup/audit history and does not merge or enable the remote recording prototypes.
+Current local implementation: [secure storage and recording integration](audit/secure-storage-collection-integration.md) on `feature/secure-storage-collection`. Encrypted SQLite, protected keys, utility supervision, explicit launch-scoped Windows recording and DB-backed Timeline/Search are implemented and verified with synthetic activity. Shared main and remote PRs remain unchanged. The earlier cleanup/audit evidence below is historical.
 
 This is the earlier cleanup snapshot. The [full engineering audit](audit/README.md) extends it with PR #6, reproduced failure cases, isolated stabilization and a dependency-ordered roadmap. Audit fixes have not been merged into shared main.
 

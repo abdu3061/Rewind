@@ -1,6 +1,6 @@
 # Project specification
 
-Status: initialization, 17 October 2026. Product owner and technical approver: Rasit (`@RXD3`). This document refines the existing plan without expanding version one.
+Specification baseline: 17 October 2026; product owner and technical approver: Rasit (`@RXD3`). The version-one requirements below remain targets. Current local Windows recording/encrypted-history implementation and remaining capabilities are tracked in the [integration report](audit/secure-storage-collection-integration.md).
 
 ## Product and scope
 

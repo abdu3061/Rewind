@@ -1,8 +1,8 @@
 # Rewind audit — 16 November 2026
 
-**Implementation follow-up:** [Backend stabilization](backend-stabilization.md) records the subsequent local lifecycle, storage, Windows-adapter and response-ordering corrections. The original audit/PR manifest below remains historical evidence; its old recommended next lifecycle goal has now been implemented locally. Real recording remains disabled.
+**Current implementation follow-up:** [Secure storage and recording integration](secure-storage-collection-integration.md) records the locally completed encrypted metadata, protected keys, utility supervision, launch-scoped Windows consent and DB-backed Timeline/Search workflow. It builds on [backend stabilization](backend-stabilization.md). The original audit/PR manifest below is historical evidence; shared main and remote PRs are unchanged. Browser/folder capture, retention/deletion, recovery and AI remain unavailable.
 
-Rewind is a runnable foundation with unmerged subsystem prototypes, suitable for synthetic shell/session testing. It is not a recording beta or public release.
+The current local branch is a Windows recording development prototype, verified with synthetic activity. It is not a recording beta or public release. The reports below describe earlier revisions unless explicitly updated.
 
 - [Executive report](executive-report.md): conclusions, work kept/redone, owned next tasks, approval decisions and a copyable next goal.
 - [Current state](current-state.md): merged/local/PR capability inventory and installed runtime evidence.

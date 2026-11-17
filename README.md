@@ -1,16 +1,17 @@
 # Rewind
 
-Rewind is a Windows desktop application that will help users remember their work sessions and recover successfully captured saved file versions. Version one targets Windows, Chrome, and Edge. This repository is the **initial runnable foundation**, not the complete product.
+Rewind is a Windows desktop work-session memory project. This local development branch provides consent-driven Windows activity recording and encrypted history; it is not the complete version-one product or a release. See the [implementation and verification report](docs/audit/secure-storage-collection-integration.md).
 
 ## What works today
 
 - Electron + React desktop shell with Dashboard, Timeline, Search, Checkpoints, and Settings.
-- Real in-memory Start → Pause → Resume → End session controls through a typed, validated preload bridge. Invalid transitions return structured errors.
-- Tray session controls and status. Collection is always off. Closing the window quits the starter; session state resets on exit.
-- Serialized session orchestration and acknowledged shutdown, plus failure-tested repository/Windows-adapter prototypes using synthetic data. The desktop explicitly selects session-only mode; see [backend stabilization](docs/audit/backend-stabilization.md).
+- Persistent Start → Pause → Resume → End controls through a validated preload bridge and supervised utility process. Invalid transitions and failed writes return errors.
+- Collection starts off. Explicit Windows activity approval plus an active session records permitted application names, window titles and timestamps. Approval expires on every app/worker restart; application exclusions persist. Known browser windows and Rewind are skipped.
+- Timeline and local keyword search read encrypted SQLite/FTS history with session/date/type filters, paging and live updates. Interrupted active sessions recover paused with a capture gap. A title does not prove a saved/read file.
+- Tray status and acknowledged shutdown. Closing the window ends the session and quits. A worker failure disables recording and requires reconnect/fresh approval.
 - Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
 
-No activity is collected. No folders are protected. SQLite schema/repository prototypes are exercised with synthetic test data and are not connected to the desktop. Durable history, file versions/recovery, checkpoints, search, editable settings, encryption, retention cleanup, utility-process services, native browser transport, and Gemini are **not implemented in the app**. Other screens show honest empty states. ASAR packaging is not data encryption.
+No folders are protected. Browser visits, snapshots/recovery, checkpoints, idle/lock detection, Gemini, automatic retention/deletion and full disk quota management remain unavailable. The UI states these limits. Use nonsensitive development sessions only; independent security review, retention, licensing and distribution remain release gates. ASAR packaging is not data encryption: history uses a keyed native cipher and Windows-protected key instead.
 
 ## Windows / PowerShell setup
 
@@ -19,11 +20,13 @@ Install Git and **Node.js 22.x (at least 22.13)** with npm 10+. Open the reposit
 ```powershell
 node --version
 npm --version
-npm install
+npm ci
 npm run dev
 ```
 
-Use `npm ci` on subsequent clean checkouts to install the committed lockfile exactly. Run commands from this directory, where the root `package.json` lives. No `.env` file, API key, SQLite runtime, Python, or separately installed browser is required. Dependencies download Electron on the first install; allow network access for that download. No native collectors are registered in the desktop, and no external SQLite binding is installed.
+Use `npm ci` on subsequent clean checkouts to install the lockfile exactly. Run commands from this directory. No `.env`, API key, Python or separately installed browser is required. Dependencies provide Electron and the pinned Windows x64 Node-API encrypted SQLite prebuild. Windows key protection must be available; failures show an unavailable service without a plaintext or memory fallback. ARM64 and non-Windows recording are not verified.
+
+After deliberately changing dependencies with `npm install`, run `npm run lock:prepare` to preserve the native package's upstream prebuild-only metadata in the lockfile. `npm run check` verifies it; see ADR 0010 for the reproduced npm clean-install issue. Do not replace the prebuild with a local source build without a separate compatibility review.
 
 If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; changing the machine execution policy is unnecessary. A main/preload edit requires restarting `npm run dev`; renderer edits use Vite HMR. Close Rewind or press Ctrl+C to stop development. The dev server binds only to loopback.
 
@@ -52,15 +55,15 @@ apps/desktop/          Electron main + sandboxed preload + React renderer (Forge
 apps/browser-extension/  Inactive Chrome/Edge Manifest V3 starter
 packages/contracts/   Validated domain models, ports, public desktop API
 packages/engine/      Pure session state machine and failure-aware coordinator
-packages/storage/     SQLite repository prototypes; no desktop persistence
-packages/collectors/  Unintegrated Windows polling prototype and lifecycle ports
+packages/storage/     Encrypted SQLite, migrations, repositories and protected-key port
+packages/collectors/  Windows foreground helper, lifecycle ports and inactive browser framing
 packages/assistant/   Validated-tool design boundary; no cloud requests
 tests/app/            Packaged Electron integration tests
 docs/                 Specification, architecture, ownership, backlog, ADRs
 .github/              Windows CI, PR template, CODEOWNERS
 ```
 
-UI → narrow preload API → authorized main-process handler → engine. Future background implementations use Electron utility processes, consume shared contracts, and remain testable without React. The private source workspaces are bundled by Vite; `tsc` checks them without emitting independent packages. Desktop runtime code is bundled, so its source/build dependencies are intentionally development dependencies.
+UI → narrow preload API → authorized main-process handler → supervised utility process → engine/storage/Windows collector. Main owns Windows safeStorage and transfers only the protected store's unwrapped key to the worker. Private TypeScript source workspaces are bundled by Vite; the native runtime is explicitly copied and unpacked from ASAR. Automated app tests use a marked temporary profile and synthetic observation source; they never record the user's desktop.
 
 ## Team
 

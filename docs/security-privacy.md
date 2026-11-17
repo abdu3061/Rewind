@@ -2,15 +2,16 @@
 
 Rasit owns security decisions and backend authorization. This document distinguishes enforced starter behavior from future release requirements. [Electron security guidance](https://www.electronjs.org/docs/latest/tutorial/security) informs the process boundary.
 
-## Enforced in the starter
+## Enforced in this local development branch
 
-- No collectors, file watchers, snapshot operations, database, article extraction, browser transport, or cloud requests run. Starting an in-memory session does not grant consent or enable monitoring.
-- The renderer is sandboxed and isolated without Node integration. Only session capabilities cross preload; arguments, responses, and events are validated. Main authorizes the sender, main frame, and expected page.
+- Collection starts off and requires explicit Windows approval plus an active session. Approval expires on each app/worker restart. Exclusions persist; changes pause without automatic resume. Browser/folder collection, snapshots, extraction and cloud requests are unavailable.
+- The renderer is sandboxed without Node. Session/runtime/privacy/history/timeline capabilities validate arguments, responses and events. Main authorizes exact sender, main frame and page. No raw IPC/filesystem/key API is exposed.
+- SQL and the Windows collector run in a supervised utility process. It opens only a verified encrypted store; main supplies Windows-protected key access. Generation fencing, stop/drain, deadlines and heartbeat leases prevent silent continuation after lost authority.
 - Packaged UI assets use a bounded custom protocol and CSP; external navigation, popup windows, webviews, and permission grants are denied. Renderer code cannot access secrets or privileged filesystem operations.
 - The extension requests no page/tab/native permissions, contains no active collection listeners, and forbids incognito use. No user activity is stored in the extension.
 - `.env`/database/build outputs are ignored. No real keys are required or committed. Operational startup logging uses a code without sensitive contents.
 
-These controls do not constitute implemented data-at-rest encryption or an audited production security system. Electron/Chromium may maintain ordinary application cache/config files; Rewind has no activity-history or snapshot store yet.
+The local history store is encrypted; this is not an independent security audit or production release. Electron/Chromium maintain ordinary cache/config files. Same-user malware, process memory, OS paging/crash dumps and independent backups remain outside the at-rest protection claim. Snapshots are not implemented. Automated tests use marked temporary synthetic profiles and never query real foreground activity.
 
 ## Consent and lifecycle requirements
 
@@ -31,19 +32,19 @@ flowchart LR
   C -. only if enabled .-> G[Gemini question and necessary excerpts]
 ```
 
-The arrows above are the planned production flow, not currently running services. Original bytes, metadata, extracted text, search indexes, temporary previews, recovery safety copies, and diagnostic buffers all fall within the privacy design. Do not log sensitive titles, URLs, paths, questions, or document contents by default. Measure operational counts/codes without collecting content. Sanitize query strings/URL secrets before capture under an approved policy.
+The observation → authorization → encrypted metadata → local history/FTS path is implemented for Windows foreground activity. File-copy/extraction/cloud paths remain planned. Do not log titles, URLs, paths, questions or document contents. Operational failures expose structured codes and sanitized messages. Browser URL policy currently exists only as tested inactive transport groundwork.
 
 All history/file copies stay local. Local filesystem scopes need canonicalization, allowed-root checks, file identity verification, reparse/symlink defenses, file-type/size limits, race checks, and bounded parsing. Do not trust a path or file ID just because it came from a renderer, model, extension, or stored record. Parse untrusted documents in bounded background jobs and treat extraction failures as unsupported/gaps.
 
 ## Encryption and keys: release gate
 
-Use a reviewed encryption-enabled SQLite build with FTS5 plus authenticated encrypted immutable snapshots and OS-protected keys. Exact binding/build, cipher format, licensing, key hierarchy/rotation/recovery, and Windows packaging are open decisions. A feasibility spike must test the exact Electron ABI, native rebuild, packaged launch, migration/journal/temp/FTS coverage, wrong-key behavior, crash recovery, and tamper detection before approval. SQLCipher is a candidate, not an installed dependency. [SQLCipher documentation](https://www.zetetic.net/sqlcipher/documentation/)
+The local implementation selects `better-sqlite3-multiple-ciphers` 13.1.1, SQLCipher-profile authenticated encryption and Windows DPAPI-protected random keys; see [ADR 0010](decisions/0010-encrypted-recording-store.md). Packaged Windows reopen and synthetic DB/WAL/FTS, wrong-key, migration, corruption and key-failure tests pass. The binding is SQLite3 Multiple Ciphers, not a claim of Zetetic support or FIPS certification. Snapshot encryption, key rotation/recovery, full dependency notices and independent review remain release gates.
 
 Never silently fall back to plaintext when encryption, credentials, or the OS key store fail. Keep keys out of renderer code, browser storage, `VITE_*`, logs, Git, and ordinary `.env` files. Future user-provided Gemini keys belong in privileged OS-protected storage; no shared provider key is embedded in a distributed app. ASAR, hashes, and file permissions do not provide encryption.
 
 ## Retention, deletion, and quotas
 
-Initial retention is 72 hours, configurable. A proposed 2 GiB starter setting is a design default, not an implemented quota. Keep pins checkpoint resources transitively; deleting/unkeeping releases references safely. Expiration and user deletion must reach history records, FTS/derived text, blobs, unreferenced safety copies, previews/temp files, extension buffers, queue contents, diagnostics, and assistant evidence caches.
+The design default is 72 hours and a proposed 2 GiB quota. Automatic expiration/deletion and full quota orchestration are not implemented; the UI discloses this before approval and permits only development use. The native store has a database page cap, which is not a complete disk/WAL quota. Future Keep pins checkpoint resources transitively. Expiration/deletion must reach records, FTS, blobs, safety copies, previews, extension buffers, queues, diagnostics and assistant caches.
 
 Cleanup must preserve referential integrity and kept artifacts, reconcile failures after restart, report storage pressure, and stop unsafe capture rather than silently corrupt/delete kept history. WAL/journals and stale files require explicit maintenance. Do not promise forensic erasure from SSDs, independent backups, or copies outside Rewind's store. [SQLite WAL](https://www.sqlite.org/wal.html), [secure_delete](https://www.sqlite.org/pragma.html#pragma_secure_delete)
 

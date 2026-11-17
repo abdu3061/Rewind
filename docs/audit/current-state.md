@@ -1,6 +1,6 @@
 # Rewind current-state audit
 
-**Subsequent local implementation:** see [backend stabilization](backend-stabilization.md) for the coordinator, checked storage lifecycle, ingestion integrity, Windows-adapter shutdown and renderer ordering now implemented on `feature/backend-lifecycle-stabilization`. This inventory retains the original inspected revisions. The desktop still records no real activity and opens no database.
+**Current local follow-up:** [secure storage and recording integration](secure-storage-collection-integration.md) supersedes the runtime inventory below on `feature/secure-storage-collection`: encrypted history and a consent-gated Windows collector now run in a supervised utility process, with real history/query UI and synthetic packaged verification. Browser/folder recording, retention/deletion, recovery and AI remain unavailable. This audit preserves the original inspected revisions; shared main and PRs 3?6 are unchanged.
 
 Audit date: 16 November 2026. Scope: the tracked repository, fetched branches and PRs, existing local cleanup work, tests, builds, and official compatibility documentation. This is an engineering audit, not a release certification. See [validation](validation-report.md) for exactly what ran, [findings](findings.md) for defects, and [roadmap](development-roadmap.md) for future work.
 

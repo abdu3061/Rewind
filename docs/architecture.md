@@ -1,6 +1,6 @@
 # Architecture
 
-Local backend follow-up: [ADR 0009](decisions/0009-session-lifecycle-stabilization.md) and [implementation evidence](audit/backend-stabilization.md) now govern the coordinator's commit/failure/drain semantics. The desktop constructs its explicit session-only mode around SessionService; repository mode and the existing Windows adapter are verified with synthetic fixtures only. No SQLite/native collector runs in main. Utility supervision and encrypted real-data composition remain future gates.
+Current local implementation: [report](audit/secure-storage-collection-integration.md), [ADR 0010](decisions/0010-encrypted-recording-store.md) and [ADR 0011](decisions/0011-recording-worker-consent.md). A supervised utility process hosts the coordinator, encrypted SQLite and Windows collector. Main handles UI/tray, renderer authorization, DPAPI and supervision. Lifecycle commit/drain semantics from ADR 0009 are preserved.
 
 The initialization keeps domain code independent of Electron and React. It uses the approved stack and introduces only dependencies required by the runnable starter. Proposed production mechanisms have explicit implementation gates.
 
@@ -10,10 +10,10 @@ The initialization keeps domain code independent of Electron and React. It uses 
 flowchart LR
   R[React renderer] --> P[Typed preload bridge]
   P --> M[Electron main: authorization and composition]
-  M --> E[Engine: serialized coordinator and in-memory SessionService]
-  M -. later .-> U[Node utility-process host]
-  U -. later .-> C[Collectors]
-  U -. later .-> S[Encrypted storage and FTS5]
+  M --> U[Node utility process]
+  U --> E[Engine: serialized coordinator and session state machine]
+  U --> C[Consent-gated Windows collector]
+  U --> S[Encrypted SQLite and FTS5]
   U -. later .-> A[Optional Gemini assistant]
   E --> K[Shared contracts and ports]
   C --> K
@@ -22,21 +22,21 @@ flowchart LR
   B[Chrome/Edge extension] -. proposed native host and pipe .-> U
 ```
 
-Solid arrows describe existing calls/dependencies. Dotted arrows are planned runtime integration, with no worker, native host, database, collector, or cloud request currently running. SQLite schema/repository prototypes exist under `db` and `packages/storage`, with synthetic tests using Node's stock SQLite. They are not connected to desktop composition and do not satisfy the encryption gate in ADR 0005.
+Solid arrows describe implemented composition; dotted arrows remain planned. Browser/folder collectors, native browser host and cloud requests are unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; production uses only SecureStorage with the pinned cipher and protected key.
 
-| Module            | Allowed responsibility / dependency                                                                                                                                                           |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                                   |
-| engine            | Session lifecycle now; future collection coordination, snapshots, checkpoints, recovery, retention and permissions. Depends on contracts and injected ports; never imports React or Electron. |
-| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                                             |
-| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                                   |
-| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                                          |
-| desktop main      | Privileged composition, BrowserWindow/tray, sender authorization, future utility-process host and dialogs.                                                                                    |
-| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                                       |
-| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                                         |
-| browser extension | MV3 background, separate permissions/extraction/transport adapters. No current permissions or monitoring.                                                                                     |
+| Module            | Allowed responsibility / dependency                                                                                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                      |
+| engine            | Serialized lifecycle, ingestion authorization, exclusion and drain now; future snapshots, checkpoints, recovery and retention. Contracts/injected ports only, no React/Electron. |
+| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                                |
+| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                      |
+| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                             |
+| desktop main      | Window/tray, exact renderer authorization, Windows DPAPI, utility supervision and dialogs. No SQL or window polling.                                                             |
+| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                          |
+| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                            |
+| browser extension | MV3 background, separate permissions/extraction/transport adapters. No current permissions or monitoring.                                                                        |
 
-All private packages expose TypeScript source and are bundled by Vite/Vitest. There are no separate package emit steps or alias-only imports that fail after packaging. Runtime desktop code is bundled, and its workspace/React dependencies are build dependencies. Introduce native dependencies only in privileged package manifests and externalize them from Vite when the native spike proves Forge packaging, ABI rebuild, and ASAR unpack behavior. No database binding is selected by this initialization.
+Private packages expose TypeScript source bundled by Vite/Vitest. The worker entry lives in desktop composition. `better-sqlite3-multiple-ciphers` 13.1.1 is externalized, copied with its native runtime/license, and its Windows x64 Node-API binary is unpacked from ASAR. Packaged reopen is tested on Electron 44.11.3. SQL/collection never run in main or renderer.
 
 ## Electron boundaries
 
@@ -46,7 +46,7 @@ The development page uses a loopback Vite server. A per-server nonce permits Rea
 
 The main handler requires the known window's webContents, its exact main frame, and the expected renderer scheme/host/entry path before command validation. Preload validates no-argument public methods and response/event schemas. Main dispatches a strict command enum; errors are small structured values without stacks or sensitive input. Tray commands call the same engine and broadcast resulting state. `get` reads state; events are snapshots, not privileged objects.
 
-Main temporarily hosts the lightweight synchronous session engine. There is no background workload to offload yet. New persistent/collector workloads will move behind a utility-process transport; process creation/restart/error handling lives in desktop main while engine logic remains platform-neutral. This is an explicit staging choice, not a change to the approved Node utility-process architecture. UI closure currently quits the starter. Product tray-only operation needs durable lifecycle and shutdown semantics first.
+Worker messages are versioned, strictly validated and bounded at 2 MiB; IDs and a boot nonce fence replies. Main enforces startup/request deadlines and observes exit before a retry. A heartbeat lease ends orphaned worker authority. Ingestion has a stricter 256 KiB batch limit. Normal quit awaits end/drain/store close; crash recovery restores an interrupted session paused and records a gap, never fabricating an ended acknowledgement. Window close quits; tray-only lifetime is future product work.
 
 ## Session lifecycle today
 
@@ -60,7 +60,7 @@ stateDiagram-v2
   Ended --> Active: start new session ID
 ```
 
-`get` is valid in every state; all other unlisted transitions return `INVALID_TRANSITION` without mutation. An ended session remains visible until a new start. UTC wall-clock timestamps are clamped within a session against backward clock changes; durations will require a monotonic clock in the real collector engine. Returned objects are copies. State disappears on app exit. There is no persistence, protection, or monitoring implied by Active.
+`get` is valid in every healthy state; unlisted transitions return `INVALID_TRANSITION`. Sessions/history persist encrypted. Active alone never grants recording permission. Approval is explicit per worker launch, settings changes pause without automatic resume, and revocation invalidates generation authority before awaiting cleanup. UTC session timestamps are clamped against backward clock changes. Returned objects are copies.
 
 ## Planned ingestion
 
@@ -78,7 +78,7 @@ flowchart TD
   V --> O[Encrypted immutable blob store]
 ```
 
-Collectors must stop emitting and release handles on pause/stop. Engine ingestion must additionally reject a stale generation, paused/ended session, invalid session linkage, excluded resources, or revoked permission. Pause/end acknowledgement must follow queue quiescence; delayed file notifications or extension reconnects cannot silently re-enable capture. Collector/worker failures become explicit gaps. No collectors are registered today, so these guarantees remain acceptance criteria for Phase 1 rather than a claimed implementation.
+The Windows collector is registered only after secure startup; it samples only after grant plus session activation. One PowerShell helper compiles C# once per run and checks process exclusions before reading titles. Pause/end stop timers, await queries/emits and release the helper. The engine separately rejects stale run/session/source/policy events and drains admitted writes. Browser/file sources are unavailable and lack resource authorization, so cannot be ingested. Idle/lock handling remains unimplemented and is not inferred from a missing foreground window.
 
 Subscribe to selected-folder notifications before baseline capture, stabilize reads, reconcile saves/renames/deletes, and explicitly track baseline completion. Folder events show changes, not user attention. Browser page text is captured at permissioned visit time, as bounded plain text, separately from the URL/title. No page content is executed in privileged processes. Idle and lock observations gate collection according to the approved policy.
 
@@ -86,7 +86,7 @@ Subscribe to selected-folder notifications before baseline capture, stabilize re
 
 SQLite owns normalized records, relationships, versioned transactions/migrations, and FTS5 indexes. The content store owns immutable encrypted original bytes addressed internally by hashes; public FileVersion models contain no blob paths or encryption keys. Text extraction is a derivative for search/preview; a DOCX recovery must preserve the original formatting bytes. Hashes, verified writes, atomic publication, size limits, crash reconciliation, and protected-folder path checks are required.
 
-The encryption-enabled SQLite build, key lifecycle, journal/temp/FTS coverage, and encrypted blob format need a packaged Windows spike and Rasit's approval before storing real history. Never treat stock SQLite, Electron ASAR, OS file permissions, or a privacy label as encrypted storage. Release must fail closed when encryption/key services are unavailable.
+ADR 0010 selects authenticated SQLCipher-profile metadata encryption with protected key creation, checksummed migrations, schema/FK/SQLite/FTS integrity checks and encrypted WAL. Temporary SQL storage stays in memory. Missing/wrong keys, plaintext, tampering or unavailable encryption fail closed without replacement. Encrypted blobs, key rotation and independent security review remain release work; stock SQLite, ASAR and file permissions are not encryption.
 
 The engine creates recovery proposals from authorized existing file-version IDs. Default recovery writes a new copy after preview and explicit user confirmation. An overwrite additionally preserves and verifies current bytes, checks file identity/hash/mtime against the confirmed target, and aborts if preservation or revalidation fails. Recovery execution is not an assistant tool and is not exposed by current IPC. Reparse points, traversal, destination changes, locked files, corruption, low disk space, and interrupted publication all require tests.
 
