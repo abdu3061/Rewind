@@ -163,6 +163,7 @@ describe("trust-boundary contracts", () => {
     expect(userSettingsSchema.safeParse(settings).success).toBe(true);
     expect(settings).toMatchObject({
       collectionConsent: false,
+      browserCollectionConsent: false,
       cloudAiEnabled: false,
       articleExtractionEnabled: false,
       retentionHours: 72,

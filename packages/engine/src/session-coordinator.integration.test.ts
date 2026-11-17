@@ -65,6 +65,7 @@ function fixture(path = ":memory:") {
       ...createDefaultSettings(),
       collectionConsent: true,
       folderCollectionConsent: true,
+      browserCollectionConsent: true,
     }),
     authorizeResource: async () => ({ ok: true, value: undefined }), // Synthetic resource authorization only.
   });

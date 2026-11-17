@@ -80,6 +80,7 @@ export class WorkerRuntime {
       },
       secureStorage: this.ready,
       filePermission: this.settings.folderCollectionConsent,
+      browserPermission: this.settings.browserCollectionConsent,
       synthetic: this.options.synthetic,
       error:
         this.fault ??
@@ -105,6 +106,7 @@ export class WorkerRuntime {
         ...settings.value,
         collectionConsent: false,
         folderCollectionConsent: false,
+        browserCollectionConsent: false,
         cloudAiEnabled: false,
         articleExtractionEnabled: false,
       };
@@ -260,6 +262,7 @@ export class WorkerRuntime {
               ...this.settings,
               collectionConsent: false,
               folderCollectionConsent: false,
+              browserCollectionConsent: false,
             };
             return updated;
           }
@@ -363,6 +366,7 @@ export class WorkerRuntime {
             ...(command.kind === "storage.update" ? command.value : {}),
             collectionConsent: false,
             folderCollectionConsent: false,
+            browserCollectionConsent: false,
           };
           this.settings = candidate;
           let outcome: Result<StorageUsage> = failure(
@@ -412,7 +416,10 @@ export class WorkerRuntime {
             ...this.settings,
             ...command.value,
             ...(!command.value.collectionConsent
-              ? { folderCollectionConsent: false }
+              ? {
+                  folderCollectionConsent: false,
+                  browserCollectionConsent: false,
+                }
               : {}),
           };
           if (!candidate.collectionConsent) this.settings = candidate;
@@ -429,6 +436,7 @@ export class WorkerRuntime {
               ...this.settings,
               collectionConsent: false,
               folderCollectionConsent: false,
+              browserCollectionConsent: false,
             };
             return updated;
           }
@@ -454,6 +462,7 @@ export class WorkerRuntime {
       };
       this.settings.collectionConsent = false;
       this.settings.folderCollectionConsent = false;
+      this.settings.browserCollectionConsent = false;
       void this.coordinator.revokeConsent();
       return { ok: false, error: this.fault };
     } finally {
@@ -478,6 +487,7 @@ export class WorkerRuntime {
       if (!result.ok || result.value.overQuota) {
         this.settings.collectionConsent = false;
         this.settings.folderCollectionConsent = false;
+        this.settings.browserCollectionConsent = false;
         await this.coordinator.revokeConsent();
         if (!result.ok) this.readResult(result);
       }
@@ -499,6 +509,7 @@ export class WorkerRuntime {
       this.ready = false;
       this.settings.collectionConsent = false;
       this.settings.folderCollectionConsent = false;
+      this.settings.browserCollectionConsent = false;
       void this.coordinator?.revokeConsent();
     }
     return result;
@@ -509,6 +520,7 @@ export class WorkerRuntime {
     this.closing = true;
     this.settings.collectionConsent = false;
     this.settings.folderCollectionConsent = false;
+    this.settings.browserCollectionConsent = false;
     const recoveryStopped = await this.recovery?.close();
     if (recoveryStopped && !recoveryStopped.ok) return recoveryStopped;
     const stopped = this.coordinator

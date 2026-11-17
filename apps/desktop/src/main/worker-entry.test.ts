@@ -12,6 +12,7 @@ vi.mock("./worker-runtime", () => {
     preferences: { collectionConsent: false, excludedApplications: [] },
     secureStorage: true,
     filePermission: false,
+    browserPermission: false,
     synthetic: true,
     error: null,
     revision: 0,

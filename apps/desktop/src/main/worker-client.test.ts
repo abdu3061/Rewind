@@ -12,6 +12,7 @@ const ready = (): RuntimeSnapshot => ({
   collection: "off",
   secureStorage: true,
   filePermission: false,
+  browserPermission: false,
   synthetic: true,
   preferences: { collectionConsent: false, excludedApplications: [] },
   session: null,
@@ -217,28 +218,40 @@ it("does not launch a second worker while a failed worker survives termination",
   child.killWorks = true;
   child.emit("exit", 0);
 });
-it("rejects a forged ready message that starts with monitoring enabled", async () => {
-  const f = fixture();
-  f.spawn.mockImplementationOnce(() => {
-    const child = new SyntheticTransport();
-    child.autoReady = false;
-    f.children.push(child);
-    queueMicrotask(() => {
-      child.emit("spawn");
-      const init = child.messages[0]!;
-      child.emit("message", {
-        version: 1,
-        bootId: init.bootId,
-        type: "ready",
-        state: {
-          ...ready(),
-          collection: "active",
-          preferences: { ...ready().preferences, collectionConsent: true },
-        },
+it.each(["active", "browser", "files"] as const)(
+  "rejects a forged ready message with %s monitoring authority",
+  async (mode) => {
+    const f = fixture();
+    f.spawn.mockImplementationOnce(() => {
+      const child = new SyntheticTransport();
+      child.autoReady = false;
+      f.children.push(child);
+      queueMicrotask(() => {
+        child.emit("spawn");
+        const init = child.messages[0]!;
+        child.emit("message", {
+          version: 1,
+          bootId: init.bootId,
+          type: "ready",
+          state: {
+            ...ready(),
+            ...(mode === "active"
+              ? {
+                  collection: "active",
+                  preferences: {
+                    ...ready().preferences,
+                    collectionConsent: true,
+                  },
+                }
+              : mode === "browser"
+                ? { browserPermission: true }
+                : { filePermission: true }),
+          },
+        });
       });
+      return child;
     });
-    return child;
-  });
-  expect((await f.client.start()).ok).toBe(false);
-  expect(f.client.getSnapshot().secureStorage).toBe(false);
-});
+    expect((await f.client.start()).ok).toBe(false);
+    expect(f.client.getSnapshot().secureStorage).toBe(false);
+  },
+);

@@ -412,6 +412,7 @@ it("retains history and exclusions across worker restart but expires approval", 
       excludedApplications: ["private.exe"],
     },
     collection: "off",
+    browserPermission: false,
   });
   const history = await restarted.execute({
     kind: "history",

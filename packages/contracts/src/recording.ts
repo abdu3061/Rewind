@@ -56,6 +56,7 @@ export const runtimeSnapshotSchema = z.strictObject({
   preferences: collectionPreferencesSchema,
   secureStorage: z.boolean(),
   filePermission: z.boolean(),
+  browserPermission: z.boolean(),
   synthetic: z.boolean(),
   error: appErrorSchema.nullable(),
   revision: z.number().int().nonnegative().safe(),

@@ -64,7 +64,17 @@ const maxBatches = 32;
 const maxBatchEvents = 128;
 const maxBatchBytes = 256 * 1024;
 const hasConsent = (settings: UserSettings) =>
-  settings.collectionConsent || settings.folderCollectionConsent;
+  settings.collectionConsent ||
+  settings.folderCollectionConsent ||
+  settings.browserCollectionConsent;
+const sourceApproved = (source: string, settings: UserSettings): boolean =>
+  source === "windows"
+    ? settings.collectionConsent
+    : source === "folders"
+      ? settings.folderCollectionConsent
+      : source === "browser"
+        ? settings.browserCollectionConsent
+        : false;
 
 /** Adapted from PR #5; lifecycle ports remain independent of Electron and native adapters. */
 export class SessionCoordinator {
@@ -201,6 +211,7 @@ export class SessionCoordinator {
             ...structuredClone(parsed.data),
             collectionConsent: false,
             folderCollectionConsent: false,
+            browserCollectionConsent: false,
           };
           this.fail(saved.error.code, saved.error.message);
           this.requestCleanup();
@@ -223,6 +234,7 @@ export class SessionCoordinator {
       ...(this.readSettings() ?? createDefaultSettings()),
       collectionConsent: false,
       folderCollectionConsent: false,
+      browserCollectionConsent: false,
     });
   }
 
@@ -461,12 +473,7 @@ export class SessionCoordinator {
         for (const [source, collector] of Object.entries(
           this.options.collectors,
         )) {
-          if (
-            source === "folders"
-              ? !settings.folderCollectionConsent
-              : !settings.collectionConsent
-          )
-            continue;
+          if (!sourceApproved(source, settings)) continue;
           const started = await this.operations.run("Collector startup", () =>
             collector[action === "start" ? "start" : "resume"](
               this.context(run, source),
@@ -635,11 +642,7 @@ export class SessionCoordinator {
       return Promise.resolve(
         failure("FORBIDDEN", "Collection generation is not authorized."),
       );
-    if (
-      source === "folders"
-        ? !run.settings.folderCollectionConsent
-        : !run.settings.collectionConsent
-    )
+    if (!sourceApproved(source, run.settings))
       return Promise.resolve(
         failure("FORBIDDEN", "This collection source is not approved."),
       );

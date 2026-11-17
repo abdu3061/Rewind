@@ -4,6 +4,8 @@ Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contra
 
 ## Local transport foundation
 
+The core goal now gives the engine independent default-off, launch-scoped browser consent and gives main a separately validated `browserPermission` snapshot field. Windows approval alone cannot start/admit browser collection. Global revoke/fault/shutdown clears all recording authority. See [ADR 0016](decisions/0016-independent-browser-consent.md). No public browser grant, native host, registry registration or active extension capture is added by this foundation.
+
 `packages/contracts/src/browser-transport.ts` defines candidate versioned hello/visit messages. Strict visit payloads require nonprivate focused context, session/generation/connection IDs, a positive sequence, UTC time and HTTP(S) metadata without credentials, query or fragment. The pure URL helper strips query/fragment and rejects excluded hosts/subdomains. These assertions are untrusted input and do not authorize collection.
 
 `packages/collectors/src/native-messaging.ts` implements Windows little-endian length framing with a 256 KiB message cap, bounded chunk/frame work, strict UTF-8/JSON/schema validation, fragmented/coalesced input and terminal rejection of malformed/truncated streams. Its caller helper matches exact extension origins, with no default allowlist. Tests cover bytewise multibyte framing, floods, malformed/oversized input, origin spoofing, private/unfocused input, capability expansion and URL policy. It opens no process or socket.

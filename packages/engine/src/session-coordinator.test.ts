@@ -44,6 +44,7 @@ function fixture(consent = true, timeout = 1000) {
     ...createDefaultSettings(),
     collectionConsent: consent,
     folderCollectionConsent: consent,
+    browserCollectionConsent: consent,
   };
   const contexts: CollectorContext[] = [];
   const makeCollector = () => {
@@ -145,10 +146,37 @@ it("requires folder approval separately and does not activate Windows polling fo
   await f.coordinator.shutdown();
   const windowsOnly = fixture();
   windowsOnly.settings.folderCollectionConsent = false;
+  windowsOnly.settings.browserCollectionConsent = false;
   await windowsOnly.coordinator.execute("start");
   expect(windowsOnly.collectors.windows.start).toHaveBeenCalledOnce();
   expect(windowsOnly.collectors.folders.start).not.toHaveBeenCalled();
+  expect(windowsOnly.collectors.browser.start).not.toHaveBeenCalled();
   await windowsOnly.coordinator.shutdown();
+});
+it("requires independent browser approval, leaves other sources off for browser-only consent and rejects the revoked context", async () => {
+  const f = fixture(false);
+  f.settings.browserCollectionConsent = true;
+  expect((await f.coordinator.execute("start")).ok).toBe(true);
+  expect(f.collectors.browser.start).toHaveBeenCalledOnce();
+  expect(f.collectors.windows.start).not.toHaveBeenCalled();
+  expect(f.collectors.folders.start).not.toHaveBeenCalled();
+  const context = f.collectors.browser.start.mock.calls[0]![0];
+  const gap: ActivityEvent = {
+    id: id(777),
+    sessionId: context.sessionId,
+    occurredAt: now,
+    type: "capture-gap",
+    source: "browser",
+    payload: { collectorId: "browser", reason: "unavailable" },
+  };
+  expect((await context.emit([gap])).ok).toBe(true);
+  expect(f.persisted).toEqual([gap]);
+  expect((await f.coordinator.revokeConsent()).ok).toBe(true);
+  expect((await context.emit([{ ...gap, id: id(778) }])).ok).toBe(false);
+  await f.coordinator.execute("resume");
+  expect(f.collectors.browser.resume).not.toHaveBeenCalled();
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
 });
 
 function snapshotFixture() {

@@ -4,6 +4,7 @@ import { idSchema } from "./common";
 export const userSettingsSchema = z.strictObject({
   collectionConsent: z.boolean(),
   folderCollectionConsent: z.boolean().default(false),
+  browserCollectionConsent: z.boolean().default(false),
   cloudAiEnabled: z.boolean(),
   articleExtractionEnabled: z.boolean(),
   retentionHours: z.number().int().min(1).max(8760),
@@ -19,6 +20,7 @@ export function createDefaultSettings(): UserSettings {
   return {
     collectionConsent: false,
     folderCollectionConsent: false,
+    browserCollectionConsent: false,
     cloudAiEnabled: false,
     articleExtractionEnabled: false,
     retentionHours: 72,

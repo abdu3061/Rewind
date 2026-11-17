@@ -75,6 +75,7 @@ export class WorkerClient {
       },
       secureStorage: false,
       filePermission: false,
+      browserPermission: false,
       synthetic: options.synthetic,
       error: null,
       revision: 0,
@@ -112,6 +113,7 @@ export class WorkerClient {
       collection: "off",
       secureStorage: false,
       filePermission: false,
+      browserPermission: false,
       error: null,
       preferences: { ...this.state.preferences, collectionConsent: false },
     });
@@ -228,6 +230,7 @@ export class WorkerClient {
       collection: "unavailable",
       secureStorage: false,
       filePermission: false,
+      browserPermission: false,
       preferences: { ...this.state.preferences, collectionConsent: false },
       error,
     });
@@ -277,6 +280,7 @@ export class WorkerClient {
         message.state.collection !== "off" ||
         message.state.preferences.collectionConsent ||
         message.state.filePermission ||
+        message.state.browserPermission ||
         message.state.synthetic !== this.options.synthetic
       ) {
         this.fail({
@@ -297,7 +301,8 @@ export class WorkerClient {
         (message.state.collection === "active" &&
           (!message.state.secureStorage ||
             (!message.state.preferences.collectionConsent &&
-              !message.state.filePermission) ||
+              !message.state.filePermission &&
+              !message.state.browserPermission) ||
             message.state.service !== "ready"))
       ) {
         this.fail({
@@ -447,6 +452,7 @@ export class WorkerClient {
         collection: "off",
         secureStorage: false,
         filePermission: false,
+        browserPermission: false,
       });
       return { ok: true, value: undefined };
     } finally {

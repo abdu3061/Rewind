@@ -8,6 +8,8 @@
 
 [ADR 0015](0015-real-evidence-checkpoints.md) records actual same-session version/activity manifests, transitive Keep/FTS/blob retention, management and bounded verified views.
 
+[ADR 0016](0016-independent-browser-consent.md) records the independent default-off browser source gate and supervisor invariants. Native authentication and operational browser integration remain in progress.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |
