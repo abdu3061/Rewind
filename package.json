@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:app": "playwright test",
+    "test:browser": "playwright test --config playwright.browser.config.ts",
     "build": "npm run typecheck && npm run build:extension && npm run package --workspace @rewind/desktop",
     "build:extension": "npm run build --workspace @rewind/browser-extension",
     "make": "npm run make --workspace @rewind/desktop",

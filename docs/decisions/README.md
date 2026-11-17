@@ -12,6 +12,8 @@
 
 [ADR 0017](0017-windows-browser-peer-primitives.md) records tested Windows pipe/process/signature primitives, with no operational transport or host-registration claim.
 
+[ADR 0018](0018-native-relay-and-client-authority.md) records the authenticated relay verified in isolated Chrome/Edge, scoped temporary registrations, lifecycle watches and permissioned client protocol/controller. Normal collection/UI wiring remains pending.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

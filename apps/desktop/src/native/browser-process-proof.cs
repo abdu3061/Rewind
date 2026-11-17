@@ -17,7 +17,15 @@ namespace Rewind.NativeBrowser {
       public uint length; public IntPtr descriptor; public int inherit;
     }
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafePipeHandle CreateNamedPipeW(string name, uint openMode, uint mode, uint instances, uint output, uint input, uint timeout, ref SecurityAttributes security);
-    public static NamedPipeServerStream FirstServer(string name) {
+    public static NamedPipeServerStream FirstServer(string name) { return Create(name,true); }
+    internal static NamedPipeServerStream NextServer(string name,NamedPipeServerStream anchor) {
+      if(anchor==null || !anchor.IsConnected || anchor.SafePipeHandle.IsClosed) throw new IOException("PIPE_ANCHOR_UNAVAILABLE");
+      using(ProcessProof owner=ProcessProof.PipePeer(anchor.SafePipeHandle,true)) {
+        if(owner.id!=(uint)Process.GetCurrentProcess().Id) throw new IOException("PIPE_ANCHOR_INVALID");
+        return Create(name,false);
+      }
+    }
+    static NamedPipeServerStream Create(string name,bool first) {
       if(name==null || !Regex.IsMatch(name,"^rewind[.][a-z0-9.]{1,120}$")) throw new IOException("PIPE_NAME_POLICY");
       using(WindowsIdentity user=WindowsIdentity.GetCurrent()) {
         if(user.User==null) throw new IOException("PIPE_USER_UNAVAILABLE");
@@ -31,7 +39,7 @@ namespace Rewind.NativeBrowser {
           Marshal.Copy(descriptor,0,pointer,descriptor.Length);
           SecurityAttributes attributes=new SecurityAttributes {length=(uint)Marshal.SizeOf(typeof(SecurityAttributes)),descriptor=pointer,inherit=0};
           // Duplex, overlapped, FIRST_PIPE_INSTANCE; byte mode and REJECT_REMOTE_CLIENTS.
-          handle=CreateNamedPipeW(@"\\.\pipe\"+name,0x40080003u,8,5,65536,65536,1000,ref attributes);
+          handle=CreateNamedPipeW(@"\\.\pipe\"+name,0x40000003u|(first ? 0x80000u : 0u),8,5,65536,65536,1000,ref attributes);
           if(handle.IsInvalid) throw new IOException("PRIVATE_PIPE_UNAVAILABLE");
           NamedPipeServerStream stream=new NamedPipeServerStream(PipeDirection.InOut,true,false,handle);
           handle=null;return stream;
@@ -56,18 +64,19 @@ namespace Rewind.NativeBrowser {
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool QueryFullProcessImageNameW(ProcessHandle handle, uint flags, StringBuilder value, ref uint size);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(ProcessHandle handle, out FileTime created, out FileTime exited, out FileTime kernel, out FileTime user);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern bool ProcessIdToSessionId(uint id, out uint session);
     [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(ProcessHandle handle, uint milliseconds);
     [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(ProcessHandle process, uint access, out IntPtr token);
     [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(ProcessHandle handle, int kind, out BasicInfo value, uint size, out uint written);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint id);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint id);
     readonly ProcessHandle handle;
-    public readonly uint id, parentId;
+    public readonly uint id, parentId, sessionId;
     public readonly string path, userSid;
     public readonly long created;
     bool disposed;
-    ProcessProof(ProcessHandle value, uint pid, uint parent, string executable, string sid, long started) {
-      handle=value;id=pid;parentId=parent;path=executable;userSid=sid;created=started;
+    ProcessProof(ProcessHandle value, uint pid, uint parent, uint session, string executable, string sid, long started) {
+      handle=value;id=pid;parentId=parent;sessionId=session;path=executable;userSid=sid;created=started;
     }
     public bool Alive() {
       // A process may legally exit with STILL_ACTIVE (259); test its kernel object instead.
@@ -92,7 +101,8 @@ namespace Rewind.NativeBrowser {
           if(identity.User==null) throw new IOException("PEER_USER_UNAVAILABLE");
           sid=identity.User.Value;
         }} finally {CloseHandle(token);}
-        ProcessProof result=new ProcessProof(handle,id,(uint)info.parentId.ToInt64(),Path.GetFullPath(name.ToString()),sid,((long)created.high<<32)|created.low);
+        uint session;if(!ProcessIdToSessionId(id,out session)) throw new IOException("PEER_SESSION_UNAVAILABLE");
+        ProcessProof result=new ProcessProof(handle,id,(uint)info.parentId.ToInt64(),session,Path.GetFullPath(name.ToString()),sid,((long)created.high<<32)|created.low);
         if(!result.Alive()) throw new IOException("PEER_PROCESS_EXITED");
         return result;
       } catch {handle.Dispose();throw;}
@@ -104,7 +114,7 @@ namespace Rewind.NativeBrowser {
       return Query(id);
     }
     public bool DirectChildOf(ProcessProof parent) {
-      return parent!=null && parentId==parent.id && parent.created<=created && userSid==parent.userSid && Alive() && parent.Alive();
+      return parent!=null && parentId==parent.id && parent.created<=created && userSid==parent.userSid && sessionId==parent.sessionId && Alive() && parent.Alive();
     }
   }
 

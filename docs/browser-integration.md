@@ -1,6 +1,6 @@
 # Browser integration and installation plan
 
-Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contracts, host security, and installer changes. **Status: inactive extension; a tested native framing/policy foundation exists locally, but no native host, browser connection, registry entry or listener is installed.**
+Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contracts, host security, and installer changes. **Status: normal extension capture remains inactive. A real host/broker relay passes isolated Chrome/Edge tests, with temporary registrations cleaned afterward; normal utility/permission/session/storage/UI composition and production registration remain pending.** See ADR 0018 and the core integration report for current evidence. Historical foundation notes below describe their original slice.
 
 ## Local transport foundation
 

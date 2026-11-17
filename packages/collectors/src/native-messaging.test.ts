@@ -12,17 +12,18 @@ import {
 
 const id = "00000000-0000-4000-8000-000000000001";
 const hello: NativeBrowserMessage = {
-  version: 1,
+  version: 2,
   type: "hello",
   connectionId: id,
-  browser: "edge",
+  profileId: id,
 };
 const visit: NativeBrowserMessage = {
-  version: 1,
+  version: 2,
   type: "visit",
   connectionId: id,
   sessionId: id,
   generationId: id,
+  capability: "a".repeat(64),
   sequence: 1,
   occurredAt: "2026-11-17T10:00:00.000Z",
   incognito: false,
@@ -58,7 +59,7 @@ it("fails terminally on oversized/truncated/invalid UTF-8 or JSON frames and bou
     Buffer.from([1, 0, 4, 0]),
     Buffer.from([2, 0, 0, 0, 0xc0, 0xaf]),
     Buffer.from([1, 0, 0, 0, 0x7b]),
-    frame({ ...hello, version: 2 }),
+    frame({ ...hello, version: 1 }),
     Buffer.concat(
       Array.from({ length: 33 }, () => encodeNativeBrowserMessage(hello)),
     ),
