@@ -26,7 +26,9 @@
     "build": "npm run typecheck && npm run build:extension && npm run package --workspace @rewind/desktop",
     "build:extension": "npm run build --workspace @rewind/browser-extension",
     "make": "npm run make --workspace @rewind/desktop",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+    "lock:prepare": "node scripts/prepare-native-lock.mjs",
+    "check:install": "node scripts/prepare-native-lock.mjs --check",
+    "check": "npm run check:install && npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

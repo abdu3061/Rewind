@@ -5,6 +5,8 @@ import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createDefaultSettings, type Session } from "@rewind/contracts";
 import { SecureStorage } from "./secure-storage";
+import { applySecureMigrations, secureMigrations } from "./migrations";
+import type { SqlValue } from "./database";
 import {
   newSecureFixture,
   removeSecureFixture,
@@ -131,6 +133,77 @@ it("rejects a mismatched external-content search index rather than returning inc
   db.exec("INSERT INTO activity_fts(activity_fts) VALUES ('delete-all')");
   db.close();
   expect((await adapter().open()).ok).toBe(false);
+});
+it("upgrades encrypted recording history and indexes values without JSON field names", async () => {
+  const db = new NativeDatabase(file);
+  db.pragma("cipher=sqlcipher");
+  db.pragma("legacy=4");
+  db.key(key);
+  applySecureMigrations(
+    {
+      exec: (sql) => db.exec(sql),
+      prepare: (sql) => db.prepare<SqlValue[], Record<string, unknown>>(sql),
+      get isTransaction() {
+        return db.inTransaction;
+      },
+    },
+    secureMigrations.slice(0, 2),
+  );
+  db.prepare(
+    "INSERT INTO sessions (id,status,started_at,updated_at,ended_at) VALUES (?,?,?,?,?)",
+  ).run(
+    session.id,
+    session.status,
+    session.startedAt,
+    session.updatedAt,
+    session.endedAt,
+  );
+  db.prepare(
+    "INSERT INTO activities (id,session_id,occurred_at,type,source,payload) VALUES (?,?,?,?,?,?)",
+  ).run(
+    "10000000-0000-4000-8000-000000000001",
+    session.id,
+    session.startedAt,
+    "foreground",
+    "windows",
+    JSON.stringify({ application: "Synthetic.exe", windowTitle: marker }),
+  );
+  db.close();
+  const upgraded = adapter();
+  expect((await upgraded.open()).ok).toBe(true);
+  expect(await upgraded.timeline({ text: "windowTitle", limit: 10 })).toEqual({
+    ok: true,
+    value: [],
+  });
+  const found = await upgraded.timeline({ text: marker, limit: 10 });
+  expect(found.ok && found.value).toHaveLength(1);
+  const writer = inspect();
+  try {
+    writer.prepare("UPDATE activities SET payload=?").run(
+      JSON.stringify({
+        application: "Synthetic.exe",
+        windowTitle: "ReplacementFixture",
+      }),
+    );
+    expect(await upgraded.timeline({ text: marker, limit: 10 })).toEqual({
+      ok: true,
+      value: [],
+    });
+    const updated = await upgraded.timeline({
+      text: "ReplacementFixture",
+      limit: 10,
+    });
+    expect(updated.ok && updated.value).toHaveLength(1);
+    writer.exec("DELETE FROM activities");
+    writer.exec(
+      "INSERT INTO activity_fts(activity_fts, rank) VALUES ('integrity-check',1)",
+    );
+    expect(
+      await upgraded.timeline({ text: "ReplacementFixture", limit: 10 }),
+    ).toEqual({ ok: true, value: [] });
+  } finally {
+    writer.close();
+  }
 });
 it("refuses plaintext and unavailable locations rather than selecting another adapter", async () => {
   writeFileSync(file, "SQLite format 3\0" + "synthetic plaintext".repeat(20));

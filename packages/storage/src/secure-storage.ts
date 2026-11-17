@@ -128,7 +128,7 @@ export class SecureStorage implements SessionStorage {
       applySecureMigrations(connection(db));
       verifyRepositorySchema(connection(db));
       db.prepare("SELECT id, payload FROM runtime_settings LIMIT 0").all();
-      db.prepare("SELECT rowid, payload FROM activity_fts LIMIT 0").all();
+      db.prepare("SELECT rowid, text FROM activity_fts LIMIT 0").all();
       const triggers = db
         .prepare(
           "SELECT count(*) AS count FROM sqlite_master WHERE type='trigger' AND name IN ('activity_fts_insert','activity_fts_delete','activity_fts_update')",
