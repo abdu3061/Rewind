@@ -332,6 +332,15 @@ export class WorkerClient {
       ["timeline", "history", "preferences.get", "snapshot"].includes(
         command.kind,
       );
+    if (this.pending.size >= 64 && allowedStop) {
+      // Stop authority cannot wait behind a saturated public request map.
+      this.fail({
+        code: "UNAVAILABLE",
+        message:
+          "The recording service was stopped after control queue overload. Reconnect and re-authorize.",
+      });
+      return unavailable();
+    }
     if (
       this.failed ||
       !this.child ||

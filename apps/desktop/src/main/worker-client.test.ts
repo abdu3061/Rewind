@@ -101,6 +101,28 @@ it("starts with verified storage and no grant and acknowledges shutdown before e
   expect((await f.client.execute("get")).ok).toBe(true);
   expect((await f.client.shutdown()).ok).toBe(true);
 });
+it("terminates recording instead of dropping revocation behind a saturated request map", async () => {
+  const f = fixture();
+  await f.client.start();
+  const child = f.children[0]!;
+  child.replyAutomatically = false;
+  const pending = Array.from({ length: 64 }, () => f.client.execute("get"));
+  const revoked = await f.client.request(
+    {
+      kind: "preferences.update",
+      value: { collectionConsent: false, excludedApplications: [] },
+    },
+    preferencesResponseSchema,
+  );
+  expect(revoked.ok).toBe(false);
+  expect(f.client.getSnapshot()).toMatchObject({
+    service: "unavailable",
+    preferences: { collectionConsent: false },
+  });
+  expect((await Promise.all(pending)).every((result) => !result.ok)).toBe(true);
+  expect((await f.client.retry()).ok).toBe(true);
+  expect(f.spawn).toHaveBeenCalledTimes(2);
+});
 it("routes concurrent replies by request ID even when they arrive out of order", async () => {
   const f = fixture();
   await f.client.start();

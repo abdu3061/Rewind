@@ -124,6 +124,26 @@ function fixture(consent = true, timeout = 1000) {
 afterEach(() => {
   vi.useRealTimers();
 });
+it("interrupts collector authority even when read work saturates the lifecycle queue", async () => {
+  const f = fixture();
+  await f.coordinator.execute("start");
+  const release = deferred();
+  const entered = deferred();
+  const first = f.coordinator.read(async () => {
+    entered.resolve();
+    await release.promise;
+    return ok();
+  });
+  await entered.promise;
+  const queued = Array.from({ length: 63 }, () => f.coordinator.read(ok));
+  expect((await f.coordinator.revokeConsent()).ok).toBe(false);
+  await turn();
+  expect(f.collectors.windows.running).toBe(false);
+  expect((await f.contexts[0]!.emit([event()])).ok).toBe(false);
+  release.resolve();
+  await Promise.all([first, ...queued]);
+  await f.coordinator.shutdown();
+});
 
 it("serializes grant persistence with resume and lets revocation preempt both", async () => {
   const f = fixture(false);

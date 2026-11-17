@@ -68,6 +68,8 @@ export class SessionCoordinator {
   private commandCount = 0;
   private batchCount = 0;
   private cleanupPending = false;
+  private interruption: Promise<Result<void>> | null = null;
+  private interruptionFailure: AppError | null = null;
   private epoch = 0;
   private run: Run | null = null;
   private initialized = false;
@@ -127,7 +129,10 @@ export class SessionCoordinator {
       return Promise.resolve(
         failure("UNAVAILABLE", "Session service is shutting down."),
       );
-    if (action === "pause" || action === "end") this.invalidate();
+    if (action === "pause" || action === "end") {
+      this.invalidate();
+      this.interruptCollectors();
+    }
     const ticket = this.epoch;
     return this.enqueue(async () => {
       const ready = await this.initializeInternal();
@@ -157,6 +162,7 @@ export class SessionCoordinator {
     persist?: () => Promise<Result<void>>,
   ): Promise<Result<SessionState>> {
     this.invalidate();
+    this.interruptCollectors();
     const parsed = userSettingsSchema.safeParse(settings);
     // Denial applies immediately. A new grant is installed only after stop and persistence.
     if (!parsed.success || !parsed.data.collectionConsent)
@@ -217,6 +223,7 @@ export class SessionCoordinator {
     if (this.shutdownAttempt) return this.shutdownAttempt;
     this.closing = true;
     this.invalidate();
+    this.interruptCollectors();
     this.shutdownAttempt = this.enqueue(async () => {
       const stopped = await this.quiesce();
       if (!stopped.ok) return stopped;
@@ -519,6 +526,24 @@ export class SessionCoordinator {
     );
     return results.find((result) => !result.ok) ?? ok();
   }
+  private interruptCollectors(): void {
+    if (this.interruption || this.options.mode !== "repository") return;
+    // Invalidate adapter timers now, even while older lifecycle/read work holds the queue.
+    // Their own stop promises remain tracked; acknowledgement still waits for quiescence.
+    const attempt = this.stopCollectors();
+    this.interruption = attempt;
+    void attempt
+      .then((result) => {
+        if (!result.ok) {
+          this.interruptionFailure = result.error;
+          this.fail(result.error.code, result.error.message);
+          this.requestCleanup();
+        }
+      })
+      .finally(() => {
+        if (this.interruption === attempt) this.interruption = null;
+      });
+  }
   private async quiesce(): Promise<Result<void>> {
     this.run = null;
     this.status.collection = "stopping";
@@ -531,6 +556,11 @@ export class SessionCoordinator {
     if (!drained.ok)
       return this.fail(drained.error.code, drained.error.message);
     await this.ingestionTail;
+    if (this.interruptionFailure) {
+      const error = this.interruptionFailure;
+      this.interruptionFailure = null;
+      return this.fail(error.code, error.message);
+    }
     // A timed-out startup can settle after the first stop; stop it again before acknowledging.
     if (lateWork) {
       const restopped = await this.stopCollectors();

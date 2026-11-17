@@ -30,14 +30,15 @@ function fixture() {
     application: "Code.exe",
     windowTitle: "Synthetic",
   }));
+  const close = vi.fn(async () => {});
   const collector = new WindowsCollector({
-    strategy: { getActiveWindow: query },
+    strategy: { getActiveWindow: query, close },
     pollIntervalMs: 60000,
     now: () => now,
     newId: () => "00000000-0000-4000-8000-000000000003",
   });
   collectors.push(collector);
-  return { collector, query };
+  return { collector, query, close };
 }
 afterEach(async () => {
   for (const collector of collectors.splice(0)) await collector.stop();
@@ -47,6 +48,23 @@ it("rejects missing consent without querying or starting a timer", async () => {
   const f = fixture();
   expect((await f.collector.start(context(false))).ok).toBe(false);
   expect(f.query).not.toHaveBeenCalled();
+});
+it("waits for helper release and surfaces a failed close rather than acknowledging stop", async () => {
+  const f = fixture();
+  await f.collector.start(context());
+  const release = deferred<void>();
+  f.close.mockImplementationOnce(() => release.promise);
+  let done = false;
+  const stopping = f.collector.stop().then((result) => {
+    done = true;
+    return result;
+  });
+  await turn();
+  expect(done).toBe(false);
+  release.resolve();
+  expect((await stopping).ok).toBe(true);
+  f.close.mockRejectedValueOnce(new Error("Synthetic helper failure"));
+  expect((await f.collector.stop()).ok).toBe(false);
 });
 it("reports startup query failure instead of pretending successful capture", async () => {
   const f = fixture();
