@@ -13,8 +13,8 @@ export interface FocusedBrowserTab {
   active: boolean;
   focused: boolean;
   incognito: boolean;
-  url?: string;
-  title?: string;
+  url?: string | undefined;
+  title?: string | undefined;
 }
 export interface BrowserMetadataControllerOptions {
   connectionId: string;
