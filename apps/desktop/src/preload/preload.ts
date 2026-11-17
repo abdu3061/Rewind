@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
+  ASSISTANT_CHANNEL,
+  askQuestionSchema,
+  assistantResponseSchema,
   failure,
   noArgumentsSchema,
   SESSION_CHANNEL,
@@ -45,6 +48,26 @@ const api: DesktopApi = {
       };
       ipcRenderer.on(SESSION_CHANGED_CHANNEL, handler);
       return () => ipcRenderer.removeListener(SESSION_CHANGED_CHANNEL, handler);
+    },
+  },
+  assistant: {
+    async ask(question) {
+      const input = askQuestionSchema.safeParse({ question });
+      if (!input.success)
+        return failure(
+          "INVALID_INPUT",
+          `Invalid assistant request: ${input.error.issues[0]?.message ?? "validation failed"}`,
+        );
+      try {
+        const parsed = assistantResponseSchema.safeParse(
+          await ipcRenderer.invoke(ASSISTANT_CHANNEL, input.data),
+        );
+        return parsed.success
+          ? parsed.data
+          : failure("INTERNAL", "The desktop returned an invalid response.");
+      } catch {
+        return failure("UNAVAILABLE", "The desktop service is unavailable.");
+      }
     },
   },
 };
