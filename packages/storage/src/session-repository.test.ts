@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Session } from "@rewind/contracts";
 import { SqliteSessionRepository } from "./session-repository";
 
@@ -103,6 +103,81 @@ describe("SqliteSessionRepository", () => {
     expect(latestResult.ok).toBe(true);
     if (latestResult.ok) {
       expect(latestResult.value).toEqual(sessionNewer);
+    }
+  });
+
+  it("lists sessions ordered newest first with limit", async () => {
+    for (let i = 1; i <= 3; i++) {
+      await repo.save({
+        id: `00000000-0000-4000-8000-00000000000${i}`,
+        status: "active",
+        startedAt: `2026-10-24T1${i}:00:00.000Z`,
+        updatedAt: `2026-10-24T1${i}:00:00.000Z`,
+        endedAt: null,
+      });
+    }
+
+    const listResult = await repo.list(2);
+    expect(listResult.ok).toBe(true);
+    if (listResult.ok) {
+      expect(listResult.value).toHaveLength(2);
+      expect(listResult.value[0]?.id).toBe(
+        "00000000-0000-4000-8000-000000000003",
+      );
+      expect(listResult.value[1]?.id).toBe(
+        "00000000-0000-4000-8000-000000000002",
+      );
+    }
+  });
+
+  it("rejects invalid session models with INVALID_INPUT error", async () => {
+    // Malformed: active session cannot have an endedAt timestamp
+    const invalidSession = {
+      id: "00000000-0000-4000-8000-000000000001",
+      status: "active",
+      startedAt: "2026-10-24T10:00:00.000Z",
+      updatedAt: "2026-10-24T10:00:00.000Z",
+      endedAt: "2026-10-24T11:00:00.000Z",
+    } as unknown as Session;
+
+    const saveResult = await repo.save(invalidSession);
+    expect(saveResult.ok).toBe(false);
+    if (!saveResult.ok) {
+      expect(saveResult.error.code).toBe("INVALID_INPUT");
+    }
+
+    // Invalid UUID
+    const getResult = await repo.get("invalid-uuid");
+    expect(getResult.ok).toBe(false);
+    if (!getResult.ok) {
+      expect(getResult.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
+  it("deletes a session and returns NOT_FOUND if it does not exist", async () => {
+    const session: Session = {
+      id: "00000000-0000-4000-8000-000000000001",
+      status: "active",
+      startedAt: "2026-10-24T10:00:00.000Z",
+      updatedAt: "2026-10-24T10:00:00.000Z",
+      endedAt: null,
+    };
+    await repo.save(session);
+
+    const deleteResult = await repo.delete(session.id);
+    expect(deleteResult.ok).toBe(true);
+
+    const getResult = await repo.get(session.id);
+    expect(getResult.ok).toBe(true);
+    if (getResult.ok) {
+      expect(getResult.value).toBeNull();
+    }
+
+    // Deleting again returns NOT_FOUND
+    const deleteAgainResult = await repo.delete(session.id);
+    expect(deleteAgainResult.ok).toBe(false);
+    if (!deleteAgainResult.ok) {
+      expect(deleteAgainResult.error.code).toBe("NOT_FOUND");
     }
   });
 });

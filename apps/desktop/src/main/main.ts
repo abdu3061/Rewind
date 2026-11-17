@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -11,14 +12,31 @@ import {
   protocol,
   Tray,
 } from "electron";
+import { createCollectorRegistry } from "@rewind/collectors";
 import {
+  askQuestionSchema,
+  ASSISTANT_CHANNEL,
+  createDefaultSettings,
   failure,
   SESSION_CHANNEL,
   SESSION_CHANGED_CHANNEL,
   type SessionAction,
+  type UserSettings,
 } from "@rewind/contracts";
-import { SessionService } from "@rewind/engine";
+import { SessionCoordinator, SessionService } from "@rewind/engine";
+import { SqliteStorageAdapter } from "@rewind/storage";
+import type { AssistantService } from "@rewind/assistant";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
+
+// Disable hardware acceleration at startup for headless and GPU-less environments (e.g. CI)
+app.disableHardwareAcceleration();
+
+// Enable Node.js built-in SQLite module in Electron's Node runtime
+app.commandLine.appendSwitch("experimental-sqlite");
+if (!process.env.NODE_OPTIONS?.includes("--experimental-sqlite")) {
+  process.env.NODE_OPTIONS =
+    `${process.env.NODE_OPTIONS ?? ""} --experimental-sqlite`.trim();
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -27,17 +45,41 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const sessions = new SessionService({
+const sessionService = new SessionService({
   newId: randomUUID,
   now: () => new Date().toISOString(),
 });
+
+const userSettings: UserSettings = {
+  ...createDefaultSettings(),
+  collectionConsent: true,
+};
+
+let storage: SqliteStorageAdapter | null = null;
+let coordinator: SessionCoordinator | null = null;
+let assistantService: AssistantService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
 
+function resolveMigrationPath(): string | undefined {
+  const candidates = [
+    path.resolve(app.getAppPath(), "db/migrations/001_initial.sql"),
+    path.resolve(app.getAppPath(), "../db/migrations/001_initial.sql"),
+    path.resolve(process.cwd(), "db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../../../db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../../db/migrations/001_initial.sql"),
+    path.resolve(__dirname, "../../db/migrations/001_initial.sql"),
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
 function publishState(): void {
-  const state = sessions.getState();
+  const state = coordinator
+    ? coordinator.getState()
+    : sessionService.getState();
   if (
     mainWindow &&
     !mainWindow.isDestroyed() &&
@@ -48,15 +90,21 @@ function publishState(): void {
   updateTray();
 }
 
-function runTrayAction(action: SessionAction): void {
-  const result = sessions.execute(action);
+async function runTrayAction(action: SessionAction): Promise<void> {
+  const target = coordinator ?? sessionService;
+  const result = await target.execute(action);
   if (result.ok) publishState();
 }
 
 function updateTray(): void {
   if (!tray) return;
-  const status = sessions.getState().session?.status ?? "not started";
-  tray.setToolTip(`Rewind: ${status} session. Collection off.`);
+  const status =
+    (coordinator ? coordinator.getState() : sessionService.getState()).session
+      ?.status ?? "not started";
+  const isCollecting = status === "active" && userSettings.collectionConsent;
+  tray.setToolTip(
+    `Rewind: ${status} session. Collection ${isCollecting ? "on" : "off"}.`,
+  );
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -66,27 +114,30 @@ function updateTray(): void {
           mainWindow?.focus();
         },
       },
-      { label: `Session: ${status} | Collection off`, enabled: false },
+      {
+        label: `Session: ${status} | Collection ${isCollecting ? "on" : "off"}`,
+        enabled: false,
+      },
       { type: "separator" },
       {
         label: "Start session",
         enabled: status === "not started" || status === "ended",
-        click: () => runTrayAction("start"),
+        click: () => void runTrayAction("start"),
       },
       {
         label: "Pause session",
         enabled: status === "active",
-        click: () => runTrayAction("pause"),
+        click: () => void runTrayAction("pause"),
       },
       {
         label: "Resume session",
         enabled: status === "paused",
-        click: () => runTrayAction("resume"),
+        click: () => void runTrayAction("resume"),
       },
       {
         label: "End session",
         enabled: status === "active" || status === "paused",
-        click: () => runTrayAction("end"),
+        click: () => void runTrayAction("end"),
       },
       { type: "separator" },
       { label: "Quit Rewind", click: () => app.quit() },
@@ -156,11 +207,182 @@ async function createWindow(): Promise<void> {
   await mainWindow.loadURL(rendererUrl);
 }
 
+// Catch any unhandled promise rejection before Electron can silently exit.
+process.on("unhandledRejection", (reason) => {
+  const msg =
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  console.error(
+    JSON.stringify({ level: "error", code: "UNHANDLED_REJECTION", error: msg }),
+  );
+});
+
 app
   .whenReady()
   .then(async () => {
+    // ── Step 1: Resolve userData path and SQLite db file path ──────────────
+    let dbPath: string;
+    try {
+      dbPath = path.join(app.getPath("userData"), "rewind.sqlite");
+      console.log(
+        JSON.stringify({ level: "info", code: "STORAGE_PATH", dbPath }),
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "STORAGE_PATH_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 2: Resolve migration SQL file (best-effort; falls back to embedded schema) ──
+    let migrationPath: string | undefined;
+    try {
+      migrationPath = resolveMigrationPath();
+      console.log(
+        JSON.stringify({
+          level: "info",
+          code: "MIGRATION_PATH",
+          migrationPath: migrationPath ?? "(none – using embedded schema)",
+        }),
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          code: "MIGRATION_PATH_FAILED",
+          error: msg,
+        }),
+      );
+      // Non-fatal – SqliteStorageAdapter falls back to its embedded schema
+      migrationPath = undefined;
+    }
+
+    // ── Step 3: Open SQLite storage (fall back to :memory: on failure) ─────
+    try {
+      storage = new SqliteStorageAdapter(dbPath, migrationPath);
+      console.log(
+        JSON.stringify({ level: "info", code: "STORAGE_OPENING", dbPath }),
+      );
+      const openRes = await storage.open();
+      if (!openRes.ok) {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            code: "STORAGE_OPEN_FAILED",
+            error: openRes.error.message,
+            fallback: ":memory:",
+          }),
+        );
+        storage = new SqliteStorageAdapter(":memory:");
+        const memRes = await storage.open();
+        if (!memRes.ok) {
+          throw new Error(
+            `[main] In-memory storage fallback also failed: ${memRes.error.message}`,
+          );
+        }
+      }
+      console.log(JSON.stringify({ level: "info", code: "STORAGE_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "STORAGE_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 4: Initialize collector registry ──────────────────────────────
+    let collectors: ReturnType<typeof createCollectorRegistry>;
+    try {
+      collectors = createCollectorRegistry();
+      console.log(JSON.stringify({ level: "info", code: "COLLECTORS_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "COLLECTORS_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 5: Create session coordinator ────────────────────────────────
+    try {
+      coordinator = new SessionCoordinator({
+        service: sessionService,
+        repositories: storage.repositories,
+        collectors,
+        getSettings: () => userSettings,
+      });
+      console.log(JSON.stringify({ level: "info", code: "COORDINATOR_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "COORDINATOR_INIT_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
+
+    // ── Step 6: Initialize assistant (only when cloud AI is enabled + key present) ──
+    if (userSettings.cloudAiEnabled) {
+      const geminiApiKey = process.env["REWIND_GEMINI_KEY"] ?? "";
+      if (geminiApiKey) {
+        try {
+          const { GeminiAssistantService } = await import("@rewind/assistant");
+          assistantService = new GeminiAssistantService({
+            apiKey: geminiApiKey,
+            repositories: storage.repositories,
+            settings: userSettings,
+          });
+          console.log(
+            JSON.stringify({ level: "info", code: "ASSISTANT_READY" }),
+          );
+        } catch (err) {
+          const msg =
+            err instanceof Error ? (err.stack ?? err.message) : String(err);
+          console.warn(
+            JSON.stringify({
+              level: "warn",
+              code: "ASSISTANT_INIT_FAILED",
+              error: msg,
+            }),
+          );
+          // Non-fatal — assistant remains null; IPC returns UNAVAILABLE
+        }
+      } else {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "ASSISTANT_SKIPPED",
+            reason: "REWIND_GEMINI_KEY not set",
+          }),
+        );
+      }
+    }
+
+    // ── Step 7: Register IPC and local asset protocol ─────────────────────
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
-    ipcMain.handle(SESSION_CHANNEL, (event, ...args: unknown[]) => {
+
+    ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (
         !mainWindow ||
         event.sender !== mainWindow.webContents ||
@@ -178,32 +400,112 @@ app
           "INVALID_INPUT",
           "Exactly one session command is required.",
         );
-      const result = dispatchSessionRequest(sessions, args[0]);
+      const target = coordinator ?? sessionService;
+      const result = await dispatchSessionRequest(target, args[0]);
       if (result.ok) publishState();
       return result;
     });
-    // A simple native bitmap avoids external icon assets in the initialization build.
-    const pixels = Buffer.alloc(16 * 16 * 4);
-    for (let i = 0; i < 16 * 16; i++) {
-      pixels.set([130, 80, 40, 255], i * 4);
+
+    ipcMain.handle(ASSISTANT_CHANNEL, async (event, ...args: unknown[]) => {
+      if (
+        !mainWindow ||
+        event.sender !== mainWindow.webContents ||
+        !event.senderFrame ||
+        event.senderFrame !== event.sender.mainFrame ||
+        !isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
+      ) {
+        return failure(
+          "FORBIDDEN",
+          "This frame cannot access the Rewind assistant.",
+        );
+      }
+      if (args.length !== 1) {
+        return failure(
+          "INVALID_INPUT",
+          "Exactly one assistant command is required.",
+        );
+      }
+      const parsed = askQuestionSchema.safeParse(args[0]);
+      if (!parsed.success) {
+        return failure(
+          "INVALID_INPUT",
+          `Invalid assistant request: ${parsed.error.issues[0]?.message ?? "validation failed"}`,
+        );
+      }
+      if (!userSettings.cloudAiEnabled) {
+        return failure("FORBIDDEN", "Cloud AI is disabled.");
+      }
+      if (!assistantService) {
+        return failure(
+          "UNAVAILABLE",
+          "Assistant service is not available. Set REWIND_GEMINI_KEY and enable cloudAiEnabled.",
+        );
+      }
+      return assistantService.ask(parsed.data.question);
+    });
+
+    // ── Step 8: Create tray icon ───────────────────────────────────────────
+    try {
+      const pixels = Buffer.alloc(16 * 16 * 4);
+      for (let i = 0; i < 16 * 16; i++) {
+        pixels.set([130, 80, 40, 255], i * 4);
+      }
+      tray = new Tray(
+        nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }),
+      );
+      updateTray();
+      console.log(JSON.stringify({ level: "info", code: "TRAY_READY" }));
+    } catch (err) {
+      // Tray is non-critical – log and continue
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.warn(
+        JSON.stringify({ level: "warn", code: "TRAY_INIT_FAILED", error: msg }),
+      );
     }
-    tray = new Tray(
-      nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }),
-    );
-    updateTray();
-    await createWindow();
+
+    // ── Step 9: Open the main browser window ──────────────────────────────
+    try {
+      await createWindow();
+      console.log(JSON.stringify({ level: "info", code: "WINDOW_READY" }));
+    } catch (err) {
+      const msg =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.error(
+        JSON.stringify({
+          level: "error",
+          code: "WINDOW_CREATE_FAILED",
+          error: msg,
+        }),
+      );
+      throw err;
+    }
   })
-  .catch(() => {
+  .catch((error) => {
+    const stack =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(
-      JSON.stringify({ level: "error", code: "DESKTOP_START_FAILED" }),
+      JSON.stringify({
+        level: "error",
+        code: "DESKTOP_START_FAILED",
+        error: stack,
+      }),
     );
     app.exit(1);
   });
 
-app.on("before-quit", () => {
-  const status = sessions.getState().session?.status;
-  if (status === "active" || status === "paused") sessions.execute("end");
+app.on("before-quit", async () => {
+  const target = coordinator ?? sessionService;
+  const status = target.getState().session?.status;
+  if (status === "active" || status === "paused") {
+    await target.execute("end");
+  }
+  if (storage) {
+    await storage.close();
+    storage = null;
+  }
   tray?.destroy();
   tray = null;
 });
+
 app.on("window-all-closed", () => app.quit());

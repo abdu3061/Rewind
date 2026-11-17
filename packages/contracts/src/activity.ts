@@ -14,6 +14,15 @@ export const browserVisitSchema = z.strictObject({
 });
 export type BrowserVisit = z.infer<typeof browserVisitSchema>;
 
+export interface BrowserVisitInput {
+  browser: "chrome" | "edge";
+  url: string;
+  title: string;
+  visitedAt?: string;
+  endedAt?: string | null;
+  articleText?: string;
+}
+
 const eventBase = z.strictObject({
   id: idSchema,
   sessionId: idSchema,
