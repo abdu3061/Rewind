@@ -20,6 +20,8 @@
 
 [ADR 0021](0021-browser-assets-and-owned-registration.md) records actual packaged native/extension assets, bounded hash verification and the per-user registration primitive. Receipt-backed setup and worker/public controls remain in progress.
 
+[ADR 0022](0022-durable-browser-setup.md) records encrypted revision-checked ownership, verified immutable installation files, confirmed setup/repair orchestration, startup/shutdown fencing and removed-browser policy. Worker/public composition remains in progress.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

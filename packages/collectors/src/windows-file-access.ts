@@ -155,6 +155,31 @@ export class WindowsProtectedFileAccess implements ProtectedFileAccess {
     const parsed = nativeFileListingSchema.safeParse(result.value);
     return parsed.success ? { ok: true, value: parsed.data } : unavailable();
   }
+  /** Private setup verification: bounded immediate entries while native root/ancestor leases are held. */
+  async directoryEntries(
+    folder: Pick<ProtectedFolder, "absolutePath" | "osIdentity">,
+  ): Promise<Result<string[]>> {
+    const result = await this.request({
+      kind: "directory",
+      path: folder.absolutePath,
+      identity: folder.osIdentity,
+    });
+    if (!result.ok) return result;
+    const parsed = nativeFileListingSchema.safeParse(result.value);
+    return parsed.success &&
+      !parsed.data.overflow &&
+      parsed.data.paths.length <= 64 &&
+      parsed.data.paths.every(
+        (name) =>
+          name.length > 0 &&
+          name.length <= 255 &&
+          !name.includes("\\") &&
+          !name.includes("/") &&
+          !name.includes(":"),
+      )
+      ? { ok: true, value: parsed.data.paths }
+      : unavailable();
+  }
   async read(
     folder: ProtectedFolder,
     relativePath: string,

@@ -85,6 +85,19 @@ public static class RewindFileAccess {
     string lower=name.ToLowerInvariant();
     return name.StartsWith(".") || name.StartsWith("~") || lower=="node_modules" || lower=="artifacts" || lower=="dist" || lower=="out";
   }
+  public static RewindListing DirectoryEntries(string root, string identity) {
+    root=PathValue(root);
+    using(Lease selected=Root(root,identity)) {
+      List<string> names=new List<string>();
+      foreach(FileSystemInfo item in new DirectoryInfo(root).EnumerateFileSystemInfos()) {
+        if(names.Count>=64 || (item.Attributes & FileAttributes.ReparsePoint)!=0) throw new IOException("DIRECTORY_ENTRIES_POLICY");
+        names.Add(item.Name);
+      }
+      names.Sort(StringComparer.OrdinalIgnoreCase);
+      string[] stamps=new string[names.Count];for(int i=0;i<stamps.Length;i++) stamps[i]="";
+      return new RewindListing {paths=names.ToArray(),stamps=stamps,overflow=false};
+    }
+  }
   public static RewindListing List(string root, string identity) {
     root=PathValue(root);
     using(Lease selected = Root(root,identity)) {
@@ -147,6 +160,7 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $line | ConvertFrom-Json
     $value = switch ($request.kind) {
       'folder' { [RewindFileAccess]::Folder([string]$request.path) }
+      'directory' { [RewindFileAccess]::DirectoryEntries([string]$request.path,[string]$request.identity) }
       'list' { [RewindFileAccess]::List([string]$request.path,[string]$request.identity) }
       'read' { [RewindFileAccess]::Read([string]$request.path,[string]$request.identity,[string]$request.relative) }
       default { throw 'INVALID_COMMAND' }

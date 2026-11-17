@@ -15,7 +15,7 @@ const bootstrap = String.raw`
 $source = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::ReadLine()))
 & ([ScriptBlock]::Create($source))
 `.trim();
-/** User-confirmed recovery only. This adapter never opens an existing destination for writing. */
+/** Verified CREATE_NEW primitive. Recovery/setup composition separately enforces explicit approval. */
 export class WindowsRecoveryCopyWriter implements RecoveryCopyWriter {
   private readonly children = new Set<ChildProcessWithoutNullStreams>();
   private closing = false;

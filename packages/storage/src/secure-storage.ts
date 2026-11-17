@@ -32,6 +32,10 @@ import { createRepositories, verifyRepositorySchema } from "./repositories";
 import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteActivityRepository } from "./activity-repository";
 import { applySecureMigrations } from "./migrations";
+import {
+  BrowserSetupRepository,
+  verifyBrowserSetupJournal,
+} from "./browser-setup-repository";
 
 type Native = InstanceType<typeof NativeDatabase>;
 const ok = (): Result<void> => ({ ok: true, value: undefined });
@@ -75,6 +79,11 @@ export class SecureStorage implements SessionStorage {
     if (!this.repositorySet || !this.db)
       throw new Error("SECURE_STORAGE_UNAVAILABLE");
     return new SqliteCheckpointRepository(connection(this.db));
+  }
+  get browserSetup(): BrowserSetupRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    return new BrowserSetupRepository(connection(this.db));
   }
   get evidence(): SqliteActivityRepository {
     if (!this.repositorySet || !this.db)
@@ -158,6 +167,7 @@ export class SecureStorage implements SessionStorage {
       applySecureMigrations(connection(db));
       verifyRepositorySchema(connection(db));
       verifySnapshotSchema(connection(db));
+      verifyBrowserSetupJournal(connection(db));
       db.prepare("SELECT id, payload FROM runtime_settings LIMIT 0").all();
       db.prepare("SELECT rowid, text FROM activity_fts LIMIT 0").all();
       const triggers = db

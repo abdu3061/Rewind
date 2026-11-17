@@ -1,5 +1,7 @@
 # Architecture
 
+Browser setup ownership follow-up: [ADR 0022](decisions/0022-durable-browser-setup.md) adds the encrypted revision-checked journal, verified CREATE_NEW installation generations and confirmed setup/repair orchestration. Startup remains read-only and collection approvals remain separate. Worker/private bootstrap and public browser controls are still being integrated.
+
 Browser packaging follow-up: [ADR 0021](decisions/0021-browser-assets-and-owned-registration.md) adds precompiled Windows x64 host assets and the normal extension outside ASAR, bounded inventory/hash verification and an owned per-user registration primitive. Building does not register a host. Receipt-backed installation, worker wiring and public browser controls remain unfinished.
 
 Browser client follow-up: [ADR 0020](decisions/0020-extension-consent-controls.md) records the normal MV3 background/popup, default-off execution, explicit approval, browser-context/frame controls and actual encrypted browser tests. Native/engine components are implemented; owned desktop setup/registration and worker/public UI composition remain in progress, so normal app browser recording is still unavailable.

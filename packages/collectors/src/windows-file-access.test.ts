@@ -45,6 +45,35 @@ async function selected(
   };
 }
 it.runIf(process.platform === "win32")(
+  "inspects bounded immediate setup entries without recursion or skipped dot names and rechecks root identity",
+  async () => {
+    const f = fixture(),
+      folder = await selected(f.root, f.access);
+    mkdirSync(join(f.root, "nested"));
+    writeFileSync(
+      join(f.root, "nested", "synthetic.txt"),
+      "synthetic nested fixture",
+    );
+    writeFileSync(join(f.root, ".private-fixture"), "synthetic dot fixture");
+    expect(await f.access.directoryEntries(folder)).toEqual({
+      ok: true,
+      value: [".private-fixture", "nested"],
+    });
+    expect(
+      (
+        await f.access.directoryEntries({
+          ...folder,
+          osIdentity: "synthetic-wrong-identity",
+        })
+      ).ok,
+    ).toBe(false);
+    for (let index = 0; index < 63; index++)
+      writeFileSync(join(f.root, `bounded-${index}.txt`), "synthetic fixture");
+    expect((await f.access.directoryEntries(folder)).ok).toBe(false);
+  },
+  15000,
+);
+it.runIf(process.platform === "win32")(
   "reads the complete maximum-size version and cancels an in-flight read on close",
   async () => {
     const f = fixture();

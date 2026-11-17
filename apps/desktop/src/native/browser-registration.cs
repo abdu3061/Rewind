@@ -78,7 +78,7 @@ namespace Rewind.NativeBrowser {
             Entry entry=Read(user,name);
             if(entry.valid && Same(entry.value,manifest)) owned++;
             bool allowed=operation=="install"
-              ? !entry.exists || (previous!=null && (entry.empty || (entry.valid && Same(entry.value,previous))))
+              ? !entry.exists || (previous!=null && (entry.empty || (entry.valid && (Same(entry.value,previous) || Same(entry.value,manifest)))))
               : !entry.exists || entry.empty || (entry.valid && Same(entry.value,manifest));
             if(!allowed) conflict=true;
           }
@@ -100,7 +100,7 @@ namespace Rewind.NativeBrowser {
               if(removed.exists && !removed.empty) throw new IOException("REGISTRATION_REMOVAL_UNCONFIRMED");
               continue;
             }
-            if(wrote && current.valid && Same(current.value,manifest)) continue; // Shared WOW64 key.
+            if((wrote || previous!=null) && current.valid && Same(current.value,manifest)) continue; // Shared view or confirmed retry.
             if(current.exists && !(previous!=null && (current.empty || (current.valid && Same(current.value,previous))))) throw new IOException("REGISTRATION_CHANGED");
             using(Microsoft.Win32.RegistryKey key=current.exists ? user.OpenSubKey(name,true) : NewKey(user,name,view)) {
               if(key==null || key.SubKeyCount!=0) throw new IOException("REGISTRATION_CHANGED");

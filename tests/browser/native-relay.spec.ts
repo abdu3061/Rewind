@@ -427,6 +427,74 @@ chrome.runtime.onInstalled.addListener(()=>{});
       expect(unavailable).toBe(false);
       expect((await bridge.close()).ok).toBe(true);
       bridge = null;
+      // Keep the browser's original host/sidecar in place, but remove its kind from private broker policy.
+      // This models a stale cached host registration after explicit browser removal.
+      const otherBrowser = browser === "chrome" ? "edge" : "chrome";
+      const otherPath =
+        otherBrowser === "edge"
+          ? path.join(
+              process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+              "Microsoft/Edge/Application/msedge.exe",
+            )
+          : path.join(
+              process.env.ProgramFiles ?? "C:\\Program Files",
+              "Google/Chrome/Application/chrome.exe",
+            );
+      let deniedConnected = 0,
+        deniedMessages = 0;
+      bridge = new NativeBrowserBridge();
+      bridge.setListener({
+        connected() {
+          deniedConnected++;
+        },
+        message() {
+          deniedMessages++;
+        },
+        disconnected() {},
+        unavailable() {},
+      });
+      expect(
+        (
+          await bridge.start(
+            native,
+            nativeBridgeConfigSchema.parse({
+              ...config,
+              browsers: [{ kind: otherBrowser, path: otherPath }],
+            }),
+          )
+        ).ok,
+      ).toBe(true);
+      await worker.evaluate(
+        ({ host, connectionId, profileId }) => {
+          (
+            globalThis as unknown as {
+              openProbe(host: string, message: unknown): void;
+            }
+          ).openProbe(host, {
+            version: 2,
+            type: "hello",
+            connectionId,
+            profileId,
+          });
+        },
+        { host: hostName, connectionId: randomUUID(), profileId: randomUUID() },
+      );
+      await expect
+        .poll(
+          () =>
+            worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeError: string | null })
+                  .probeError,
+            ),
+          { timeout: 5000 },
+        )
+        .not.toBeNull();
+      expect(deniedConnected).toBe(0);
+      expect(deniedMessages).toBe(0);
+      expect(bridge.status()).toEqual({ state: "ready", connected: 0 });
+      expect((await bridge.close()).ok).toBe(true);
+      bridge = null;
       succeeded = true;
     } catch (error) {
       bodyError = error;

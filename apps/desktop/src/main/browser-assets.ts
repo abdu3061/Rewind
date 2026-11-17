@@ -8,7 +8,7 @@ export const developmentExtensionId = "coenmeplfkocojebfacfbebinadfijoh";
 export const browserHostName = "com.rewind.bridge";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const file = z.strictObject({
-  name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,100}$/),
+  name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/),
   bytes: z
     .number()
     .int()
@@ -20,6 +20,7 @@ export const browserAssetInventorySchema = z.strictObject({
   version: z.literal(1),
   hostName: z.literal(browserHostName),
   extensionId: z.literal(developmentExtensionId),
+  nativeSourceHash: digest,
   native: z.strictObject({
     name: z.literal("RewindBrowserHost.exe"),
     bytes: z

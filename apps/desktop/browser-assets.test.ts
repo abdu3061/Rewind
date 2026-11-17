@@ -143,11 +143,54 @@ it("rejects path traversal, case-colliding inventories and unsupported targets",
   const inventory = JSON.parse(
     await readFile(path.join(output, "assets.json"), "utf8"),
   ) as { extension: { name: string }[] };
-  const first = inventory.extension[0]!;
+  const first = inventory.extension.find((item) =>
+    item.name.startsWith("extension-controls-"),
+  );
+  if (!first) throw new Error("SYNTHETIC_SHARED_CHUNK_MISSING");
   const original = first.name;
+  first.name = "extension-controls-A_B-C.js";
+  expect(browserAssetInventorySchema.safeParse(inventory).success).toBe(true);
   first.name = "../escape.js";
   expect(browserAssetInventorySchema.safeParse(inventory).success).toBe(false);
   first.name = original;
   inventory.extension.push({ ...first, name: original.toUpperCase() });
   expect(browserAssetInventorySchema.safeParse(inventory).success).toBe(false);
 });
+it.skipIf(process.platform !== "win32")(
+  "keeps source identity stable across independent builds and refuses redirected build output",
+  async () => {
+    const first = path.join(root, "first-rebuild"),
+      second = path.join(root, "second-rebuild");
+    await generateBrowserAssets(
+      path.resolve("apps/desktop"),
+      "win32",
+      "x64",
+      first,
+    );
+    await generateBrowserAssets(
+      path.resolve("apps/desktop"),
+      "win32",
+      "x64",
+      second,
+    );
+    const a = await readBrowserAssets(first),
+      b = await readBrowserAssets(second);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.value.inventory.nativeSourceHash).toBe(
+      b.value.inventory.nativeSourceHash,
+    );
+    const redirected = path.join(root, "redirected-build");
+    await symlink(first, redirected, "junction");
+    await expect(
+      generateBrowserAssets(
+        path.resolve("apps/desktop"),
+        "win32",
+        "x64",
+        redirected,
+      ),
+    ).rejects.toThrow("real local build directory");
+    expect((await readBrowserAssets(first)).ok).toBe(true);
+  },
+  20000,
+);

@@ -15,6 +15,7 @@ const fixtureScript = String.raw`
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Console]::InputEncoding=New-Object Text.UTF8Encoding $false
+[Console]::OutputEncoding=New-Object Text.UTF8Encoding $false
 $request=[Console]::ReadLine() | ConvertFrom-Json
 if($request.name -notmatch '^com\.rewind\.test\.[a-f0-9]{32}$') {throw 'FIXTURE_NAME_INVALID'}
 $brand=switch($request.browser) {'chrome' {'Google\Chrome'} 'edge' {'Microsoft\Edge'} default {throw 'FIXTURE_BROWSER_INVALID'}}
@@ -80,7 +81,7 @@ function fixture(browser: "chrome" | "edge") {
   return {
     name,
     registration: new NativeBrowserRegistration(executable, name),
-    manifest: path.join(root, `${browser}-${name}.json`),
+    manifest: path.join(root, `synthetic-Ölçüme-${browser}-${name}.json`),
     updated: path.join(root, `updated-${browser}-${name}.json`),
   };
 }
@@ -134,6 +135,11 @@ it.skipIf(process.platform !== "win32").each(["chrome", "edge"] as const)(
       value: { state: "conflict" },
     });
     expect(edit(browser, f.name, "read").value).toBe(f.manifest);
+    expect(await r.install(browser, f.updated, f.manifest)).toMatchObject({
+      ok: true,
+      value: { state: "registered", registeredViews: 2 },
+    });
+    // A durable prepared receipt allows retry after registration succeeded but journal completion did not.
     expect(await r.install(browser, f.updated, f.manifest)).toMatchObject({
       ok: true,
       value: { state: "registered", registeredViews: 2 },

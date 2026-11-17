@@ -1,5 +1,7 @@
 # Dependency-ordered development roadmap
 
+ADR 0022 advances durable setup ownership and orchestration: encrypted revision checks and pending repair, verified native installation files, explicit setup/removal, startup/shutdown fences and registered-browser policy are implemented for review. Next compose these with the real worker/bootstrap, actual image fingerprints, public setup/permission/status/exclusions and renderer, then verify packaged browser flows. Optional overwrite remains required; conditional Gemini stays behind verified core functionality.
+
 Browser setup advances through ADR 0021: actual host/extension packaging, bounded asset verification and owned per-user registration primitives are implemented and exercised with generated names. Next finish durable ownership receipts and verified installation generations, then utility composition/public browser controls and packaged browser flows. Optional overwrite with durable current-file preservation remains required; Gemini stays conditional on completing and verifying the core.
 
 Current run: [core functionality integration](core-functionality-integration.md) advances RWA-700 with real retention/deletion/quota controls and preserves the secure recording baseline. Continue with RWA-300/301 verified Windows identity and transactional encrypted original-byte capture, then recovery/checkpoints/browser/UI. The overall goal remains active; no remote PR or release acceptance is implied.

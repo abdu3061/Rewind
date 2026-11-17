@@ -278,6 +278,8 @@ namespace Rewind.NativeBrowser {
     public static readonly string ImagePath=Path.GetFullPath(Assembly.GetExecutingAssembly().Location);
     public static int Main(string[] args) {
       try {
+        Console.InputEncoding=new UTF8Encoding(false,true);
+        Console.OutputEncoding=new UTF8Encoding(false,true);
         if(args.Length==1 && args[0]=="--registration") return Registration.Run();
         return args.Length==1 && args[0]=="--broker" ? Broker.Run() : Host.Run(args);
       } catch {return 1;}
