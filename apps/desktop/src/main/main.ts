@@ -241,14 +241,30 @@ app
           "INVALID_INPUT",
           "Exactly one bounded recording command is required.",
         );
-      return dispatchRecordingRequest(sessions, args[0], async () => {
-        if (!mainWindow || mainWindow.isDestroyed()) return null;
-        const selected = await dialog.showOpenDialog(mainWindow, {
-          title: "Choose a folder for saved file versions",
-          properties: ["openDirectory"],
-        });
-        return selected.canceled ? null : (selected.filePaths[0] ?? null);
-      });
+      return dispatchRecordingRequest(
+        sessions,
+        args[0],
+        async () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return null;
+          const selected = await dialog.showOpenDialog(mainWindow, {
+            title: "Choose a folder for saved file versions",
+            properties: ["openDirectory"],
+          });
+          return selected.canceled ? null : (selected.filePaths[0] ?? null);
+        },
+        async (sourceName) => {
+          if (!mainWindow || mainWindow.isDestroyed()) return null;
+          const selected = await dialog.showSaveDialog(mainWindow, {
+            title: "Choose a new file for the recovery copy",
+            defaultPath: `recovered-${Array.from(path.basename(sourceName))
+              .filter((character) => character.charCodeAt(0) >= 32)
+              .join("")
+              .replace(/[<>:"|?*]/g, "_")}`,
+            buttonLabel: "Review recovery copy",
+          });
+          return selected.canceled ? null : (selected.filePath ?? null);
+        },
+      );
     });
     await sessions.start();
     // A simple native bitmap avoids external icon assets in the initialization build.

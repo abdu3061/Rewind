@@ -206,8 +206,9 @@ export function App() {
           </strong>
           <span>
             Windows activity and selected-folder capture need separate approval
-            for this launch and an active session. Cloud AI, browser visits and
-            recovery are unavailable.
+            for this launch and an active session. Verified file versions can be
+            saved as separate recovery copies. Cloud AI and browser visits are
+            unavailable.
           </span>
         </div>
 

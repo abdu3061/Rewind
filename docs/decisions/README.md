@@ -4,6 +4,8 @@
 
 [ADR 0013](0013-protected-folder-capture.md) records independent file approval, native scoped identity/read guards, bounded reconciliation, atomic encrypted capture, preview expiry and retention freshness.
 
+[ADR 0014](0014-confirmed-recovery-copies.md) records expiring single-use copy proposals, retained-source verification, native CREATE_NEW safety, verified receipts and truthful failure/partial-copy limits. Optional overwrite remains pending.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

@@ -12,18 +12,54 @@ import {
   versionPreviewResponseSchema,
   versionInfoResponseSchema,
   protectedFolderSchema,
+  recoveryCopyProposalResponseSchema,
+  recoveryCopyResultResponseSchema,
+  recoveryCancelResponseSchema,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
   backend: WorkerClient,
   input: unknown,
   chooseFolder?: () => Promise<string | null>,
+  chooseCopy?: (sourceName: string) => Promise<string | null>,
 ): Promise<Result<unknown>> {
   const parsed = recordingCommandSchema.safeParse(input);
   if (!parsed.success)
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "recovery.choose-copy": {
+      if (!chooseCopy)
+        return failure(
+          "UNAVAILABLE",
+          "The recovery destination dialog is unavailable.",
+        );
+      const source = await backend.request(
+        { kind: "versions.preview", id: command.versionId },
+        versionPreviewResponseSchema,
+      );
+      if (!source.ok) return source;
+      const selected = await chooseCopy(source.value.displayName);
+      if (selected && (selected.length < 4 || selected.length > 240))
+        return failure(
+          "INVALID_INPUT",
+          "Choose a local destination with a path of at most 240 characters.",
+        );
+      return selected
+        ? backend.request(
+            {
+              kind: "recovery.prepare-copy",
+              versionId: command.versionId,
+              path: selected,
+            },
+            recoveryCopyProposalResponseSchema,
+          )
+        : { ok: true, value: null };
+    }
+    case "recovery.confirm-copy":
+      return backend.request(command, recoveryCopyResultResponseSchema);
+    case "recovery.cancel":
+      return backend.request(command, recoveryCancelResponseSchema);
     case "files.select": {
       if (!chooseFolder)
         return failure("UNAVAILABLE", "Folder selection is unavailable.");

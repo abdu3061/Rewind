@@ -5,6 +5,7 @@ import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
 import type { ProtectedFolder } from "./snapshots";
 import type { FileVersion } from "./files";
+import type { RecoveryCopyProposal, RecoveryCopyResult } from "./recovery";
 import type {
   FileProtectionState,
   VersionListQuery,
@@ -28,8 +29,16 @@ export const SESSION_CHANGED_CHANNEL = "rewind:session-changed" as const;
 export const sessionResponseSchema = resultSchema(sessionStateSchema);
 export const noArgumentsSchema = z.tuple([]);
 
-// Only implemented capabilities are public. Recovery/AI/filesystem IPC will need lead review.
+// Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  recovery: {
+    chooseCopy(versionId: string): Promise<Result<RecoveryCopyProposal | null>>;
+    confirmCopy(
+      proposalId: string,
+      confirmed: true,
+    ): Promise<Result<RecoveryCopyResult>>;
+    cancel(proposalId: string): Promise<Result<true>>;
+  };
   files: {
     state(): Promise<Result<FileProtectionState>>;
     selectFolder(): Promise<Result<ProtectedFolder | null>>;

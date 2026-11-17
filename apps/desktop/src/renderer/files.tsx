@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { RecoveryCopy } from "./recovery-copy";
 import type {
   CapturedVersionSummary,
   FileProtectionState,
@@ -320,6 +321,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           >
             Close preview
           </button>
+          <RecoveryCopy key={preview.version.id} preview={preview} />
         </section>
       )}
     </>

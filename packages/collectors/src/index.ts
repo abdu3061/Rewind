@@ -14,3 +14,4 @@ export type {
 export const collectorImplementationStatus = "windows-consent-gated" as const;
 export { WindowsProtectedFileAccess } from "./windows-file-access";
 export { ProtectedFolderCollector } from "./protected-folder-collector";
+export { WindowsRecoveryCopyWriter } from "./windows-copy-writer";

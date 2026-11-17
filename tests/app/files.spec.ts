@@ -1,4 +1,10 @@
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { expect } from "@playwright/test";
 import type { DesktopApi } from "@rewind/contracts";
@@ -105,6 +111,70 @@ test("selected synthetic folders capture saved bytes with independent consent an
         name: "Allow file protection for this launch",
       }),
     ).toBeVisible();
+    // Recover the earlier saved version after recording has stopped. Only the dialog is mocked;
+    // original-byte storage, explicit confirmation and native Windows writing are real.
+    const recovered = path.join(profile, "recovered-synthetic.txt");
+    await application.evaluate(({ dialog }, destination) => {
+      dialog.showSaveDialog = async () => ({
+        canceled: false,
+        filePath: destination,
+      });
+    }, recovered);
+    await page
+      .getByRole("button", { name: /Preview synthetic.txt captured/ })
+      .nth(1)
+      .click();
+    await expect(page.locator(".captured-preview")).toHaveText(alpha);
+    await page
+      .getByRole("button", {
+        name: "Choose recovery copy destination",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("region", { name: "Review recovery copy", exact: true }),
+    ).toContainText(recovered);
+    expect(existsSync(recovered)).toBe(false);
+    await page
+      .getByRole("button", { name: "Cancel recovery copy", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: "Choose recovery copy destination",
+        exact: true,
+      }),
+    ).toBeEnabled();
+    expect(existsSync(recovered)).toBe(false);
+    await page
+      .getByRole("button", {
+        name: "Choose recovery copy destination",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "Confirm save recovery copy", exact: true })
+      .click();
+    await expect(
+      page.getByText(/Recovery copy saved and verified:/),
+    ).toBeVisible({ timeout: 20000 });
+    expect(readFileSync(recovered, "utf8")).toBe(alpha);
+    expect(readFileSync(file, "utf8")).toBe(
+      "A paused synthetic change must not be captured",
+    );
+    await page
+      .getByRole("button", {
+        name: "Choose recovery copy destination",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "Confirm save recovery copy", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "destination already exists",
+      { timeout: 20000 },
+    );
+    expect(readFileSync(recovered, "utf8")).toBe(alpha);
     await page.screenshot({
       path: "test-results/file-protection.png",
       fullPage: true,

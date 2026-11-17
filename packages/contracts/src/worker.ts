@@ -3,6 +3,7 @@ import { appErrorSchema, idSchema, resultSchema } from "./common";
 import { sessionCommandSchema } from "./session";
 import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
+import { recoveryCommandSchema } from "./recovery";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -11,6 +12,12 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...recoveryCommandSchema.options,
+  z.strictObject({
+    kind: z.literal("recovery.prepare-copy"),
+    versionId: idSchema,
+    path: z.string().min(4).max(240),
+  }),
   ...storageCommandSchema.options,
   ...fileCommandSchema.options,
   z.strictObject({
@@ -67,6 +74,10 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     id: idSchema,
     kind: z.enum([
+      "recovery.choose-copy",
+      "recovery.prepare-copy",
+      "recovery.confirm-copy",
+      "recovery.cancel",
       "session",
       "snapshot",
       "preferences.get",

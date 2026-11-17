@@ -21,6 +21,7 @@ import {
   type WindowQueryStrategy,
 } from "@rewind/collectors";
 import { FileOperations } from "./file-operations";
+import { RecoveryOperations } from "./recovery-operations";
 import { SecureStorage } from "@rewind/storage";
 import {
   preparePrivateDirectory,
@@ -48,6 +49,7 @@ export class WorkerRuntime {
   private maintenancePending = false;
   private preferenceRevision = 0;
   private files: FileOperations | null = null;
+  private recovery: RecoveryOperations | null = null;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
@@ -262,6 +264,15 @@ export class WorkerRuntime {
           return { ok: true, value: undefined };
         },
       });
+      this.recovery = new RecoveryOperations({
+        storage: this.storage,
+        coordinator: this.coordinator,
+        root: this.options.root,
+        synthetic: this.options.synthetic,
+        storageError: (error) => {
+          this.readResult({ ok: false, error });
+        },
+      });
       const initialized = await this.coordinator.initialize();
       if (!initialized.ok)
         return await this.initializationFailure(initialized.error);
@@ -299,6 +310,11 @@ export class WorkerRuntime {
       );
     try {
       switch (command.kind) {
+        case "recovery.choose-copy":
+        case "recovery.prepare-copy":
+        case "recovery.confirm-copy":
+        case "recovery.cancel":
+          return await this.recovery!.execute(command);
         case "files.state":
         case "files.select":
         case "files.add":
@@ -479,6 +495,8 @@ export class WorkerRuntime {
     this.closing = true;
     this.settings.collectionConsent = false;
     this.settings.folderCollectionConsent = false;
+    const recoveryStopped = await this.recovery?.close();
+    if (recoveryStopped && !recoveryStopped.ok) return recoveryStopped;
     const stopped = this.coordinator
       ? await this.coordinator.shutdown()
       : await this.storage.close();

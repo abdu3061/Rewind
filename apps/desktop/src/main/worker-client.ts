@@ -350,6 +350,9 @@ export class WorkerClient {
         "versions.list",
         "versions.preview",
         "versions.info",
+        "recovery.prepare-copy",
+        "recovery.confirm-copy",
+        "recovery.cancel",
       ].includes(command.kind);
     if (this.pending.size >= 64 && allowedStop) {
       // Stop authority cannot wait behind a saturated public request map.
@@ -375,7 +378,8 @@ export class WorkerClient {
             code: "UNAVAILABLE",
             message: "The recording service did not acknowledge the operation.",
           }),
-        this.options.requestTimeoutMs ?? 7000,
+        this.options.requestTimeoutMs ??
+          (command.kind === "recovery.confirm-copy" ? 20000 : 7000),
       );
       this.pending.set(id, { kind: command.kind, resolve, timer });
       try {

@@ -31,6 +31,9 @@ import {
   versionListResponseSchema,
   versionPreviewResponseSchema,
   versionInfoResponseSchema,
+  recoveryCopyProposalResponseSchema,
+  recoveryCopyResultResponseSchema,
+  recoveryCancelResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -83,6 +86,48 @@ function command(action: SessionAction) {
 }
 
 const api: DesktopApi = {
+  recovery: {
+    chooseCopy(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "recovery.choose-copy", versionId: parsed.data },
+            recoveryCopyProposalResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A captured version ID is required."),
+          );
+    },
+    confirmCopy(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 2 && parsed.success && args[1] === true
+        ? recording(
+            {
+              kind: "recovery.confirm-copy",
+              proposalId: parsed.data,
+              confirmed: true,
+            },
+            recoveryCopyResultResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "An explicit recovery confirmation is required.",
+            ),
+          );
+    },
+    cancel(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "recovery.cancel", proposalId: parsed.data },
+            recoveryCancelResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A recovery proposal ID is required."),
+          );
+    },
+  },
   files: {
     state: noArgs({ kind: "files.state" }, fileProtectionResponseSchema),
     selectFolder: noArgs(

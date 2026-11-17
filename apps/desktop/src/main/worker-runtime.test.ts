@@ -2,9 +2,12 @@ import { randomBytes } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { WorkerRuntime } from "./worker-runtime";
-import { versionListResponseSchema } from "@rewind/contracts";
+import {
+  versionListResponseSchema,
+  recoveryCopyProposalResponseSchema,
+} from "@rewind/contracts";
 import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
   newSecureFixture,
@@ -34,6 +37,109 @@ function fixture(strategy?: WindowQueryStrategy) {
   runtimes.push(runtime);
   return { runtime, root, profile, key: retainedKey };
 }
+it("confirms native recovery copies from retained encrypted bytes and rejects deletion between review and confirmation", async () => {
+  const f = fixture(),
+    source = join(f.profile, "protected"),
+    destination = join(f.profile, "recovered.txt");
+  mkdirSync(source);
+  writeFileSync(
+    join(source, "source.txt"),
+    "Synthetic recovery original bytes",
+  );
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "files.add", path: source })).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "files.permission", enabled: true })).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  const list = async () =>
+    versionListResponseSchema.parse(
+      await f.runtime.execute({ kind: "versions.list", query: { limit: 10 } }),
+    );
+  await vi.waitFor(
+    async () => {
+      const result = await list();
+      expect(result.ok && result.value.length).toBe(1);
+    },
+    { timeout: 10000 },
+  );
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "pause" })).ok,
+  ).toBe(true);
+  const versions = await list();
+  if (!versions.ok) throw new Error("Synthetic version unavailable");
+  const versionId = versions.value[0]!.version.id;
+  const prepare = async (target: string) => {
+    const proposal = recoveryCopyProposalResponseSchema.parse(
+      await f.runtime.execute({
+        kind: "recovery.prepare-copy",
+        versionId,
+        path: target,
+      }),
+    );
+    if (!proposal.ok || !proposal.value)
+      throw new Error("Synthetic recovery proposal unavailable");
+    return proposal.value;
+  };
+  const proposal = await prepare(destination);
+  expect(existsSync(destination)).toBe(false);
+  expect(
+    await f.runtime.execute({
+      kind: "recovery.confirm-copy",
+      proposalId: proposal.id,
+      confirmed: true,
+    }),
+  ).toMatchObject({
+    ok: true,
+    value: { fileVersionId: versionId, mode: "save-copy" },
+  });
+  expect(readFileSync(destination, "utf8")).toBe(
+    "Synthetic recovery original bytes",
+  );
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "recovery.confirm-copy",
+        proposalId: proposal.id,
+        confirmed: true,
+      })
+    ).ok,
+  ).toBe(false);
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "recovery.prepare-copy",
+        versionId,
+        path: join(f.root, "forbidden.txt"),
+      })
+    ).ok,
+  ).toBe(false);
+  const deletedTarget = join(f.profile, "must-not-be-created.txt"),
+    pending = await prepare(deletedTarget);
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "storage.delete",
+        value: { includeKept: false, confirmed: true },
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    await f.runtime.execute({
+      kind: "recovery.confirm-copy",
+      proposalId: pending.id,
+      confirmed: true,
+    }),
+  ).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  expect(existsSync(deletedTarget)).toBe(false);
+  expect(readFileSync(destination, "utf8")).toBe(
+    "Synthetic recovery original bytes",
+  );
+}, 25000);
 it("captures real synthetic folder saves with file-only approval, drains pause/revoke and reopens encrypted versions", async () => {
   const query = vi.fn(async () => ({
     application: "Synthetic.exe",

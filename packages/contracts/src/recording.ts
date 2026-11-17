@@ -10,6 +10,7 @@ import { sessionSchema } from "./session";
 import { userSettingsSchema } from "./settings";
 import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
+import { recoveryCommandSchema } from "./recovery";
 
 export const collectionPreferencesSchema = userSettingsSchema
   .pick({
@@ -75,6 +76,7 @@ export const RECORDING_CHANNEL = "rewind:recording" as const;
 export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
 export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
 export const recordingCommandSchema = z.discriminatedUnion("kind", [
+  ...recoveryCommandSchema.options,
   ...storageCommandSchema.options,
   ...fileCommandSchema.options,
   z.strictObject({ kind: z.literal("runtime.get") }),
