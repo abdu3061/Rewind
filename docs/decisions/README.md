@@ -16,6 +16,8 @@
 
 [ADR 0019](0019-browser-engine-leases.md) records the engine lease/staged-admission collector and tested utility native adapter, including actual encrypted history/FTS and isolated Chrome/Edge adapter verification. Product setup, approval and composition remain in progress.
 
+[ADR 0020](0020-extension-consent-controls.md) records the normal default-off background/popup, restart-scoped approval, browser-context/frame controls, development identity and encrypted browser UI end-to-end tests. Desktop setup/registration and worker/public UI composition remain in progress.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

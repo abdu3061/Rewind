@@ -1,15 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Rewind Development Starter",
-  "description": "Inactive Chrome/Edge scaffold. Does not collect or transmit browsing activity.",
+  "minimum_chrome_version": "116",
+  "name": "Rewind Development",
+  "description": "Permission-controlled focused browser metadata for the local Rewind desktop app. Recording starts off.",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArt9s497B0TpSEnVv8bK8Uy+47RTP1EPF6ckV+IFqqttaFqLJ+JuQNBmGPHFpO+GZuh9r4UIcRNmZOmp2WkGqtOp8QI4PZT/3HWypR0XwDazu1A9Aag/xDA5TT0udEjxoS8FzXHbM2Sbrs22kv6c2E6RwacGWf2gc5K2NJMK7WgFajS9Hw0HYmzLwG6U3iOe5jz9HFsE3rpVNneKY+ItuFCm0grVIEdCj3m2kXMrrAgZ+EXfeQqkWE0y54H/YSbqmFzaWeUU0l3R5yoAHhdCu95e4U7Q9Z8ipdPadd+EZbaPtc4f2YeYm08vHrZlRmEJXZFHmsL/tu3h7GK+M40k98QIDAQAB",
+  "permissions": ["tabs", "nativeMessaging", "storage"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {
-    "default_title": "Rewind: collection unavailable",
+    "default_title": "Rewind: recording off",
     "default_popup": "status.html"
   },
   "incognito": "not_allowed",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'"
   }
 }

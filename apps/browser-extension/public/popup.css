@@ -1,0 +1,51 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #202b38;
+  background: #f5f6f8;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  width: 360px;
+  margin: 0;
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+h1 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+p {
+  margin: 12px 0;
+}
+#status {
+  font-weight: 600;
+}
+button {
+  width: 100%;
+  padding: 10px 17px;
+  border: 1px solid #dce2e9;
+  border-radius: 7px;
+  background: #fff;
+  color: #202b38;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: #edf2f8;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button:focus-visible {
+  outline: 2px solid #315f9c;
+  outline-offset: 3px;
+}
+#error {
+  color: #9a3030;
+}

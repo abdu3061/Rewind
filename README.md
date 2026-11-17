@@ -12,11 +12,11 @@ Rewind is a Windows desktop work-session memory project. This local development 
 - Preview a captured version in Files, choose a new recovery-copy destination, review the source/hash/target and explicitly confirm. The backend rechecks retained bytes and native directory identity, writes only a new file and verifies its complete bytes. Existing destinations are rejected. Exported copies are ordinary files outside Rewind's encrypted-history retention/deletion.
 - Create a named checkpoint from actual same-session file versions and activity. Inspect its evidence, preview/recover selected versions, rename, Keep/Unkeep or confirm deletion. Keep preserves the manifest and selected versions/bytes/activity/search entries through ordinary cleanup and history deletion; it does not restore uncaptured application state.
 - Tray status and acknowledged shutdown. Closing the window ends the session and quits. A worker failure disables recording and requires reconnect/fresh approval.
-- Strict shared contracts, unit tests, an inactive Manifest V3 extension build, Windows packaging configuration, and packaged-app integration tests.
+- Strict shared contracts, a default-off Chrome/Edge Manifest V3 client, Windows packaging and automated tests. The client/popup and encrypted native path pass isolated browser tests; desktop browser setup and worker wiring remain in progress.
 
 History now has configurable retention, automatic expiration, usage/quota backpressure and confirmed deletion in Settings; see the [core integration report](docs/audit/core-functionality-integration.md) for policy and verification. Kept checkpoint evidence is protected by ordinary cleanup. Quotas include database journals and can temporarily be exceeded during bounded writes/compaction; deletion cannot promise forensic erasure.
 
-Browser visits, overwrite recovery, idle/lock detection and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history and captured original bytes use a keyed native cipher and Windows-protected key instead.
+Normal desktop browser recording, overwrite recovery, idle/lock detection and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history and captured original bytes use a keyed native cipher and Windows-protected key instead.
 
 ## Windows / PowerShell setup
 
@@ -47,18 +47,18 @@ If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; cha
 | `npm run test:app`                        | Launch/test packaged Windows executable; run build first              |
 | `npm run test:browser`                    | Isolated native-relay tests using installed Chrome and Edge           |
 | `npm run make`                            | Build a Windows ZIP through Forge; no signed installer                |
-| `npm run build:extension`                 | Build inactive extension into `apps/browser-extension/dist`           |
+| `npm run build:extension`                 | Build the browser client into `apps/browser-extension/dist`           |
 | `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser       |
 
 The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`. These outputs are ignored by Git. ARM64 is not yet verified. The Windows CI workflow runs the same checks plus packaged application tests. See [repository status](docs/repository-status.md) for the latest branch review and local verification.
 
-To inspect the inactive extension, enable Developer mode at `chrome://extensions` or `edge://extensions`, choose **Load unpacked**, and select `apps/browser-extension/dist`. It requests no browser/page/native permissions and excludes incognito. The popup explains the missing functionality. No native-host registration is performed. See [browser integration](docs/browser-integration.md) for the proposed shipping design.
+To inspect the development browser client, build it, enable Developer mode at `chrome://extensions` or `edge://extensions`, choose **Load unpacked**, and select `apps/browser-extension/dist`. It declares tabs, native messaging and storage permissions. Recording starts off and needs an explicit popup action plus a separately approved active desktop session. Only a random profile tag persists; approval resets on every background restart. Private browsing and page text are excluded. Normal desktop setup/registration is still being integrated, so the popup cannot yet connect to the ordinary app. No production host is registered automatically. See [browser integration](docs/browser-integration.md) and ADR 0020 for evidence and limits.
 
 ## Repository map
 
 ```text
 apps/desktop/          Electron main + sandboxed preload + React renderer (Forge/Vite)
-apps/browser-extension/  Inactive Chrome/Edge Manifest V3 starter
+apps/browser-extension/  Default-off Chrome/Edge Manifest V3 client and popup
 packages/contracts/   Validated domain models, ports, public desktop API
 packages/engine/      Pure session state machine and failure-aware coordinator
 packages/storage/     Encrypted SQLite, migrations, repositories and protected-key port

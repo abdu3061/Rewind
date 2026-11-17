@@ -10,6 +10,8 @@ F12/F28 advance through named checkpoint creation/management (ADR 0015): actual 
 
 ## Subsequent implementation status
 
+F17 now includes the normal background/popup, explicit restart-scoped consent, profile readback, strict sender/context/main-frame checks and non-embeddable controls (ADR 0020). Browser-specific opaque document tokens and missing popup sender fields use independent context/CSP proof. Actual Chrome/Edge popup and worker-restart flows reach encrypted history and FTS in generated fixtures. Desktop owned setup/registration, packaged native assets and worker/public browser controls remain in progress; normal app capture is not yet available.
+
 F17 advances through engine-owned browser leases, exact staged per-event admission, native-proven browser identity, sequence/scope/expiry fencing, stop acknowledgements and a bounded utility native adapter (ADR 0019). Actual encrypted browser metadata/FTS lifecycle tests and isolated Chrome/Edge adapter round trips pass. Lost connections remain explicit uncertainty rather than fabricated stop success. Product setup, real extension background/provider, public permissions and utility composition remain in progress; normal browser capture is still off.
 
 The subsequent focused-tab provider checks authority between each browser API, denies private/unfocused contexts before tab queries and keeps URL/title access lazy for controller exclusions. Sixteen unit cases and two actual Chrome/Edge synthetic provider tests pass. Normal background/setup/worker approval integration remains incomplete; this supersedes the missing-provider portion of the earlier F17 follow-up only.

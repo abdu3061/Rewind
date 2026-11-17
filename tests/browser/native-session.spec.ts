@@ -23,7 +23,10 @@ import {
   type ActivityEvent,
   type Result,
 } from "@rewind/contracts";
-import type { ExtensionSessionStatus } from "../../apps/browser-extension/src/native-session";
+import {
+  extensionResponseSchema,
+  type ExtensionStatus,
+} from "../../apps/browser-extension/src/extension-controls";
 import {
   NativeBrowserBridge,
   nativeBridgeConfigSchema,
@@ -34,7 +37,7 @@ const ok = async (): Promise<Result<void>> => ({ ok: true, value: undefined });
 const hash = (file: string) =>
   createHash("sha256").update(readFileSync(file)).digest("hex");
 interface ProbeSnapshot {
-  status: ExtensionSessionStatus;
+  status: ExtensionStatus;
   reads: number;
 }
 for (const [browser, channel, executable] of [
@@ -105,46 +108,42 @@ for (const [browser, channel, executable] of [
       const extension = path.join(root, "extension"),
         entry = path.join(root, "entry.ts");
       mkdirSync(extension);
+      // Test-only call counters wrap APIs before loading the unchanged normal background entry.
       writeFileSync(
-        entry,
+        path.join(root, "instrumentation.ts"),
         `
-import { ExtensionNativeSession } from ${JSON.stringify(path.resolve("apps/browser-extension/src/native-session.ts").replaceAll("\\", "/"))};
-import { focusedBrowserTab } from ${JSON.stringify(path.resolve("apps/browser-extension/src/focused-tab-provider.ts").replaceAll("\\", "/"))};
-let reads=0;
-const access={lastFocusedWindow:()=>chrome.windows.getLastFocused({populate:false,windowTypes:["normal"]}),activeTabs:windowId=>chrome.tabs.query({active:true,windowId}),window:windowId=>chrome.windows.get(windowId,{populate:false})};
-const session=new ExtensionNativeSession({profileId:crypto.randomUUID(),getFocusedTab:authorized=>{reads++;return focusedBrowserTab(access,authorized);},connect:()=>{
-  const port=chrome.runtime.connectNative(${JSON.stringify(hostName)});
-  return {postMessage:message=>port.postMessage(message),disconnect:()=>port.disconnect(),onMessage:listener=>{port.onMessage.addListener(listener);return()=>port.onMessage.removeListener(listener);},onDisconnect:listener=>{const callback=()=>{void chrome.runtime.lastError;listener();};port.onDisconnect.addListener(callback);return()=>port.onDisconnect.removeListener(callback);}};
-}});
-globalThis.probePermission=enabled=>session.permission(enabled);
-globalThis.probeSnapshot=()=>({status:session.status(),reads});
-globalThis.probeClose=()=>session.close();
-chrome.runtime.onInstalled.addListener(()=>{});
+let calls=0;
+for(const [area,name] of [[chrome.windows,"getLastFocused"],[chrome.windows,"get"],[chrome.tabs,"query"]]) {
+  const original=area[name].bind(area);area[name]=(...args)=>{calls++;return original(...args);};
+}
+globalThis.probeReadCount=()=>calls;
+globalThis.probeInstanceId=crypto.randomUUID();
 `,
       );
+      writeFileSync(
+        entry,
+        `import "./instrumentation.ts";\nimport ${JSON.stringify(path.resolve("apps/browser-extension/src/background.ts").replaceAll("\\", "/"))};\n`,
+      );
       await build({
-        configFile: false,
-        publicDir: false,
+        configFile: path.resolve("apps/browser-extension/vite.config.ts"),
+        root: path.resolve("apps/browser-extension"),
+        define: { __REWIND_NATIVE_HOST_NAME__: JSON.stringify(hostName) },
         logLevel: "error",
         build: {
           target: "es2022",
           minify: false,
           outDir: extension,
           emptyOutDir: false,
-          lib: { entry, formats: ["es"], fileName: () => "probe.js" },
+          lib: {
+            entry: {
+              background: entry,
+              popup: path.resolve("apps/browser-extension/src/popup.ts"),
+            },
+            formats: ["es"],
+            fileName: (_format, name) => `${name}.js`,
+          },
         },
       });
-      writeFileSync(
-        path.join(extension, "manifest.json"),
-        JSON.stringify({
-          manifest_version: 3,
-          name: "Synthetic Rewind Native Session Probe",
-          version: "1.0",
-          permissions: ["tabs", "nativeMessaging"],
-          incognito: "not_allowed",
-          background: { service_worker: "probe.js", type: "module" },
-        }),
-      );
       context = await chromium.launchPersistentContext(
         path.join(root, `${browser}-profile`),
         {
@@ -174,7 +173,20 @@ chrome.runtime.onInstalled.addListener(()=>{});
         path: extension,
         enableInIncognito: false,
       });
-      const worker =
+      const manifestKey = (
+        JSON.parse(
+          readFileSync(path.join(extension, "manifest.json"), "utf8"),
+        ) as { key: string }
+      ).key;
+      const expectedId = createHash("sha256")
+        .update(Buffer.from(manifestKey, "base64"))
+        .digest("hex")
+        .slice(0, 32)
+        .replace(/[0-9a-f]/g, (value) =>
+          String.fromCharCode(97 + parseInt(value, 16)),
+        );
+      expect(loaded.id).toBe(expectedId);
+      let worker =
         context
           .serviceWorkers()
           .find((item) =>
@@ -184,24 +196,171 @@ chrome.runtime.onInstalled.addListener(()=>{});
           predicate: (item) =>
             item.url().startsWith(`chrome-extension://${loaded.id}/`),
         }));
-      const snapshot = () =>
-        worker.evaluate(() =>
-          (
-            globalThis as unknown as { probeSnapshot(): ProbeSnapshot }
-          ).probeSnapshot(),
-        );
-      const clientPermission = (enabled: boolean) =>
-        worker.evaluate(
-          (value) =>
+      let controls = await context.newPage();
+      await controls.goto(`chrome-extension://${loaded.id}/status.html`);
+      await worker.evaluate(() =>
+        (
+          globalThis as unknown as {
+            chrome: { action: { openPopup(): Promise<void> } };
+          }
+        ).chrome.action.openPopup(),
+      );
+      await expect
+        .poll(() =>
+          controls.evaluate(
+            () =>
+              (
+                globalThis as unknown as {
+                  chrome: {
+                    extension: { getViews(input: { type: string }): Window[] };
+                  };
+                }
+              ).chrome.extension
+                .getViews({ type: "popup" })[0]
+                ?.document.querySelector("#status")?.textContent,
+          ),
+        )
+        .toBe("Recording is off.");
+      await controls.bringToFront();
+      const snapshot = async (): Promise<ProbeSnapshot> => {
+        const result = extensionResponseSchema.parse(
+          await controls.evaluate(() =>
             (
               globalThis as unknown as {
-                probePermission(
-                  enabled: boolean,
-                ): Promise<Result<ExtensionSessionStatus>>;
+                chrome: {
+                  runtime: { sendMessage(input: unknown): Promise<unknown> };
+                };
               }
-            ).probePermission(value),
-          enabled,
+            ).chrome.runtime.sendMessage({ kind: "rewind.browser.status" }),
+          ),
         );
+        if (!result.ok)
+          throw new Error("SYNTHETIC_EXTENSION_CONTROLS_UNAVAILABLE");
+        return {
+          status: result.value,
+          reads: await worker.evaluate(() =>
+            (
+              globalThis as unknown as { probeReadCount(): number }
+            ).probeReadCount(),
+          ),
+        };
+      };
+      const clientPermission = async (enabled: boolean): Promise<void> => {
+        await worker.evaluate(() =>
+          (
+            globalThis as unknown as {
+              chrome: { action: { openPopup(): Promise<void> } };
+            }
+          ).chrome.action.openPopup(),
+        );
+        await expect
+          .poll(() =>
+            controls.evaluate(
+              (expected) => {
+                const popup = (
+                  globalThis as unknown as {
+                    chrome: {
+                      extension: {
+                        getViews(input: { type: string }): Window[];
+                      };
+                    };
+                  }
+                ).chrome.extension.getViews({ type: "popup" })[0];
+                const button =
+                  popup?.document.querySelector<HTMLButtonElement>(
+                    "#permission",
+                  );
+                return (
+                  !!button &&
+                  !button.disabled &&
+                  button.textContent === expected
+                );
+              },
+              enabled ? "Allow and connect" : "Stop recording",
+            ),
+          )
+          .toBe(true);
+        await controls.evaluate(() => {
+          const popup = (
+            globalThis as unknown as {
+              chrome: {
+                extension: { getViews(input: { type: string }): Window[] };
+              };
+            }
+          ).chrome.extension.getViews({ type: "popup" })[0];
+          popup!.document
+            .querySelector<HTMLButtonElement>("#permission")!
+            .click();
+        });
+        await expect
+          .poll(
+            async () => {
+              const status = (await snapshot()).status;
+              return status.permission === enabled && !status.pending;
+            },
+            {
+              timeout: 10000,
+            },
+          )
+          .toBe(true);
+        await controls.evaluate(() =>
+          (
+            globalThis as unknown as {
+              chrome: {
+                extension: { getViews(input: { type: string }): Window[] };
+              };
+            }
+          ).chrome.extension
+            .getViews({ type: "popup" })[0]
+            ?.close(),
+        );
+      };
+      const unauthorized = await context.newPage();
+      await unauthorized.goto(
+        `chrome-extension://${loaded.id}/status.html?synthetic-untrusted-view=1`,
+      );
+      expect(
+        await unauthorized.evaluate(() =>
+          (
+            globalThis as unknown as {
+              chrome: {
+                runtime: { sendMessage(input: unknown): Promise<unknown> };
+              };
+            }
+          ).chrome.runtime.sendMessage({
+            kind: "rewind.browser.permission",
+            enabled: true,
+          }),
+        ),
+      ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+      await unauthorized.close();
+      await controls.evaluate(() => {
+        const frame = document.createElement("iframe");
+        frame.id = "synthetic-child-controls";
+        frame.src = location.href;
+        document.body.appendChild(frame);
+      });
+      await expect.poll(() => controls.frames().length).toBe(2);
+      const child = controls
+        .frames()
+        .find((frame) => frame.parentFrame() !== null)!;
+      await child.waitForLoadState("domcontentloaded");
+      expect(
+        await child.evaluate(
+          () =>
+            typeof (
+              globalThis as unknown as {
+                chrome?: { runtime?: { sendMessage?: unknown } };
+              }
+            ).chrome?.runtime?.sendMessage,
+        ),
+      ).not.toBe("function");
+      await controls.evaluate(() =>
+        document.querySelector("#synthetic-child-controls")!.remove(),
+      );
+      await expect(controls.getByRole("status")).toHaveText(
+        "Recording is off.",
+      );
       const config = nativeBridgeConfigSchema.parse({
         version: 1,
         pipeName: `rewind.session.test.${nonce}`,
@@ -279,7 +438,7 @@ chrome.runtime.onInstalled.addListener(()=>{});
       registered = true;
       expect((await snapshot()).reads).toBe(0);
       expect((await coordinator.execute("start")).ok).toBe(true);
-      expect((await clientPermission(true)).ok).toBe(true);
+      await clientPermission(true);
       await expect
         .poll(async () => (await snapshot()).status.connected, {
           timeout: 10000,
@@ -301,6 +460,7 @@ chrome.runtime.onInstalled.addListener(()=>{});
           })
         ).ok,
       ).toBe(true);
+      await page.bringToFront();
       expect((await coordinator.execute("resume")).ok).toBe(true);
       const generation = coordinator.getActiveGenerationId();
       await expect
@@ -364,12 +524,94 @@ chrome.runtime.onInstalled.addListener(()=>{});
           types: ["browser-visit"],
         }),
       ).toEqual({ ok: true, value: [] });
+      // Reload an approved but ended client. Only the profile tag survives; recording needs another explicit click.
+      const profileBeforeReload = await worker.evaluate(() =>
+        (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                local: { get(key: string): Promise<Record<string, unknown>> };
+              };
+            };
+          }
+        ).chrome.storage.local.get("rewindProfileIdV1"),
+      );
+      const previousInstance = await worker.evaluate(
+        () =>
+          (globalThis as unknown as { probeInstanceId: string })
+            .probeInstanceId,
+      );
+      const workerControl = await context.newCDPSession(page);
+      await workerControl.send("ServiceWorker.enable");
+      await workerControl.send("ServiceWorker.stopAllWorkers");
+      if (!controls.isClosed()) await controls.close();
+      controls = await context.newPage();
+      await expect(async () => {
+        await controls.goto(`chrome-extension://${loaded.id}/status.html`);
+        await expect(
+          controls.getByRole("button", { name: "Allow and connect" }),
+        ).toBeEnabled({ timeout: 2000 });
+      }).toPass({ timeout: 10000 });
+      await expect
+        .poll(
+          async () => {
+            for (const candidate of context!
+              .serviceWorkers()
+              .filter((item) =>
+                item.url().startsWith(`chrome-extension://${loaded.id}/`),
+              )) {
+              try {
+                const instance = await candidate.evaluate(
+                  () =>
+                    (globalThis as unknown as { probeInstanceId: string })
+                      .probeInstanceId,
+                );
+                if (instance && instance !== previousInstance) {
+                  worker = candidate;
+                  return true;
+                }
+              } catch {
+                /* A stopped execution context can be replaced while its target is still observed. */
+              }
+            }
+            return false;
+          },
+          { timeout: 10000 },
+        )
+        .toBe(true);
+      expect((await snapshot()).status).toMatchObject({
+        permission: false,
+        connected: false,
+        collecting: false,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+      expect((await snapshot()).reads).toBe(0);
+      expect(
+        await worker.evaluate(() =>
+          (
+            globalThis as unknown as {
+              chrome: {
+                storage: {
+                  local: { get(key: string): Promise<Record<string, unknown>> };
+                };
+              };
+            }
+          ).chrome.storage.local.get("rewindProfileIdV1"),
+        ),
+      ).toEqual(profileBeforeReload);
+      await clientPermission(true);
+      await expect
+        .poll(async () => (await snapshot()).status.connected, {
+          timeout: 10000,
+        })
+        .toBe(true);
+      await page.bringToFront();
       // A separate client revocation is an acknowledged permission gap, not an invented native disconnect.
       expect((await coordinator.execute("start")).ok).toBe(true);
       await expect
         .poll(async () => (await readEvents()).length, { timeout: 10000 })
         .toBe(3);
-      expect((await clientPermission(false)).ok).toBe(true);
+      await clientPermission(false);
       await expect
         .poll(() => coordinator!.getStatus().unavailable, { timeout: 5000 })
         .toBe(true);
@@ -391,6 +633,28 @@ chrome.runtime.onInstalled.addListener(()=>{});
         pending: false,
       });
       expect((await coordinator.execute("end")).ok).toBe(true);
+      const extensionData = await worker.evaluate(() =>
+        (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                local: { get(input: null): Promise<Record<string, unknown>> };
+              };
+            };
+          }
+        ).chrome.storage.local.get(null),
+      );
+      expect(Object.keys(extensionData)).toEqual(["rewindProfileIdV1"]);
+      expect(extensionData.rewindProfileIdV1).toMatch(/^[a-f0-9-]{36}$/);
+      await expect(controls.getByRole("status")).toHaveText(
+        "Recording is off.",
+      );
+      await controls.locator("body").screenshot({
+        path: path.resolve(
+          "test-results-browser",
+          `extension-controls-${browser}.png`,
+        ),
+      });
       expect(readFileSync(databaseFile).subarray(0, 16).toString()).not.toBe(
         "SQLite format 3\0",
       );

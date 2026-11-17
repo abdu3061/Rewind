@@ -3,13 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <title>Rewind extension</title>
+    <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
     <h1>Rewind</h1>
-    <p>Development starter. Collection is unavailable.</p>
+    <p id="status" role="status">Loading extension controls…</p>
     <p>
-      No browser permissions are requested, no page text is extracted, and
-      nothing is sent to the desktop.
+      Allow focused page URLs and titles until the extension restarts. Rewind
+      also needs its own approval and an active desktop session. Recording
+      starts off after every extension restart.
     </p>
+    <button id="permission" type="button" disabled>Allow and connect</button>
+    <p id="error" role="alert"></p>
+    <p>
+      Private, internal and excluded pages are skipped. URL queries and
+      fragments are omitted. Page text is not collected.
+    </p>
+    <p>
+      Check Rewind's timeline for confirmed saved observations. Brief visits
+      between samples may be missed.
+    </p>
+    <script type="module" src="./popup.js"></script>
   </body>
 </html>

@@ -1,5 +1,7 @@
 # Browser integration and installation plan
 
+Current client checkpoint: [ADR 0020](decisions/0020-extension-consent-controls.md) supersedes the inactive-starter description below. The normal background/popup now compose the real client/provider, declare tabs/native messaging/storage access, start off on every execution and persist only a nonsecret profile tag. Actual Chrome/Edge popup tests reach the encrypted native/engine/store path in generated fixtures, including worker restart and fresh approval. Desktop owned setup/registration and worker/public consent UI remain unfinished; the ordinary app still cannot record browser visits. No automatic production registration or approval is introduced. Older sections retain their original scope.
+
 Owner: Mohammad Poorhamadi, with Rasit approving consent, lifecycle, wire contracts, host security, and installer changes. **Status: normal extension capture remains inactive. A real host/broker relay passes isolated Chrome/Edge tests, with temporary registrations cleaned afterward; normal utility/permission/session/storage/UI composition and production registration remain pending.** See ADR 0018 and the core integration report for current evidence. Historical foundation notes below describe their original slice.
 
 ## Local transport foundation

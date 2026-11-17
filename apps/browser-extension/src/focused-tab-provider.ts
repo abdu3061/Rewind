@@ -1,18 +1,18 @@
 import type { FocusedBrowserTab } from "./metadata-controller";
 
 export interface BrowserWindowMetadata {
-  id?: number;
+  id?: number | undefined;
   focused: boolean;
   incognito: boolean;
-  type?: string;
+  type?: string | undefined;
 }
 export interface BrowserTabMetadata {
-  id?: number;
+  id?: number | undefined;
   windowId: number;
   active: boolean;
   incognito: boolean;
-  url?: string;
-  title?: string;
+  url?: string | undefined;
+  title?: string | undefined;
 }
 /** Implement with nonpopulated windows and one window-scoped active-tabs query. No DOM access. */
 export interface BrowserMetadataAccess {
