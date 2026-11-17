@@ -123,6 +123,7 @@ async function pinnedFixture() {
     name: "Kept evidence",
     createdAt: "2026-11-10T10:00:00.000Z",
     kept: true,
+    activityIds: [],
     fileVersionIds: [versionId],
     browserVisitIds: [],
     projectReferences: [],
@@ -159,6 +160,140 @@ it("pins kept versions transitively and only deletes them after explicit inclusi
   } finally {
     db.close();
   }
+});
+it("pins actual non-browser activity and FTS through checkpoint expiry, then expires it after Unkeep", async () => {
+  const f = await fixture(),
+    selected = f.event("2026-11-10T10:01:00.000Z", "KeptActivityEvidence9382"),
+    unselected = f.event("2026-11-10T10:02:00.000Z", "UnselectedEvidence9382");
+  expect(
+    (await f.store.repositories.activities.append([selected, unselected])).ok,
+  ).toBe(true);
+  const checkpoint: Checkpoint = {
+    id: randomUUID(),
+    sessionId: f.sessionId,
+    name: "Real selected activity",
+    createdAt: "2026-11-10T10:03:00.000Z",
+    kept: true,
+    fileVersionIds: [],
+    activityIds: [selected.id],
+    browserVisitIds: [],
+    projectReferences: [],
+  };
+  expect((await f.store.checkpoints.save(checkpoint)).ok).toBe(true);
+  expect(await f.store.cleanup(now)).toMatchObject({
+    ok: true,
+    value: { activityCount: 1, keptCheckpointCount: 1 },
+  });
+  expect(await f.store.evidence.get(selected.id)).toEqual({
+    ok: true,
+    value: selected,
+  });
+  expect(await f.store.evidence.get(unselected.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+  expect(
+    await f.store.timeline({ limit: 10, text: "KeptActivityEvidence9382" }),
+  ).toMatchObject({ ok: true, value: [selected] });
+  await f.store.close();
+  const reopened = new SecureStorage(f.file, f.key);
+  stores.push(reopened);
+  expect((await reopened.open()).ok).toBe(true);
+  expect(await reopened.checkpoints.get(checkpoint.id)).toEqual({
+    ok: true,
+    value: checkpoint,
+  });
+  expect(
+    (await reopened.checkpoints.save({ ...checkpoint, kept: false })).ok,
+  ).toBe(true);
+  expect(await reopened.cleanup(now)).toMatchObject({
+    ok: true,
+    value: { activityCount: 0, checkpointCount: 0 },
+  });
+  expect(
+    await reopened.timeline({ limit: 10, text: "KeptActivityEvidence9382" }),
+  ).toEqual({ ok: true, value: [] });
+});
+it("rejects duplicate, missing and wrong-session checkpoint activity atomically and pages equal-time manifests", async () => {
+  const f = await fixture(),
+    selected = f.event("2026-11-10T10:01:00.000Z", "CheckpointEvidencePaging"),
+    otherId = randomUUID();
+  expect((await f.store.repositories.activities.append([selected])).ok).toBe(
+    true,
+  );
+  expect(
+    (
+      await f.store.repositories.sessions.save({
+        id: otherId,
+        startedAt: "2026-11-10T10:00:00.000Z",
+        updatedAt: "2026-11-10T10:00:00.000Z",
+        endedAt: null,
+        status: "active",
+      })
+    ).ok,
+  ).toBe(true);
+  const base: Checkpoint = {
+    id: randomUUID(),
+    sessionId: f.sessionId,
+    name: "Synthetic evidence manifest",
+    createdAt: "2026-11-10T10:03:00.000Z",
+    kept: true,
+    fileVersionIds: [],
+    activityIds: [selected.id],
+    browserVisitIds: [],
+    projectReferences: [],
+  };
+  for (const bad of [
+    { ...base, activityIds: [selected.id, selected.id] },
+    { ...base, activityIds: [randomUUID()] },
+    { ...base, sessionId: otherId },
+  ])
+    expect((await f.store.checkpoints.save(bad)).ok).toBe(false);
+  expect(await f.store.checkpoints.query({ limit: 10 })).toEqual({
+    ok: true,
+    value: [],
+  });
+  const ids = [randomUUID(), randomUUID(), randomUUID()];
+  for (const id of ids)
+    expect((await f.store.checkpoints.save({ ...base, id })).ok).toBe(true);
+  const first = await f.store.checkpoints.query({
+    limit: 2,
+    sessionId: f.sessionId,
+  });
+  if (!first.ok) throw new Error("Synthetic paging failed");
+  const last = first.value.at(-1)!;
+  const second = await f.store.checkpoints.query({
+    limit: 2,
+    before: { createdAt: last.createdAt, id: last.id },
+  });
+  if (!second.ok) throw new Error("Synthetic paging failed");
+  expect([...first.value, ...second.value].map((value) => value.id)).toEqual(
+    ids.sort().reverse(),
+  );
+  expect(
+    first.value.every(
+      (value) => value.activityCount === 1 && value.fileVersionCount === 0,
+    ),
+  ).toBe(true);
+  expect(
+    await f.store.checkpoints.query({ limit: 10, sessionId: otherId }),
+  ).toEqual({ ok: true, value: [] });
+  expect((await f.store.checkpoints.remove(last.id)).ok).toBe(true);
+  expect(await f.store.checkpoints.get(last.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+});
+it("refuses encrypted restart when checkpoint membership guards have disappeared", async () => {
+  const f = await fixture();
+  await f.store.close();
+  const inspection = f.inspect();
+  inspection.exec("DROP TRIGGER checkpoint_activity_membership");
+  inspection.close();
+  const reopened = new SecureStorage(f.file, f.key);
+  stores.push(reopened);
+  expect((await reopened.open()).ok).toBe(false);
+  expect(() => reopened.checkpoints).toThrow();
 });
 it("rejects dangling or wrong-session checkpoint evidence atomically", async () => {
   const f = await pinnedFixture();

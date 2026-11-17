@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, afterAll, expect, it } from "vitest";
 import {
   createDefaultSettings,
   type Collector,
@@ -16,9 +16,12 @@ import { vi } from "vitest";
 import type { ActiveWindowInfo } from "@rewind/collectors";
 import { SessionCoordinator } from "./session-coordinator";
 import { SessionService } from "./session-service";
+import { currentSchemaFixture } from "../../storage/src/current-schema.test-support";
 
 const now = "2026-11-16T10:00:00.000Z";
-const migration = resolve(__dirname, "../../../db/migrations/001_initial.sql");
+const schema = currentSchemaFixture();
+const migration = schema.path;
+afterAll(schema.remove);
 const adapters: SqliteStorageAdapter[] = [];
 const directories: string[] = [];
 const ok = async (): Promise<Result<void>> => ({ ok: true, value: undefined });
@@ -43,7 +46,10 @@ class SyntheticCollector implements Collector {
   }
 }
 function fixture(path = ":memory:") {
-  const storage = new SqliteStorageAdapter(path, migration);
+  const storage = new SqliteStorageAdapter(
+    path,
+    path !== ":memory:" && existsSync(path) ? undefined : migration,
+  );
   adapters.push(storage);
   const collectors = {
     windows: new SyntheticCollector(),

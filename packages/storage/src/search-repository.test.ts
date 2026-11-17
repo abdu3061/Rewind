@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type {
@@ -13,6 +11,7 @@ import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteFileRepository } from "./file-repository";
 import { SqliteSearchRepository } from "./search-repository";
 import { SqliteSessionRepository } from "./session-repository";
+import { applySecureMigrations } from "./migrations";
 
 describe("SqliteSearchRepository", () => {
   let db: DatabaseSync;
@@ -31,11 +30,7 @@ describe("SqliteSearchRepository", () => {
   beforeEach(async () => {
     db = new DatabaseSync(":memory:");
 
-    const migrationSql = readFileSync(
-      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
-      "utf8",
-    );
-    db.exec(migrationSql);
+    applySecureMigrations(db);
 
     sessionRepo = new SqliteSessionRepository(db);
     activityRepo = new SqliteActivityRepository(db);
@@ -97,6 +92,7 @@ describe("SqliteSearchRepository", () => {
       name: "Completed Database Milestones",
       createdAt: "2026-10-25T00:15:00.000Z",
       kept: true,
+      activityIds: [],
       fileVersionIds: [],
       browserVisitIds: [],
       projectReferences: [],

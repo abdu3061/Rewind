@@ -225,7 +225,14 @@ export class FileOperations {
                 "INTEGRITY_FAILURE",
                 "Captured version identity is unavailable.",
               );
-            results.push({ version, displayName: file.value.displayName });
+            results.push({
+              version,
+              displayName: file.value.displayName,
+              sourceLabel:
+                file.value.identity.kind === "verified-path"
+                  ? file.value.identity.absolutePath
+                  : file.value.displayName,
+            });
           }
           return { ok: true, value: results };
         });
@@ -269,6 +276,10 @@ export class FileOperations {
               value: {
                 version,
                 displayName: file.value.displayName,
+                sourceLabel:
+                  file.value.identity.kind === "verified-path"
+                    ? file.value.identity.absolutePath
+                    : file.value.displayName,
                 text,
                 truncated: text !== null && bytes.byteLength > 65532,
                 warning:

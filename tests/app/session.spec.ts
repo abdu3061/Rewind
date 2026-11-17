@@ -87,6 +87,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       node: "undefined",
       process: "undefined",
       keys: [
+        "checkpoints",
         "recovery",
         "files",
         "versions",
@@ -114,7 +115,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       ["Timeline", "Recorded activity"],
       ["Search", "Search your recorded evidence"],
       ["Files", "Protected folders"],
-      ["Checkpoints", "No checkpoints yet"],
+      ["Checkpoints", "Save a named checkpoint"],
       ["Settings", "Privacy comes first"],
     ] as const) {
       await page.getByRole("button", { name: new RegExp(screen) }).click();

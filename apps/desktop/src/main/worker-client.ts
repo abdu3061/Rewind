@@ -353,6 +353,11 @@ export class WorkerClient {
         "recovery.prepare-copy",
         "recovery.confirm-copy",
         "recovery.cancel",
+        "checkpoints.create",
+        "checkpoints.view",
+        "checkpoints.list",
+        "checkpoints.update",
+        "checkpoints.delete",
       ].includes(command.kind);
     if (this.pending.size >= 64 && allowedStop) {
       // Stop authority cannot wait behind a saturated public request map.

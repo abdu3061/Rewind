@@ -4,6 +4,7 @@ import { sessionCommandSchema } from "./session";
 import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
 import { recoveryCommandSchema } from "./recovery";
+import { checkpointCommandSchema } from "./checkpoint-controls";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -12,6 +13,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...checkpointCommandSchema.options,
   ...recoveryCommandSchema.options,
   z.strictObject({
     kind: z.literal("recovery.prepare-copy"),
@@ -74,6 +76,11 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     id: idSchema,
     kind: z.enum([
+      "checkpoints.create",
+      "checkpoints.view",
+      "checkpoints.list",
+      "checkpoints.update",
+      "checkpoints.delete",
       "recovery.choose-copy",
       "recovery.prepare-copy",
       "recovery.confirm-copy",

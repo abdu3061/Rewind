@@ -14,7 +14,7 @@ type Native = InstanceType<typeof NativeDatabase>;
 const unlinkedVersion =
   "id NOT IN (SELECT file_version_id FROM checkpoint_file_versions)";
 const unlinkedActivity =
-  "id NOT IN (SELECT browser_visit_id FROM checkpoint_browser_visits)";
+  "id NOT IN (SELECT browser_visit_id FROM checkpoint_browser_visits) AND id NOT IN (SELECT activity_id FROM checkpoint_activities)";
 
 /** Runs only on the worker's serialized storage queue, never against caller-owned transactions. */
 export class StorageMaintenance {

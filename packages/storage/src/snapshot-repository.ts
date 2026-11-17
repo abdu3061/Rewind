@@ -35,6 +35,7 @@ function version(row: Record<string, unknown>): FileVersion {
   });
 }
 const versionQuery = z.strictObject({
+  sessionId: idSchema.optional(),
   fileId: idSchema.optional(),
   limit: z.number().int().min(1).max(100),
   before: z
@@ -420,6 +421,10 @@ export class SnapshotRepository implements SnapshotStore {
       const query = parsed.data;
       const conditions = ["v.blob_hash IS NOT NULL"];
       const args: SqlValue[] = [];
+      if (query.sessionId) {
+        conditions.push("v.session_id=?");
+        args.push(query.sessionId);
+      }
       if (query.fileId) {
         conditions.push("v.file_id=?");
         args.push(query.fileId);

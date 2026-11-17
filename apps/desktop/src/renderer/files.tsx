@@ -270,6 +270,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           {versions.map((item) => (
             <li key={item.version.id} data-testid="captured-version">
               <strong>{item.displayName}</strong>
+              <p className="content-hash">{item.sourceLabel}</p>
               <time dateTime={item.version.capturedAt}>
                 {new Date(item.version.capturedAt).toLocaleString()}
               </time>
@@ -296,6 +297,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
       {preview && readable && (
         <section className="panel" aria-labelledby="preview-heading">
           <h2 id="preview-heading">Captured preview: {preview.displayName}</h2>
+          <p className="content-hash">{preview.sourceLabel}</p>
           <p>
             {new Date(preview.version.capturedAt).toLocaleString()} ·{" "}
             {preview.version.byteLength.toLocaleString()} verified original

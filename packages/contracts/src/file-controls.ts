@@ -19,6 +19,7 @@ export const fileProtectionStateSchema = z.strictObject({
 });
 export type FileProtectionState = z.infer<typeof fileProtectionStateSchema>;
 export const versionListQuerySchema = z.strictObject({
+  sessionId: idSchema.optional(),
   fileId: idSchema.optional(),
   limit: z.number().int().min(1).max(100),
   before: z
@@ -29,6 +30,7 @@ export type VersionListQuery = z.infer<typeof versionListQuerySchema>;
 export const capturedVersionSummarySchema = z.strictObject({
   version: fileVersionSchema,
   displayName: z.string().min(1).max(255),
+  sourceLabel: z.string().min(1).max(1024),
 });
 export type CapturedVersionSummary = z.infer<
   typeof capturedVersionSummarySchema
@@ -36,6 +38,7 @@ export type CapturedVersionSummary = z.infer<
 export const versionPreviewSchema = z.strictObject({
   version: fileVersionSchema,
   displayName: z.string().min(1).max(255),
+  sourceLabel: z.string().min(1).max(1024),
   text: z.string().max(65536).nullable(),
   truncated: z.boolean(),
   warning: z.string().max(500).nullable(),

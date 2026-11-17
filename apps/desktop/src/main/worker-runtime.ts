@@ -22,6 +22,7 @@ import {
 } from "@rewind/collectors";
 import { FileOperations } from "./file-operations";
 import { RecoveryOperations } from "./recovery-operations";
+import { CheckpointOperations } from "./checkpoint-operations";
 import { SecureStorage } from "@rewind/storage";
 import {
   preparePrivateDirectory,
@@ -50,6 +51,7 @@ export class WorkerRuntime {
   private preferenceRevision = 0;
   private files: FileOperations | null = null;
   private recovery: RecoveryOperations | null = null;
+  private checkpoints: CheckpointOperations | null = null;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
@@ -273,6 +275,10 @@ export class WorkerRuntime {
           this.readResult({ ok: false, error });
         },
       });
+      this.checkpoints = new CheckpointOperations(
+        this.storage,
+        this.coordinator,
+      );
       const initialized = await this.coordinator.initialize();
       if (!initialized.ok)
         return await this.initializationFailure(initialized.error);
@@ -310,6 +316,14 @@ export class WorkerRuntime {
       );
     try {
       switch (command.kind) {
+        case "checkpoints.create":
+        case "checkpoints.view":
+        case "checkpoints.list":
+        case "checkpoints.update":
+        case "checkpoints.delete": {
+          const result = await this.checkpoints!.execute(command);
+          return this.readResult(result);
+        }
         case "recovery.choose-copy":
         case "recovery.prepare-copy":
         case "recovery.confirm-copy":

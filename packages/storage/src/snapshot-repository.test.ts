@@ -335,6 +335,7 @@ it("keeps a shared blob until its final kept reference is explicitly deleted", a
     name: "Keep actual bytes",
     createdAt: a.version.capturedAt,
     kept: true,
+    activityIds: [],
     fileVersionIds: [a.version.id],
     browserVisitIds: [],
     projectReferences: [],

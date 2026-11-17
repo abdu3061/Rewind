@@ -440,3 +440,13 @@ dd {
   padding: 16px;
   background: var(--color-soft);
 }
+.evidence-picker {
+  max-height: 24rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.evidence-picker label {
+  display: block;
+  padding: 6px 0;
+}

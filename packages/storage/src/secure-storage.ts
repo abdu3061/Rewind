@@ -28,6 +28,8 @@ import {
 } from "./snapshot-repository";
 import type { DatabaseConnection, SqlValue } from "./database";
 import { createRepositories, verifyRepositorySchema } from "./repositories";
+import { SqliteCheckpointRepository } from "./checkpoint-repository";
+import { SqliteActivityRepository } from "./activity-repository";
 import { applySecureMigrations } from "./migrations";
 
 type Native = InstanceType<typeof NativeDatabase>;
@@ -67,6 +69,16 @@ export class SecureStorage implements SessionStorage {
   get repositories(): Repositories {
     if (!this.repositorySet) throw new Error("SECURE_STORAGE_UNAVAILABLE");
     return this.repositorySet;
+  }
+  get checkpoints(): SqliteCheckpointRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    return new SqliteCheckpointRepository(connection(this.db));
+  }
+  get evidence(): SqliteActivityRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    return new SqliteActivityRepository(connection(this.db));
   }
   get snapshots(): SnapshotRepository {
     if (!this.repositorySet || !this.db)

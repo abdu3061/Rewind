@@ -91,6 +91,7 @@ export interface SnapshotStore {
     versionId: string,
   ): Promise<Result<{ version: FileVersion; bytes: Uint8Array }>>;
   listVersions(query: {
+    sessionId?: string | undefined;
     fileId?: string | undefined;
     limit: number;
     before?: { capturedAt: string; id: string } | undefined;

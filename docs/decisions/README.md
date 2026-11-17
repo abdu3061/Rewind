@@ -6,6 +6,8 @@
 
 [ADR 0014](0014-confirmed-recovery-copies.md) records expiring single-use copy proposals, retained-source verification, native CREATE_NEW safety, verified receipts and truthful failure/partial-copy limits. Optional overwrite remains pending.
 
+[ADR 0015](0015-real-evidence-checkpoints.md) records actual same-session version/activity manifests, transitive Keep/FTS/blob retention, management and bounded verified views.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

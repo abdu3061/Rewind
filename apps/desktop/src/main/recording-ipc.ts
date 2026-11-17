@@ -15,6 +15,10 @@ import {
   recoveryCopyProposalResponseSchema,
   recoveryCopyResultResponseSchema,
   recoveryCancelResponseSchema,
+  checkpointResponseSchema,
+  checkpointListResponseSchema,
+  checkpointViewResponseSchema,
+  checkpointDeleteResponseSchema,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
@@ -28,6 +32,15 @@ export async function dispatchRecordingRequest(
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "checkpoints.create":
+    case "checkpoints.update":
+      return backend.request(command, checkpointResponseSchema);
+    case "checkpoints.list":
+      return backend.request(command, checkpointListResponseSchema);
+    case "checkpoints.view":
+      return backend.request(command, checkpointViewResponseSchema);
+    case "checkpoints.delete":
+      return backend.request(command, checkpointDeleteResponseSchema);
     case "recovery.choose-copy": {
       if (!chooseCopy)
         return failure(

@@ -6,6 +6,14 @@ import type { Session } from "./session";
 import type { ProtectedFolder } from "./snapshots";
 import type { FileVersion } from "./files";
 import type { RecoveryCopyProposal, RecoveryCopyResult } from "./recovery";
+import type { Checkpoint } from "./files";
+import type {
+  CheckpointCreate,
+  CheckpointListQuery,
+  CheckpointSummary,
+  CheckpointView,
+  CheckpointUpdate,
+} from "./checkpoint-controls";
 import type {
   FileProtectionState,
   VersionListQuery,
@@ -31,6 +39,13 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  checkpoints: {
+    create(value: CheckpointCreate): Promise<Result<Checkpoint>>;
+    list(query: CheckpointListQuery): Promise<Result<CheckpointSummary[]>>;
+    view(id: string): Promise<Result<CheckpointView>>;
+    update(value: CheckpointUpdate): Promise<Result<Checkpoint>>;
+    delete(id: string, confirmed: true): Promise<Result<true>>;
+  };
   recovery: {
     chooseCopy(versionId: string): Promise<Result<RecoveryCopyProposal | null>>;
     confirmCopy(

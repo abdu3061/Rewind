@@ -48,6 +48,7 @@ export const checkpointSchema = z.strictObject({
   createdAt: timestampSchema,
   kept: z.boolean(),
   fileVersionIds: z.array(idSchema).max(1000),
+  activityIds: z.array(idSchema).max(1000).default([]),
   browserVisitIds: z.array(idSchema).max(1000),
   projectReferences: z
     .array(

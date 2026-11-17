@@ -8,6 +8,7 @@ import {
 
 import { StorageManagement } from "./storage-management";
 import { Files } from "./files";
+import { Checkpoints } from "./checkpoints";
 
 const pages = [
   "Dashboard",
@@ -362,12 +363,7 @@ export function App() {
         {page === "Search" && <RecordedHistory runtime={runtime} search />}
         {page === "Files" && <Files runtime={runtime} />}
 
-        {page === "Checkpoints" && (
-          <EmptyState
-            title="No checkpoints yet"
-            description="Future checkpoints will group captured file versions, websites, and project references. They cannot restore arbitrary unsaved application state."
-          />
-        )}
+        {page === "Checkpoints" && <Checkpoints runtime={runtime} />}
 
         {page === "Settings" && (
           <section className="panel">
@@ -395,24 +391,5 @@ export function App() {
         )}
       </main>
     </div>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <section className="panel empty-state">
-      <div className="empty-symbol" aria-hidden="true">
-        ↶
-      </div>
-      <h2>{title}</h2>
-      <p>{description}</p>
-      <span className="subtle-label">Planned feature · no demo activity</span>
-    </section>
   );
 }

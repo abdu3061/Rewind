@@ -34,6 +34,13 @@ import {
   recoveryCopyProposalResponseSchema,
   recoveryCopyResultResponseSchema,
   recoveryCancelResponseSchema,
+  checkpointCreateSchema,
+  checkpointUpdateSchema,
+  checkpointListQuerySchema,
+  checkpointResponseSchema,
+  checkpointListResponseSchema,
+  checkpointViewResponseSchema,
+  checkpointDeleteResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -86,6 +93,72 @@ function command(action: SessionAction) {
 }
 
 const api: DesktopApi = {
+  checkpoints: {
+    create(...args: unknown[]) {
+      const parsed = checkpointCreateSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "checkpoints.create", value: parsed.data },
+            checkpointResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "A named selection of captured evidence is required.",
+            ),
+          );
+    },
+    list(...args: unknown[]) {
+      const parsed = checkpointListQuerySchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "checkpoints.list", query: parsed.data },
+            checkpointListResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A bounded checkpoint query is required."),
+          );
+    },
+    view(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "checkpoints.view", id: parsed.data },
+            checkpointViewResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A checkpoint ID is required."),
+          );
+    },
+    update(...args: unknown[]) {
+      const parsed = checkpointUpdateSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "checkpoints.update", value: parsed.data },
+            checkpointResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "A checkpoint name and explicit Keep choice are required.",
+            ),
+          );
+    },
+    delete(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 2 && parsed.success && args[1] === true
+        ? recording(
+            { kind: "checkpoints.delete", id: parsed.data, confirmed: true },
+            checkpointDeleteResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Explicit checkpoint deletion confirmation is required.",
+            ),
+          );
+    },
+  },
   recovery: {
     chooseCopy(...args: unknown[]) {
       const parsed = idSchema.safeParse(args[0]);

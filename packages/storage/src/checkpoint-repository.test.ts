@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type {
@@ -11,6 +9,8 @@ import type {
 import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteFileRepository } from "./file-repository";
 import { SqliteSessionRepository } from "./session-repository";
+import { applySecureMigrations } from "./migrations";
+import { SqliteActivityRepository } from "./activity-repository";
 
 describe("SqliteCheckpointRepository", () => {
   let db: DatabaseSync;
@@ -29,12 +29,8 @@ describe("SqliteCheckpointRepository", () => {
   beforeEach(async () => {
     db = new DatabaseSync(":memory:");
 
-    // Run schema migration
-    const migrationSql = readFileSync(
-      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
-      "utf8",
-    );
-    db.exec(migrationSql);
+    applySecureMigrations(db);
+    db.exec("PRAGMA foreign_keys=ON");
 
     sessionRepo = new SqliteSessionRepository(db);
     fileRepo = new SqliteFileRepository(db);
@@ -49,6 +45,28 @@ describe("SqliteCheckpointRepository", () => {
       endedAt: null,
     };
     await sessionRepo.save(session);
+    expect(
+      (
+        await new SqliteActivityRepository(db).append([
+          {
+            id: "50000000-0000-4000-8000-000000000001",
+            sessionId: validSessionId,
+            occurredAt: "2026-10-25T00:01:00.000Z",
+            source: "browser",
+            type: "browser-visit",
+            payload: {
+              id: "50000000-0000-4000-8000-000000000001",
+              sessionId: validSessionId,
+              browser: "chrome",
+              title: "Synthetic page",
+              url: "https://example.test/",
+              visitedAt: "2026-10-25T00:01:00.000Z",
+              endedAt: null,
+            },
+          },
+        ])
+      ).ok,
+    ).toBe(true);
 
     // 2. Create a file reference and version so foreign keys are satisfied
     const file: FileReference = {
@@ -81,6 +99,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Milestone 1",
       createdAt: "2026-10-25T00:10:00.000Z",
       kept: true,
+      activityIds: ["50000000-0000-4000-8000-000000000001"],
       fileVersionIds: [validFileVersionId],
       browserVisitIds: ["50000000-0000-4000-8000-000000000001"],
       projectReferences: [
@@ -110,6 +129,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Checkpoint 1 (Old)",
       createdAt: "2026-10-25T00:10:00.000Z",
       kept: false,
+      activityIds: [],
       fileVersionIds: [],
       browserVisitIds: [],
       projectReferences: [],
@@ -121,6 +141,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Checkpoint 2 (New)",
       createdAt: "2026-10-25T00:20:00.000Z",
       kept: true,
+      activityIds: [],
       fileVersionIds: [],
       browserVisitIds: [],
       projectReferences: [],
@@ -147,6 +168,7 @@ describe("SqliteCheckpointRepository", () => {
         name: "Synthetic checkpoint",
         createdAt: "2026-10-25T00:10:00.000Z",
         kept: false,
+        activityIds: [],
         fileVersionIds: [],
         browserVisitIds: [],
         projectReferences: [],

@@ -43,6 +43,20 @@ function rowToActivityEvent(row: ActivityRow): Result<ActivityEvent> {
 
 export class SqliteActivityRepository implements ActivityRepository {
   constructor(private readonly db: DatabaseConnection) {}
+  async get(id: Id): Promise<Result<ActivityEvent | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "An activity ID is required.");
+    try {
+      const row = this.db
+        .prepare(
+          "SELECT id,session_id,type,source,occurred_at,payload FROM activities WHERE id=?",
+        )
+        .get(id) as unknown as ActivityRow | undefined;
+      return row ? rowToActivityEvent(row) : { ok: true, value: null };
+    } catch {
+      return failure("INTEGRITY_FAILURE", "Stored activity is unavailable.");
+    }
+  }
 
   async append(events: readonly ActivityEvent[]): Promise<Result<void>> {
     const parsed = activityBatchSchema.safeParse(events);

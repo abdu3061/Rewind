@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { relative, isAbsolute } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterAll } from "vitest";
 import type { Session } from "@rewind/contracts";
 import { SqliteStorageAdapter } from "./sqlite-adapter";
+import { currentSchemaFixture } from "./current-schema.test-support";
 
 function removeFixtureDirectory(directory: string): void {
   const scoped = relative(resolve(tmpdir()), resolve(directory));
@@ -20,10 +21,9 @@ function removeFixtureDirectory(directory: string): void {
 }
 
 describe("SqliteStorageAdapter", () => {
-  const migrationPath = resolve(
-    __dirname,
-    "../../../db/migrations/001_initial.sql",
-  );
+  const schema = currentSchemaFixture();
+  const migrationPath = schema.path;
+  afterAll(schema.remove);
   it("does not claim usable storage usage before opening", async () => {
     expect((await new SqliteStorageAdapter().usage()).ok).toBe(false);
   });
