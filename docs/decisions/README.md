@@ -10,6 +10,8 @@
 
 [ADR 0016](0016-independent-browser-consent.md) records the independent default-off browser source gate and supervisor invariants. Native authentication and operational browser integration remain in progress.
 
+[ADR 0017](0017-windows-browser-peer-primitives.md) records tested Windows pipe/process/signature primitives, with no operational transport or host-registration claim.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |
