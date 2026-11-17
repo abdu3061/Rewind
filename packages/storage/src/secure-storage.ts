@@ -22,6 +22,10 @@ import {
   type StorageUsage,
 } from "@rewind/contracts";
 import { StorageMaintenance } from "./storage-maintenance";
+import {
+  SnapshotRepository,
+  verifySnapshotSchema,
+} from "./snapshot-repository";
 import type { DatabaseConnection, SqlValue } from "./database";
 import { createRepositories, verifyRepositorySchema } from "./repositories";
 import { applySecureMigrations } from "./migrations";
@@ -63,6 +67,16 @@ export class SecureStorage implements SessionStorage {
   get repositories(): Repositories {
     if (!this.repositorySet) throw new Error("SECURE_STORAGE_UNAVAILABLE");
     return this.repositorySet;
+  }
+  get snapshots(): SnapshotRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    const db = this.db;
+    return new SnapshotRepository(
+      connection(db),
+      (settings) =>
+        new StorageMaintenance(db, this.file).usage(settings).totalBytes,
+    );
   }
   async open(): Promise<Result<void>> {
     if (this.repositorySet) return ok();
@@ -130,6 +144,7 @@ export class SecureStorage implements SessionStorage {
       stage = "migration";
       applySecureMigrations(connection(db));
       verifyRepositorySchema(connection(db));
+      verifySnapshotSchema(connection(db));
       db.prepare("SELECT id, payload FROM runtime_settings LIMIT 0").all();
       db.prepare("SELECT rowid, text FROM activity_fts LIMIT 0").all();
       const triggers = db

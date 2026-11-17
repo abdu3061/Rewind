@@ -11,3 +11,4 @@ export * from "./recording";
 export * from "./worker";
 export * from "./browser-transport";
 export * from "./storage-management";
+export * from "./snapshots";

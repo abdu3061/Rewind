@@ -73,6 +73,18 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
     checkpoint = parsed.data;
     let transactionStarted = false;
     try {
+      const existing = this.db
+        .prepare("SELECT session_id,created_at FROM checkpoints WHERE id=?")
+        .get(checkpoint.id);
+      if (
+        existing &&
+        (existing.session_id !== checkpoint.sessionId ||
+          existing.created_at !== checkpoint.createdAt)
+      )
+        return failure(
+          "CONFLICT",
+          "A checkpoint cannot change its session or creation identity.",
+        );
       this.db.exec("BEGIN");
       transactionStarted = true;
 

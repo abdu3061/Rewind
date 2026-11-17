@@ -60,6 +60,9 @@ export class StorageMaintenance {
     this.db.transaction(operation).immediate();
   }
   private removeOrphans(): void {
+    this.db.exec(
+      "DELETE FROM snapshot_blobs WHERE content_hash NOT IN (SELECT blob_hash FROM file_versions WHERE blob_hash IS NOT NULL)",
+    );
     this.db
       .exec(`DELETE FROM files WHERE id NOT IN (SELECT file_id FROM file_versions)
       AND id NOT IN (SELECT json_extract(payload,'$.id') FROM activities WHERE type='file-opened')
