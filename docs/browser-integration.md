@@ -14,6 +14,10 @@ This advances the transport task without bypassing its missing authentication. N
 
 The wire format follows the official [Chrome Native Messaging documentation](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) and [Edge Native Messaging documentation](https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/native-messaging). Their browser origin and manifest requirements do not replace engine authorization. The extension still has no nativeMessaging permission or collection listeners.
 
+## Engine and utility integration progress
+
+[ADR 0019](decisions/0019-browser-engine-leases.md) adds post-commit engine leases, exact staged per-event authorization, native-proven browser identity, receipt timestamps, replay/scope/expiry/exclusion checks and acknowledged stop/drain. A passive utility adapter owns bounded native child framing, first-hello deadlines, exact configured peers, backpressure failures and observed exit. Both isolated Chrome/Edge tests exercise this adapter with valid v2 protocol traffic. Actual cipher-storage tests prove browser metadata/FTS persistence, pause/resume/end and reopen. Normal app composition, owned registration/setup, the real extension background/provider and public approval controls remain unfinished; browser capture stays off. Disconnects cannot be reported as successful client quiescence without an acknowledgement.
+
 ## Starter behavior
 
 `npm run build:extension` creates `apps/browser-extension/dist` with `manifest.json`, a module service worker, and a status popup. Load this directory unpacked in Chrome/Edge developer mode. The service worker only sets the action title on installation. It registers no tab/navigation/content listeners, stores no history, opens no network/native connection, and requests no permissions. `incognito: not_allowed` excludes private use.

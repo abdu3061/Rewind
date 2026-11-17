@@ -288,3 +288,16 @@ it("normalizes literal site exclusions and rejects wildcard/path/credential/port
   ])
     expect(browserSiteHostSchema.safeParse(host).success).toBe(false);
 });
+
+it("rejects URLs whose canonical encoding exceeds the metadata bound before inspecting the title", async () => {
+  const f = fixture();
+  f.tab.url = "https://example.test/" + "\u00e7".repeat(3000);
+  const title = vi.fn(() => "Synthetic title must not be read");
+  Object.defineProperty(f.tab, "title", { get: title });
+  await f.controller.permission(true);
+  await f.controller.state(f.state());
+  await f.controller.sample();
+  expect(title).not.toHaveBeenCalled();
+  expect(f.sent).toEqual([]);
+  expect(f.controller.status().closed).toBe(false);
+});

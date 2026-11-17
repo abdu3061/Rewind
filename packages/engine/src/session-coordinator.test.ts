@@ -161,6 +161,7 @@ it("requires independent browser approval, leaves other sources off for browser-
   expect(f.collectors.windows.start).not.toHaveBeenCalled();
   expect(f.collectors.folders.start).not.toHaveBeenCalled();
   const context = f.collectors.browser.start.mock.calls[0]![0];
+  expect(context.authorized?.()).toBe(true);
   const gap: ActivityEvent = {
     id: id(777),
     sessionId: context.sessionId,
@@ -172,6 +173,7 @@ it("requires independent browser approval, leaves other sources off for browser-
   expect((await context.emit([gap])).ok).toBe(true);
   expect(f.persisted).toEqual([gap]);
   expect((await f.coordinator.revokeConsent()).ok).toBe(true);
+  expect(context.authorized?.()).toBe(false);
   expect((await context.emit([{ ...gap, id: id(778) }])).ok).toBe(false);
   await f.coordinator.execute("resume");
   expect(f.collectors.browser.resume).not.toHaveBeenCalled();

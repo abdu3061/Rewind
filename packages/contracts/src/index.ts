@@ -10,6 +10,7 @@ export * from "./ipc";
 export * from "./recording";
 export * from "./worker";
 export * from "./browser-transport";
+export * from "./browser-port";
 export * from "./storage-management";
 export * from "./snapshots";
 export * from "./file-controls";

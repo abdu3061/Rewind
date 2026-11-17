@@ -57,6 +57,61 @@ async function populate(storage: SecureStorage): Promise<void> {
     ).ok,
   ).toBe(true);
 }
+it("returns browser timeline metadata without stored article text or query/fragment content", async () => {
+  const storage = adapter();
+  await populate(storage);
+  const eventId = "20000000-0000-4000-8000-000000000001";
+  expect(
+    (
+      await storage.repositories.activities.append([
+        {
+          id: eventId,
+          sessionId: session.id,
+          occurredAt: session.startedAt,
+          source: "browser",
+          type: "browser-visit",
+          payload: {
+            id: eventId,
+            sessionId: session.id,
+            browser: "edge",
+            url: "https://synthetic.test/page?private=fixture#fragment",
+            title: "SyntheticBrowserMetadataFixture",
+            visitedAt: session.startedAt,
+            endedAt: null,
+            articleText:
+              "SyntheticArticlePermissionFixture" + "\u0000".repeat(90000),
+          },
+        },
+      ])
+    ).ok,
+  ).toBe(true);
+  const result = await storage.timeline({
+    limit: 100,
+    types: ["browser-visit"],
+    text: "SyntheticBrowserMetadataFixture",
+  });
+  expect(result.ok && result.value).toHaveLength(1);
+  if (!result.ok || result.value[0]?.type !== "browser-visit")
+    throw new Error("SYNTHETIC_BROWSER_METADATA_MISSING");
+  expect(result.value[0].payload.url).toBe("https://synthetic.test/page");
+  expect(result.value[0].payload.articleText).toBeUndefined();
+  expect(
+    await storage.timeline({
+      limit: 10,
+      text: "SyntheticArticlePermissionFixture",
+    }),
+  ).toEqual({ ok: true, value: [] });
+  // Projection does not rewrite immutable stored evidence.
+  expect(await storage.evidence.get(eventId)).toMatchObject({
+    ok: true,
+    value: {
+      payload: {
+        articleText: expect.any(String),
+        url: "https://synthetic.test/page?private=fixture#fragment",
+      },
+    },
+  });
+});
 function inspect() {
   const db = new NativeDatabase(file);
   db.pragma("cipher=sqlcipher");

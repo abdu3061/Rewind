@@ -1,0 +1,34 @@
+# ADR 0019: Engine-owned browser leases and the utility native adapter
+
+Status: implemented locally for Rasit's review; normal app composition and browser approval/setup UI remain in progress. Owners: Rasit for engine/privacy/integration, Mohammad Poorhamadi for browser/native transport, Hacer Dilara for preload/renderer integration.
+
+## Context and decision
+
+ADR 0018 proves the real native relay and a permissioned metadata client separately. Neither a schema-valid frame nor an authenticated browser process grants collection permission. The engine must authorize each live collection run and each observation, and pause/end must distinguish a drained client from a lost connection.
+
+Add a contracts-only `BrowserTransport` port and an engine `BrowserCollector`. Native process/pipe/image proof stays in the desktop utility adapter. No renderer, extension or stored record can supply that proof. `CollectorContext.authorized()` reflects the coordinator's actual committed run, source-specific consent and current policy. It is false before lifecycle commit and immediately after invalidation; browser collection denies a context without this predicate.
+
+The collector issues protocol-v2 authority only on its post-commit timer. A fresh random 256-bit capability binds the native physical peer, protocol connection, session and generation. Four-second leases renew once a second; both wall and monotonic expiry apply. Sequence numbers increase across renewals and reset only with a new capability. The native peer supplies Chrome/Edge identity. The engine uses receipt timestamps and records observations with no invented duration or article text. Exclusions apply again before staging/persistence.
+
+The resource-authorization hook accepts only an exact currently staged event under the same current policy. Staging lasts until its confirmed append settles, with 32 pending observations and one bounded failure/gap control operation. Failed appends never increment the confirmed count. Revocation drops work that has not started emitting and invalidates staged authorization immediately.
+
+Pause/end invalidate capabilities synchronously, send revised off states and wait for the matching client stop acknowledgement plus pending persistence. An old acknowledgement cannot stop a newer run. A current client permission-denial acknowledgement revokes that client and records a permission gap. A lost connection is not a stop acknowledgement. Missing acknowledgements, invalid/replayed messages, overflow and transport failures produce an unavailable state and require worker reconnect/fresh approval. No automatic recording restart follows a disconnect. Failure sends off immediately, even if its gap is waiting behind earlier persistence. The coordinator's existing deadline can report uncertainty while the underlying stop continues to drain.
+
+`NativeBrowserBridge` owns a hidden native broker child, private configuration over stdin, strict bounded UTF-8/JSON lines, exact configured origins/browser kinds, maximum four peers, first-hello deadlines, strict canonical Base64/frame decoding and v2 schema validation. It exposes only typed state sends and peer disconnection. Native `disconnect` closes the actual channel; Node reports disconnection only after observing the broker event. Rejected unauthenticated native callers may produce a disconnected event without ever becoming a peer and are ignored. A failed/backpressured write kills the relay rather than continuing uncertain authority. Shutdown coalesces and requires actual child close; another child cannot start while an old child remains unobserved. Child diagnostics and captured payloads are never logged.
+
+## Alternatives and consequences
+
+- Trusting `Collector.start()` as authority would mint a lease before the engine commits. The current-authority predicate closes that race without moving lifecycle ownership into the adapter.
+- Trusting a schema-valid URL or an extension's claimed browser bypasses peer and per-run authorization. Both native proof and staged engine admission are required.
+- Treating pipe closure or elapsed time as an acknowledged stop would conceal pending browser API work. Uncertainty is surfaced; successful stop needs the explicit drained acknowledgement.
+- Introducing another server framework or remote service is unnecessary. The existing utility process, contracts port and bounded child protocol suffice.
+
+Timeline/search queries can now return retained `browser-visit` evidence with existing FTS filters/paging; the renderer escapes titles/URLs and does not open pages automatically. This does not enable capture. Normal extension background, installation/registration management, utility composition and public permission controls remain unfinished. No production host is registered by this slice, no permissions are automatically enabled, and article extraction stays unavailable.
+
+The read-only timeline capability excludes article text in SQL and its response contract, and returns canonical URLs without query/fragment. Stored evidence is not rewritten by this projection. Canonical URL expansion must still fit the existing 8192-character bound. Maximum-size escaped metadata pages are verified against the unchanged 2 MiB supervisor limit; full article content is not smuggled through a metadata page.
+
+## Acceptance evidence
+
+Focused collector tests cover commit gating, separate approval, exact staging, native identity, receipt time, exclusions/private-input rejection, replay/scope/capability mismatch, renewal/resume rotation, immediate revocation, pending emit and matching stop acknowledgement, missed acknowledgement, disconnect gap, permission denial, startup/stop races, bounds, failed writes and monotonic expiry. An actual encrypted SQLite integration test proves engine admission, FTS retrieval, exclusion, pause/resume/end, cipher-marker absence and reopen with collection off.
+
+Adapter tests cover passive startup, strict setup, fragmentation/decoding, malformed messages, native-protocol failures, first hello, backpressure, limits, shutdown and unobserved-exit refusal. A Windows test compiles the real native program and exercises the adapter against its actual authenticated broker. Both isolated installed-browser relay tests also run the production Node adapter, exchange valid hello/state/stopped messages and verify actual native disconnection and observed clean shutdown. These tests use generated profiles and scoped temporary registrations only. Full check/build/packaged results are recorded in the core integration report.

@@ -302,10 +302,10 @@ export function RecordedHistory({
         {search ? "Search your recorded evidence" : "Recorded activity"}
       </h2>
       <p>
-        Recorded Windows observations and capture gaps, newest first. A window
-        title does not prove that a file was saved or read. Browser visits, file
-        changes, idle and lock events are not collected in this build. Cloud AI
-        is disabled.
+        Recorded application observations, saved-file events and capture gaps,
+        newest first. A window title does not prove that a file was saved or
+        read. Browser recording, idle and lock detection remain unavailable.
+        Cloud AI is disabled.
       </p>
       <form
         onSubmit={(event) => {
@@ -318,7 +318,11 @@ export function RecordedHistory({
               ...(to ? { to: localTimestamp(to) } : {}),
               ...(text.trim() ? { text: text.trim() } : {}),
               ...(type
-                ? { types: [type as "foreground" | "capture-gap"] }
+                ? {
+                    types: [
+                      type as NonNullable<TimelineQuery["types"]>[number],
+                    ],
+                  }
                 : {}),
             });
           } catch {
@@ -355,6 +359,7 @@ export function RecordedHistory({
               <option value="foreground">Application activity</option>
               <option value="capture-gap">Capture gaps</option>
               <option value="file-change">Saved file changes</option>
+              <option value="browser-visit">Browser visits</option>
             </select>
           </label>
           <label>
@@ -434,6 +439,20 @@ export function RecordedHistory({
                 <p>
                   Saved-file observation. Inspect captured versions in Files.
                   This does not prove that the file was read.
+                </p>
+              </>
+            ) : event.type === "browser-visit" ? (
+              <>
+                <strong>{event.payload.title || "Untitled page"}</strong>
+                <p>
+                  {event.payload.browser === "edge"
+                    ? "Microsoft Edge"
+                    : "Google Chrome"}{" "}
+                  · {event.payload.url}
+                </p>
+                <p>
+                  Focused page observation. Page contents and time spent are not
+                  captured.
                 </p>
               </>
             ) : event.type === "capture-gap" ? (

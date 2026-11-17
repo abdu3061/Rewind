@@ -106,5 +106,6 @@ export function sanitizeBrowserMetadataUrl(
     return null;
   url.search = "";
   url.hash = "";
-  return url.toString();
+  const canonical = url.toString();
+  return httpUrlSchema.safeParse(canonical).success ? canonical : null;
 }

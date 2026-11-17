@@ -10,6 +10,7 @@ import {
   sessionSchema,
   timelineQuerySchema,
   userSettingsSchema,
+  sanitizeBrowserMetadataUrl,
   type ActivityEvent,
   type HistoryQuery,
   type Repositories,
@@ -303,7 +304,7 @@ export class SecureStorage implements SessionStorage {
     query = parsed.data;
     try {
       const conditions = [
-        "a.type IN ('foreground', 'capture-gap', 'file-change')",
+        "a.type IN ('foreground', 'capture-gap', 'file-change', 'browser-visit')",
       ];
       const params: SqlValue[] = [];
       if (query.sessionId) {
@@ -347,7 +348,7 @@ export class SecureStorage implements SessionStorage {
       params.push(query.limit);
       const rows = this.db
         .prepare(
-          `SELECT a.id, a.session_id, a.occurred_at, a.type, a.source, a.payload FROM activities a WHERE ${conditions.join(" AND ")} ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?`,
+          `SELECT a.id, a.session_id, a.occurred_at, a.type, a.source, CASE WHEN a.type='browser-visit' THEN json_remove(a.payload,'$.articleText') ELSE a.payload END AS payload FROM activities a WHERE ${conditions.join(" AND ")} ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?`,
         )
         .all(...params) as {
         id: string;
@@ -359,16 +360,22 @@ export class SecureStorage implements SessionStorage {
       }[];
       return {
         ok: true,
-        value: rows.map((row) =>
-          activityEventSchema.parse({
+        value: rows.map((row) => {
+          const event = activityEventSchema.parse({
             id: row.id,
             sessionId: row.session_id,
             occurredAt: row.occurred_at,
             type: row.type,
             source: row.source,
             payload: JSON.parse(row.payload),
-          }),
-        ),
+          });
+          if (event.type === "browser-visit") {
+            const url = sanitizeBrowserMetadataUrl(event.payload.url, []);
+            if (!url) throw new Error("BROWSER_HISTORY_URL_INVALID");
+            event.payload.url = url;
+          }
+          return event;
+        }),
       };
     } catch {
       return failure("INTEGRITY_FAILURE", "Stored timeline is unavailable.");

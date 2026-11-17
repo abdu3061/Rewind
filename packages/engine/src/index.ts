@@ -1,5 +1,9 @@
 export { SessionService, type SessionEnvironment } from "./session-service";
 export {
+  BrowserCollector,
+  type BrowserCollectorOptions,
+} from "./browser-collector";
+export {
   CheckpointService,
   type CheckpointServiceOptions,
 } from "./checkpoint-service";

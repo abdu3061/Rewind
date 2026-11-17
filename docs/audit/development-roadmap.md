@@ -10,6 +10,8 @@ RWA-403 now includes real named same-session version/activity manifests, transit
 
 ## Local implementation progress after audit
 
+Browser follow-up now has an engine lease/staged-admission collector and a passive utility native adapter (ADR 0019), verified with actual encrypted history/FTS and isolated Chrome/Edge adapter round trips. Continue with owned setup/registration, a real permissioned extension background/provider, worker composition and public browser permission/status controls. Normal capture remains disabled until these gates pass; do not treat relay/collector tests as a completed browser milestone. Optional overwrite still needs durable verified current-file preservation and concurrency/crash handling.
+
 The [secure-storage integration report](secure-storage-collection-integration.md) records RWA-101 metadata/key feasibility, RWA-103 utility supervision and launch-scoped consent, the RWA-200 Windows foreground slice and RWA-402/related UI bounded encrypted timeline/search now implemented locally. RWA-100 lifecycle failure semantics remain intact. Inactive browser framing/origin/URL-policy primitives advance the next transport task. These are reviewable local slices, not remote merges or broad task completion; idle/lock, snapshots, relationship/expiry policy, authenticated browser transport and release gates remain. Ownership is unchanged.
 
 Next large goal: retention/deletion/full quota safety for encrypted history, then an authenticated packaged Chrome/Edge native host and separate browser consent, with exact extension IDs and Windows pipe ACL evidence. Keep browser/folder capture off until its own gates pass. Do not repeat the completed session-only audit or replace the encrypted runtime with the old PR 5 composition.

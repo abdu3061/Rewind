@@ -121,7 +121,8 @@ export function boundedWorkerMessage(value: unknown): boolean {
     )
       return workerInputSchema.safeParse(value).success;
     return (
-      // Fits 100 maximum-size escaped title DTOs; ingestion keeps its stricter 256 KiB bound.
+      // Fits 100 maximum-size redacted metadata DTOs; article text is not a timeline capability.
+      // Ingestion keeps its stricter 256 KiB bound.
       new TextEncoder().encode(JSON.stringify(value)).byteLength <=
       2 * 1024 * 1024
     );

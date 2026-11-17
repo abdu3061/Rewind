@@ -16,6 +16,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { BrowserPeer, NativeBrowserMessage } from "@rewind/contracts";
+import {
+  NativeBrowserBridge,
+  nativeBridgeConfigSchema,
+} from "../../apps/desktop/src/main/browser-bridge";
 
 const registrationScript = String.raw`
 $ErrorActionPreference='Stop'
@@ -123,6 +128,7 @@ for (const [browser, channel, executable] of [
       native = path.join(root, "SyntheticRewindHost.exe");
     let context: BrowserContext | null = null,
       child: ChildProcessWithoutNullStreams | null = null;
+    let bridge: NativeBrowserBridge | null = null;
     let registered = false,
       exited: Promise<{
         code: number | null;
@@ -180,11 +186,12 @@ for (const [browser, channel, executable] of [
         path.join(extension, "probe.js"),
         String.raw`
 globalThis.probeMessages=[];globalThis.probeError=null;
-globalThis.openProbe=(host)=>{
+globalThis.openProbe=(host,message={type:'synthetic-native-probe',text:'Synthetic relay fixture'})=>{
+  globalThis.probeError=null;
   const port=chrome.runtime.connectNative(host);globalThis.probePort=port;
   port.onMessage.addListener((message)=>globalThis.probeMessages.push(message));
   port.onDisconnect.addListener(()=>{globalThis.probeError=chrome.runtime.lastError?.message ?? 'disconnected'});
-  port.postMessage({type:'synthetic-native-probe',text:'Synthetic relay fixture'});
+  port.postMessage(message);
 };
 chrome.runtime.onInstalled.addListener(()=>{});
 `,
@@ -359,10 +366,141 @@ chrome.runtime.onInstalled.addListener(()=>{});
           timeout: 10000,
         })
         .toBe(2);
+      child.stdin.write(
+        JSON.stringify({
+          type: "disconnect",
+          channelId: replacement.channelId,
+        }) + "\n",
+      );
+      await expect
+        .poll(
+          () =>
+            messages.some(
+              (item) =>
+                item.type === "disconnected" &&
+                item.channelId === replacement.channelId,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true);
+      child.stdin.write('{"type":"shutdown"}\n');
+      stopResult = await exited;
+      expect(stopResult).toEqual({ code: 0, signal: null });
+      // Exercise the production Node adapter against the same real browser/host, after observing the old broker's exit.
+      const observed: BrowserPeer[] = [],
+        inbound: NativeBrowserMessage[] = [],
+        disconnected: string[] = [];
+      let unavailable = false;
+      bridge = new NativeBrowserBridge();
+      const adapter = bridge;
+      bridge.setListener({
+        connected: (peer) => observed.push(peer),
+        message: (id, message) => {
+          inbound.push(message);
+          if (message.type === "hello") {
+            const peer = observed.find((item) => item.id === id)!;
+            const sent = adapter.send(id, {
+              version: 2,
+              type: "state",
+              connectionId: message.connectionId,
+              browser: peer.browser,
+              revision: 1,
+              authority: null,
+            });
+            if (!sent.ok) throw new Error("SYNTHETIC_ADAPTER_SEND_FAILED");
+          }
+        },
+        disconnected: (id) => disconnected.push(id),
+        unavailable: () => {
+          unavailable = true;
+        },
+      });
+      expect(
+        (await bridge.start(native, nativeBridgeConfigSchema.parse(config))).ok,
+      ).toBe(true);
+      const connectionId = randomUUID(),
+        profileId = randomUUID();
+      await worker.evaluate(
+        ({ host, connectionId, profileId }) => {
+          (
+            globalThis as unknown as {
+              openProbe(host: string, message: unknown): void;
+            }
+          ).openProbe(host, {
+            version: 2,
+            type: "hello",
+            connectionId,
+            profileId,
+          });
+        },
+        { host: hostName, connectionId, profileId },
+      );
+      await expect.poll(() => inbound.length, { timeout: 10000 }).toBe(1);
+      expect(inbound[0]).toEqual({
+        version: 2,
+        type: "hello",
+        connectionId,
+        profileId,
+      });
+      expect(observed).toEqual([
+        expect.objectContaining({ browser, origin: config.origins[0] }),
+      ]);
+      await expect
+        .poll(
+          () =>
+            worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeMessages: unknown[] })
+                  .probeMessages,
+            ),
+          { timeout: 5000 },
+        )
+        .toContainEqual({
+          version: 2,
+          type: "state",
+          connectionId,
+          browser,
+          revision: 1,
+          authority: null,
+        });
+      await worker.evaluate(
+        ({ connectionId }) =>
+          (
+            globalThis as unknown as {
+              probePort: { postMessage(value: unknown): void };
+            }
+          ).probePort.postMessage({
+            version: 2,
+            type: "stopped",
+            connectionId,
+            revision: 1,
+          }),
+        { connectionId },
+      );
+      await expect.poll(() => inbound.length, { timeout: 5000 }).toBe(2);
+      expect(inbound[1]).toEqual({
+        version: 2,
+        type: "stopped",
+        connectionId,
+        revision: 1,
+      });
+      bridge.disconnect(observed[0]!.id);
+      await expect
+        .poll(() => disconnected, { timeout: 5000 })
+        .toEqual([observed[0]!.id]);
+      expect(unavailable).toBe(false);
+      expect((await bridge.close()).ok).toBe(true);
+      bridge = null;
       succeeded = true;
     } catch (error) {
       bodyError = error;
     } finally {
+      try {
+        if (bridge && !(await bridge.close()).ok)
+          cleanupError ??= new Error("SYNTHETIC_ADAPTER_EXIT_UNCONFIRMED");
+      } catch (error) {
+        cleanupError ??= error;
+      }
       try {
         if (context) await context.close();
       } catch (error) {

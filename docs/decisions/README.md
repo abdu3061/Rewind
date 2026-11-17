@@ -14,6 +14,8 @@
 
 [ADR 0018](0018-native-relay-and-client-authority.md) records the authenticated relay verified in isolated Chrome/Edge, scoped temporary registrations, lifecycle watches and permissioned client protocol/controller. Normal collection/UI wiring remains pending.
 
+[ADR 0019](0019-browser-engine-leases.md) records the engine lease/staged-admission collector and tested utility native adapter, including actual encrypted history/FTS and isolated Chrome/Edge adapter verification. Product setup, approval and composition remain in progress.
+
 Accepted initialization decisions reflect the explicit approved stack/scope. Proposed production choices require Rasit's approval and feasibility evidence before implementation.
 
 | ADR                                             | Status                                                | Decision                                                                |

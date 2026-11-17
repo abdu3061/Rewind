@@ -601,6 +601,8 @@ export class SessionCoordinator {
       sessionId: run.sessionId,
       generationId: run.id,
       settings: structuredClone(run.settings),
+      authorized: () =>
+        this.allowed(run) && sourceApproved(source, run.settings),
       emit: (events) => this.admit(run, source, events),
       reportUnavailable: () => {
         if (this.run !== run || this.closing) return;

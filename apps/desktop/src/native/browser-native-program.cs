@@ -233,6 +233,13 @@ namespace Rewind.NativeBrowser {
       byte[] body=Wire.Decode(Wire.String(message,"payload",349528));
       try {lock(channel.writeLock) Wire.Write(channel.stream,body);} catch {Close(channel);}
     }
+    void Disconnect(Dictionary<string,object> message) {
+      if(!Wire.Keys(message,"type","channelId")) throw new IOException("BRIDGE_COMMAND_INVALID");
+      string id=Wire.String(message,"channelId",36);Guid parsed;
+      if(!Guid.TryParseExact(id,"D",out parsed)) throw new IOException("BRIDGE_CHANNEL_INVALID");
+      Channel channel;lock(gate) {if(!channels.TryGetValue(id,out channel)) return;}
+      Close(channel);
+    }
     public void Dispose() {
       Channel[] owned;
       lock(gate) {if(stopped) return;stopped=true;owned=new List<Channel>(channels.Values).ToArray();channels.Clear();}
@@ -256,6 +263,7 @@ namespace Rewind.NativeBrowser {
           if(line.Length>524288) return 1;
           Dictionary<string,object> message=Wire.Object(Encoding.UTF8.GetBytes(line));string type=Wire.String(message,"type",32);
           if(type=="shutdown" && Wire.Keys(message,"type")) return 0;
+          if(type=="disconnect") {broker.Disconnect(message);continue;}
           if(type!="send") return 1;broker.Send(message);
         }
         return 0;

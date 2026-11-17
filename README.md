@@ -45,6 +45,7 @@ If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; cha
 | `npm run check`                           | Types, lint, formatting, unit tests                                   |
 | `npm run build`                           | Typecheck, extension build, and packaged desktop folder               |
 | `npm run test:app`                        | Launch/test packaged Windows executable; run build first              |
+| `npm run test:browser`                    | Isolated native-relay tests using installed Chrome and Edge           |
 | `npm run make`                            | Build a Windows ZIP through Forge; no signed installer                |
 | `npm run build:extension`                 | Build inactive extension into `apps/browser-extension/dist`           |
 | `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser       |

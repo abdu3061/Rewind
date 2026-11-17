@@ -7,6 +7,10 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import proofSource from "../native/browser-process-proof.cs?raw";
 import programSource from "../native/browser-native-program.cs?raw";
 import {
+  NativeBrowserBridge,
+  nativeBridgeConfigSchema,
+} from "./browser-bridge";
+import {
   newSecureFixture,
   removeSecureFixture,
 } from "../../../../packages/storage/src/secure-fixtures.test-support";
@@ -226,6 +230,36 @@ function frame(value: string) {
   header.writeUInt32LE(payload.length);
   return Buffer.concat([header, payload]);
 }
+it.runIf(process.platform === "win32")(
+  "runs the Node bridge against the actual authenticated native broker and observes shutdown",
+  async () => {
+    const bridge = new NativeBrowserBridge();
+    const unexpected: string[] = [];
+    bridge.setListener({
+      connected: () => unexpected.push("connected"),
+      message: () => unexpected.push("message"),
+      disconnected: () => unexpected.push("disconnected"),
+      unavailable: () => unexpected.push("unavailable"),
+    });
+    try {
+      expect(
+        (
+          await bridge.start(
+            executable,
+            nativeBridgeConfigSchema.parse(config()),
+          )
+        ).ok,
+      ).toBe(true);
+      expect(bridge.status()).toEqual({ state: "ready", connected: 0 });
+      expect((await bridge.close()).ok).toBe(true);
+      expect(bridge.status()).toEqual({ state: "off", connected: 0 });
+      expect(unexpected).toEqual([]);
+    } finally {
+      await bridge.close();
+    }
+  },
+  15000,
+);
 function exitCode(
   program: string,
   args: string[],

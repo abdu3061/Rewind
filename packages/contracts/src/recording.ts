@@ -12,6 +12,7 @@ import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
 import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
+import { sanitizeBrowserMetadataUrl } from "./browser-transport";
 
 export const collectionPreferencesSchema = userSettingsSchema
   .pick({
@@ -32,9 +33,11 @@ export const timelineQuerySchema = z
     to: timestampSchema.optional(),
     text: z.string().trim().max(2000).optional(),
     types: z
-      .array(z.enum(["foreground", "capture-gap", "file-change"]))
+      .array(
+        z.enum(["foreground", "capture-gap", "file-change", "browser-visit"]),
+      )
       .min(1)
-      .max(3)
+      .max(4)
       .optional(),
   })
   .refine(
@@ -63,7 +66,18 @@ export const runtimeSnapshotSchema = z.strictObject({
 });
 export type RuntimeSnapshot = z.infer<typeof runtimeSnapshotSchema>;
 export const timelineResponseSchema = resultSchema(
-  z.array(activityEventSchema).max(100),
+  z
+    .array(
+      activityEventSchema.refine(
+        (event) =>
+          event.type !== "browser-visit" ||
+          (event.payload.articleText === undefined &&
+            sanitizeBrowserMetadataUrl(event.payload.url, []) ===
+              event.payload.url),
+        "Timeline browser evidence contains only redacted metadata.",
+      ),
+    )
+    .max(100),
 );
 export const historyResponseSchema = resultSchema(
   z.array(sessionSchema).max(100),
