@@ -3,6 +3,7 @@ import { resultSchema, type Result } from "./common";
 import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
+import type { BrowserControlState } from "./browser-controls";
 import type { ProtectedFolder } from "./snapshots";
 import type { FileVersion } from "./files";
 import type { RecoveryCopyProposal, RecoveryCopyResult } from "./recovery";
@@ -39,6 +40,21 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  browser: {
+    openExtensionFolder(): Promise<Result<true>>;
+    state(): Promise<Result<BrowserControlState>>;
+    install(
+      browsers: ("chrome" | "edge")[],
+      confirmed: true,
+    ): Promise<Result<BrowserControlState>>;
+    remove(
+      browser: "chrome" | "edge",
+      confirmed: true,
+    ): Promise<Result<BrowserControlState>>;
+    repair(confirmed: true): Promise<Result<BrowserControlState>>;
+    permission(enabled: boolean): Promise<Result<BrowserControlState>>;
+    exclusions(hosts: string[]): Promise<Result<BrowserControlState>>;
+  };
   checkpoints: {
     create(value: CheckpointCreate): Promise<Result<Checkpoint>>;
     list(query: CheckpointListQuery): Promise<Result<CheckpointSummary[]>>;

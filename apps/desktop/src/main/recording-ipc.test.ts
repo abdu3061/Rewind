@@ -4,9 +4,86 @@ import {
   recordingCommandSchema,
   workerOutputSchema,
   timelineResponseSchema,
+  browserControlResponseSchema,
+  acknowledgementResponseSchema,
 } from "@rewind/contracts";
 import { dispatchRecordingRequest } from "./recording-ipc";
 import type { WorkerClient } from "./worker-client";
+it("forwards only validated browser capabilities and verifies assets before opening the fixed extension folder", async () => {
+  const request = vi.fn().mockResolvedValue({ ok: true, value: true }),
+    open = vi.fn().mockResolvedValue({ ok: true, value: true }),
+    backend = { request } as unknown as WorkerClient;
+  expect(
+    (
+      await dispatchRecordingRequest(backend, {
+        kind: "browser.permission",
+        enabled: false,
+      })
+    ).ok,
+  ).toBe(true);
+  expect(request).toHaveBeenLastCalledWith(
+    { kind: "browser.permission", enabled: false },
+    browserControlResponseSchema,
+  );
+  expect(
+    (
+      await dispatchRecordingRequest(backend, {
+        kind: "browser.exclusions",
+        hosts: ["Example.COM.", "example.com"],
+      })
+    ).ok,
+  ).toBe(true);
+  expect(request).toHaveBeenLastCalledWith(
+    { kind: "browser.exclusions", hosts: ["example.com"] },
+    browserControlResponseSchema,
+  );
+  expect(
+    (
+      await dispatchRecordingRequest(
+        backend,
+        { kind: "browser.open-extension" },
+        undefined,
+        undefined,
+        open,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(request).toHaveBeenLastCalledWith(
+    { kind: "browser.verify-assets" },
+    acknowledgementResponseSchema,
+  );
+  expect(open).toHaveBeenCalledTimes(1);
+  request.mockResolvedValueOnce({
+    ok: false,
+    error: { code: "INTEGRITY_FAILURE", message: "Synthetic asset mismatch." },
+  });
+  expect(
+    (
+      await dispatchRecordingRequest(
+        backend,
+        { kind: "browser.open-extension" },
+        undefined,
+        undefined,
+        open,
+      )
+    ).ok,
+  ).toBe(false);
+  expect(open).toHaveBeenCalledTimes(1);
+  const calls = request.mock.calls.length;
+  for (const input of [
+    { kind: "browser.install", browsers: ["chrome"], confirmed: false },
+    {
+      kind: "browser.install",
+      browsers: ["chrome"],
+      confirmed: true,
+      path: "C:\\ExpandedFixture",
+    },
+    { kind: "browser.open-extension", path: "C:\\ExpandedFixture" },
+    { kind: "browser.exclusions", hosts: ["https://private.example"] },
+  ])
+    expect((await dispatchRecordingRequest(backend, input)).ok).toBe(false);
+  expect(request).toHaveBeenCalledTimes(calls);
+});
 
 it("rejects private worker messages and privilege expansion before calling the backend", async () => {
   const request = vi.fn();

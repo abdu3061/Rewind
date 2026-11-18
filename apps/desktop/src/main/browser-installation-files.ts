@@ -18,6 +18,7 @@ import { preparePrivateDirectory } from "@rewind/storage/key-store";
 import {
   browserAssetInventorySchema,
   browserHostName,
+  browserHostNamePattern,
   developmentExtensionId,
   type VerifiedBrowserAssets,
 } from "./browser-assets";
@@ -37,7 +38,7 @@ const nativeName = "RewindBrowserHost.exe",
   configurationName = `${nativeName}.json`,
   manifestName = "native-host.json";
 const manifestSchema = z.strictObject({
-  name: z.literal(browserHostName),
+  name: z.string().regex(browserHostNamePattern),
   description: z.literal(
     "Rewind permission-controlled browser metadata bridge",
   ),
@@ -61,7 +62,10 @@ export class BrowserInstallationFiles {
   private finishActive: (() => void) | null = null;
   private closingWork: Promise<Result<void>> | null = null;
   private readonly helpers = new Set<{ close(): Promise<Result<void>> }>();
-  constructor(private readonly privateRoot: string) {}
+  constructor(
+    private readonly privateRoot: string,
+    private readonly hostName: string = browserHostName,
+  ) {}
   private begin(): boolean {
     if (this.busy || this.closing || this.uncertain) return false;
     this.busy = true;
@@ -152,6 +156,7 @@ export class BrowserInstallationFiles {
     browsers: NativeBridgeConfig["browsers"],
   ): Promise<Result<BrowserInstallation>> {
     const inventory = browserAssetInventorySchema.parse(assets.inventory);
+    if (inventory.hostName !== this.hostName) return unavailable();
     if (
       assets.native.length !== inventory.native.bytes ||
       digest(assets.native) !== inventory.native.sha256
@@ -188,7 +193,7 @@ export class BrowserInstallationFiles {
     const configBytes = Buffer.from(JSON.stringify(configuration)),
       manifestBytes = Buffer.from(
         JSON.stringify({
-          name: browserHostName,
+          name: this.hostName,
           description: "Rewind permission-controlled browser metadata bridge",
           path: executable,
           type: "stdio",
@@ -214,6 +219,7 @@ export class BrowserInstallationFiles {
       receipts.push(written.value);
     }
     const generation = browserSetupGenerationSchema.parse({
+      hostName: this.hostName,
       id,
       createdAt,
       directoryIdentity: proof.value.osIdentity,
@@ -253,7 +259,11 @@ export class BrowserInstallationFiles {
     access: WindowsProtectedFileAccess,
     generation: BrowserSetupGeneration,
   ): Promise<Result<BrowserInstallation>> {
-    if (generation.extensionId !== developmentExtensionId) return unavailable();
+    if (
+      generation.extensionId !== developmentExtensionId ||
+      generation.hostName !== this.hostName
+    )
+      return unavailable();
     const directory = this.directory(generation.id),
       executable = path.join(directory, nativeName),
       manifest = path.join(directory, manifestName);
@@ -301,6 +311,7 @@ export class BrowserInstallationFiles {
       ...new Set(configuration.browsers.map((item) => item.kind)),
     ].sort();
     if (
+      host.name !== this.hostName ||
       configuration.hostHash !== generation.native.contentHash ||
       configuration.desktopHash !== generation.desktopHash ||
       configuration.pipeName !==

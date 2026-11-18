@@ -9,6 +9,7 @@ import {
   nativeImage,
   net,
   protocol,
+  shell,
   Tray,
 } from "electron";
 import {
@@ -24,7 +25,7 @@ import {
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 import { QuitGuard } from "./quit-guard";
 import { createBackend } from "./backend";
-import { validateFixtureRoot } from "./fixture-mode";
+import { readBrowserFixture, validateFixtureRoot } from "./fixture-mode";
 import { dispatchRecordingRequest } from "./recording-ipc";
 
 protocol.registerSchemesAsPrivileged([
@@ -35,21 +36,33 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let fixtureRoot: string | null = null;
+let browserFixture: ReturnType<typeof readBrowserFixture> = null;
 try {
   fixtureRoot = validateFixtureRoot(
     app.commandLine.getSwitchValue("rewind-fixture-root"),
   );
   if (fixtureRoot) app.setPath("userData", fixtureRoot);
+  browserFixture = readBrowserFixture(fixtureRoot);
 } catch {
   console.error(
     JSON.stringify({ level: "error", code: "INVALID_VERIFICATION_PROFILE" }),
   );
   app.exit(1);
 }
+const browserAssets = {
+  root:
+    browserFixture?.root ??
+    (app.isPackaged
+      ? path.join(process.resourcesPath, "browser")
+      : path.join(app.getAppPath(), ".generated", "browser")),
+  desktopPath: process.execPath,
+  ...(browserFixture ? { hostName: browserFixture.hostName } : {}),
+};
 const sessions = createBackend({
   root: app.getPath("userData"),
   synthetic: fixtureRoot !== null,
   entry: path.join(__dirname, "worker-entry.cjs"),
+  browserAssets,
   onSnapshot: () => publishState(),
   onActivity: (sessionId) => {
     if (
@@ -263,6 +276,24 @@ app
             buttonLabel: "Review recovery copy",
           });
           return selected.canceled ? null : (selected.filePath ?? null);
+        },
+        async () => {
+          try {
+            const error = await shell.openPath(
+              path.join(browserAssets.root, "extension"),
+            );
+            return error
+              ? failure(
+                  "UNAVAILABLE",
+                  "The extension folder could not be opened.",
+                )
+              : { ok: true, value: true };
+          } catch {
+            return failure(
+              "UNAVAILABLE",
+              "The extension folder could not be opened.",
+            );
+          }
         },
       );
     });

@@ -13,8 +13,13 @@ import {
   type UserSettings,
   type WorkerCommand,
   type StorageUsage,
+  type BrowserAssetsLocation,
 } from "@rewind/contracts";
-import { SessionCoordinator, SessionService } from "@rewind/engine";
+import {
+  BrowserCollector,
+  SessionCoordinator,
+  SessionService,
+} from "@rewind/engine";
 import {
   WindowsCollector,
   ProtectedFolderCollector,
@@ -23,6 +28,8 @@ import {
 import { FileOperations } from "./file-operations";
 import { RecoveryOperations } from "./recovery-operations";
 import { CheckpointOperations } from "./checkpoint-operations";
+import { BrowserOperations } from "./browser-operations";
+import { NativeBrowserBridge } from "./browser-bridge";
 import { SecureStorage } from "@rewind/storage";
 import {
   preparePrivateDirectory,
@@ -33,6 +40,7 @@ export interface WorkerRuntimeOptions {
   root: string;
   key: Uint8Array;
   synthetic: boolean;
+  browserAssets?: BrowserAssetsLocation;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
   strategy?: WindowQueryStrategy;
@@ -52,6 +60,7 @@ export class WorkerRuntime {
   private files: FileOperations | null = null;
   private recovery: RecoveryOperations | null = null;
   private checkpoints: CheckpointOperations | null = null;
+  private browser: BrowserOperations | null = null;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
@@ -195,6 +204,13 @@ export class WorkerRuntime {
           if (this.ready) this.options.onSnapshot(this.snapshot());
         },
       });
+      const bridge = new NativeBrowserBridge();
+      const browser = new BrowserCollector({
+        transport: bridge,
+        onChanged: () => {
+          if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+      });
       this.coordinator = new SessionCoordinator({
         mode: "repository",
         storage: engineStorage,
@@ -202,9 +218,11 @@ export class WorkerRuntime {
           newId: randomUUID,
           now: () => new Date().toISOString(),
         }),
-        collectors: { windows, folders },
+        collectors: { windows, folders, browser },
         getSettings: () => this.settings,
         authorizeResource: async (event, settings) => {
+          if (event.type === "browser-visit")
+            return browser.authorize(event, settings);
           if (event.type !== "file-change")
             return failure("FORBIDDEN", "This resource source is unavailable.");
           const capture = await folders.captureFor(event, settings);
@@ -229,6 +247,20 @@ export class WorkerRuntime {
           },
         },
         onChanged: () => {
+          if (
+            this.coordinator?.getStatus().unavailable &&
+            (this.settings.collectionConsent ||
+              this.settings.folderCollectionConsent ||
+              this.settings.browserCollectionConsent)
+          ) {
+            this.preferenceRevision++;
+            this.settings = {
+              ...this.settings,
+              collectionConsent: false,
+              folderCollectionConsent: false,
+              browserCollectionConsent: false,
+            };
+          }
           if (this.ready) this.options.onSnapshot(this.snapshot());
         },
       });
@@ -285,6 +317,63 @@ export class WorkerRuntime {
       const initialized = await this.coordinator.initialize();
       if (!initialized.ok)
         return await this.initializationFailure(initialized.error);
+      this.browser = new BrowserOperations({
+        root: this.options.root,
+        synthetic: this.options.synthetic,
+        ...(this.options.browserAssets
+          ? { assets: this.options.browserAssets }
+          : {}),
+        storage: this.storage,
+        coordinator: this.coordinator,
+        bridge,
+        collector: browser,
+        getSettings: () => this.settings,
+        changeSettings: async (candidate, current) => {
+          if (!candidate.browserCollectionConsent)
+            this.settings = {
+              ...this.settings,
+              browserCollectionConsent: false,
+            };
+          const changed = await this.coordinator!.updateSettings(
+            candidate,
+            async () => {
+              if (!current() || this.closing)
+                return failure(
+                  "CONFLICT",
+                  "A newer privacy operation superseded this change.",
+                );
+              const saved = await this.storage.saveSettings(candidate);
+              if (!saved.ok) return saved;
+              if (!current() || this.closing)
+                return failure(
+                  "CONFLICT",
+                  "A newer privacy operation superseded this change.",
+                );
+              this.settings = candidate;
+              return { ok: true, value: undefined };
+            },
+          );
+          if (!changed.ok) {
+            this.settings = {
+              ...this.settings,
+              collectionConsent: false,
+              folderCollectionConsent: false,
+              browserCollectionConsent: false,
+            };
+            return changed;
+          }
+          return { ok: true, value: undefined };
+        },
+        notify: () => {
+          if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+        storageError: (error) => {
+          this.readResult({ ok: false, error });
+        },
+      });
+      const browserInitialized = await this.browser.initialize();
+      if (!browserInitialized.ok)
+        return await this.initializationFailure(browserInitialized.error);
       this.ready = true;
       this.maintenanceTimer = setInterval(
         () => void this.automaticCleanup(),
@@ -301,7 +390,9 @@ export class WorkerRuntime {
   }
   private async initializationFailure(error: AppError): Promise<Result<never>> {
     this.fault = error;
-    await this.storage.close();
+    await this.browser?.close();
+    if (this.coordinator) await this.coordinator.shutdown();
+    else await this.storage.close();
     return { ok: false, error };
   }
   async execute(input: WorkerCommand): Promise<Result<unknown>> {
@@ -312,13 +403,32 @@ export class WorkerRuntime {
     if (command.kind === "snapshot")
       return { ok: true, value: this.snapshot() };
     if (command.kind === "shutdown") return this.shutdown();
-    if (!this.ready || !this.coordinator || this.fault)
+    if (!this.ready || !this.coordinator || this.fault || this.closing)
       return failure(
         "UNAVAILABLE",
         "The secure recording service is unavailable.",
       );
     try {
       switch (command.kind) {
+        case "browser.verify-assets":
+          return await this.browser!.verifyAssets();
+        case "browser.state":
+        case "browser.install":
+        case "browser.remove":
+        case "browser.repair":
+        case "browser.permission":
+        case "browser.exclusions": {
+          const mutation = command.kind !== "browser.state";
+          const revision = mutation
+            ? ++this.preferenceRevision
+            : this.preferenceRevision;
+          return await this.browser!.execute(
+            command,
+            () =>
+              !this.closing &&
+              (!mutation || revision === this.preferenceRevision),
+          );
+        }
         case "checkpoints.create":
         case "checkpoints.view":
         case "checkpoints.list":
@@ -518,9 +628,14 @@ export class WorkerRuntime {
     if (this.maintenanceTimer) clearInterval(this.maintenanceTimer);
     this.maintenanceTimer = null;
     this.closing = true;
+    this.preferenceRevision++;
     this.settings.collectionConsent = false;
     this.settings.folderCollectionConsent = false;
     this.settings.browserCollectionConsent = false;
+    const revoked = await this.coordinator?.revokeConsent();
+    if (revoked && !revoked.ok) return revoked;
+    const browserStopped = await this.browser?.close();
+    if (browserStopped && !browserStopped.ok) return browserStopped;
     const recoveryStopped = await this.recovery?.close();
     if (recoveryStopped && !recoveryStopped.ok) return recoveryStopped;
     const stopped = this.coordinator

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   lstat,
   readFile,
@@ -191,6 +191,31 @@ it.skipIf(process.platform !== "win32")(
       ),
     ).rejects.toThrow("real local build directory");
     expect((await readBrowserAssets(first)).ok).toBe(true);
+  },
+  20000,
+);
+it.skipIf(process.platform !== "win32")(
+  "builds a private test namespace without allowing it through the normal asset loader",
+  async () => {
+    const name = `com.rewind.test.${randomUUID().replaceAll("-", "")}`,
+      directory = path.join(root, "namespace-fixture");
+    await generateBrowserAssets(
+      path.resolve("apps/desktop"),
+      "win32",
+      "x64",
+      directory,
+      name,
+    );
+    expect((await readBrowserAssets(directory)).ok).toBe(false);
+    const loaded = await readBrowserAssets(directory, name);
+    expect(loaded.ok).toBe(true);
+    expect(
+      await readFile(path.join(directory, "extension/background.js"), "utf8"),
+    ).toContain(name);
+    expect(
+      (await readBrowserAssets(directory, `com.rewind.test.${"f".repeat(32)}`))
+        .ok,
+    ).toBe(false);
   },
   20000,
 );

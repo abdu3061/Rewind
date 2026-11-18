@@ -13,6 +13,7 @@ import { fileCommandSchema } from "./file-controls";
 import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
 import { sanitizeBrowserMetadataUrl } from "./browser-transport";
+import { browserCommandSchema } from "./browser-controls";
 
 export const collectionPreferencesSchema = userSettingsSchema
   .pick({
@@ -92,6 +93,8 @@ export const RECORDING_CHANNEL = "rewind:recording" as const;
 export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
 export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
 export const recordingCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("browser.open-extension") }),
+  ...browserCommandSchema.options,
   ...checkpointCommandSchema.options,
   ...recoveryCommandSchema.options,
   ...storageCommandSchema.options,

@@ -12,6 +12,7 @@ export * from "./worker";
 export * from "./browser-transport";
 export * from "./browser-port";
 export * from "./browser-setup";
+export * from "./browser-controls";
 export * from "./storage-management";
 export * from "./snapshots";
 export * from "./file-controls";

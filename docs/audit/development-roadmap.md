@@ -1,5 +1,7 @@
 # Dependency-ordered development roadmap
 
+Current checkpoint: normal desktop browser composition is implemented and packaged Chrome/Edge flows pass (ADR 0023). Private boot, owned setup/status/repair/removal, fixed extension-folder capability, independent consent, exclusions, encrypted timeline/search and disconnect/restart behavior now work together. Next complete optional overwrite with verified durable preservation and concurrency/failure handling, then evaluate conditional Gemini after all core gates pass. Older entries below retain their historical scope.
+
 ADR 0022 advances durable setup ownership and orchestration: encrypted revision checks and pending repair, verified native installation files, explicit setup/removal, startup/shutdown fences and registered-browser policy are implemented for review. Next compose these with the real worker/bootstrap, actual image fingerprints, public setup/permission/status/exclusions and renderer, then verify packaged browser flows. Optional overwrite remains required; conditional Gemini stays behind verified core functionality.
 
 Browser setup advances through ADR 0021: actual host/extension packaging, bounded asset verification and owned per-user registration primitives are implemented and exercised with generated names. Next finish durable ownership receipts and verified installation generations, then utility composition/public browser controls and packaged browser flows. Optional overwrite with durable current-file preservation remains required; Gemini stays conditional on completing and verifying the core.

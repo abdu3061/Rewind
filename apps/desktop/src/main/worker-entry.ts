@@ -47,6 +47,9 @@ port.on("message", async ({ data }: { data: unknown }) => {
       root: message.root,
       key: message.key,
       synthetic: message.synthetic,
+      ...(message.browserAssets
+        ? { browserAssets: message.browserAssets }
+        : {}),
       onSnapshot: (state) =>
         send({ version: 1, type: "snapshot", bootId: message.bootId, state }),
       onActivity: (sessionId) =>

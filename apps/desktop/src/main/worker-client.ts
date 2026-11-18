@@ -13,6 +13,7 @@ import {
   type SessionState,
   type WorkerCommand,
   type WorkerInput,
+  type BrowserAssetsLocation,
 } from "@rewind/contracts";
 
 export interface WorkerTransport {
@@ -35,6 +36,7 @@ interface Pending {
 export interface WorkerClientOptions {
   root: string;
   synthetic: boolean;
+  browserAssets?: BrowserAssetsLocation;
   loadKey: () => Promise<Result<Uint8Array>>;
   spawn: () => WorkerTransport;
   onSnapshot: (state: RuntimeSnapshot) => void;
@@ -180,6 +182,9 @@ export class WorkerClient {
                   root: this.options.root,
                   key,
                   synthetic: this.options.synthetic,
+                  ...(this.options.browserAssets
+                    ? { browserAssets: this.options.browserAssets }
+                    : {}),
                 });
               } catch {
                 this.fail(unavailable().error);
@@ -332,6 +337,7 @@ export class WorkerClient {
     decoder: Decoder<T>,
   ): Promise<Result<T>> {
     const allowedStop =
+      (command.kind === "browser.permission" && !command.enabled) ||
       command.kind === "shutdown" ||
       command.kind === "storage.delete" ||
       command.kind === "storage.update" ||
@@ -352,6 +358,7 @@ export class WorkerClient {
         "snapshot",
         "storage.usage",
         "files.state",
+        "browser.state",
         "versions.list",
         "versions.preview",
         "versions.info",
@@ -389,7 +396,13 @@ export class WorkerClient {
             message: "The recording service did not acknowledge the operation.",
           }),
         this.options.requestTimeoutMs ??
-          (command.kind === "recovery.confirm-copy" ? 20000 : 7000),
+          (command.kind === "recovery.confirm-copy"
+            ? 20000
+            : ["browser.install", "browser.remove", "browser.repair"].includes(
+                  command.kind,
+                )
+              ? 60000
+              : 7000),
       );
       this.pending.set(id, { kind: command.kind, resolve, timer });
       try {

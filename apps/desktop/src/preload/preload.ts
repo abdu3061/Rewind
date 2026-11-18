@@ -41,6 +41,9 @@ import {
   checkpointListResponseSchema,
   checkpointViewResponseSchema,
   checkpointDeleteResponseSchema,
+  browserCommandSchema,
+  browserControlResponseSchema,
+  acknowledgementResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -93,6 +96,85 @@ function command(action: SessionAction) {
 }
 
 const api: DesktopApi = {
+  browser: {
+    openExtensionFolder: noArgs(
+      { kind: "browser.open-extension" },
+      acknowledgementResponseSchema,
+    ),
+    state: noArgs({ kind: "browser.state" }, browserControlResponseSchema),
+    install(...args: unknown[]) {
+      const parsed = browserCommandSchema.safeParse({
+        kind: "browser.install",
+        browsers: args[0],
+        confirmed: args[1],
+      });
+      return args.length === 2 && parsed.success
+        ? recording(parsed.data, browserControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Choose browsers and explicitly confirm setup.",
+            ),
+          );
+    },
+    remove(...args: unknown[]) {
+      const parsed = browserCommandSchema.safeParse({
+        kind: "browser.remove",
+        browser: args[0],
+        confirmed: args[1],
+      });
+      return args.length === 2 && parsed.success
+        ? recording(parsed.data, browserControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Choose a browser and explicitly confirm removal.",
+            ),
+          );
+    },
+    repair(...args: unknown[]) {
+      const parsed = browserCommandSchema.safeParse({
+        kind: "browser.repair",
+        confirmed: args[0],
+      });
+      return args.length === 1 && parsed.success
+        ? recording(parsed.data, browserControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Explicitly confirm browser setup repair.",
+            ),
+          );
+    },
+    permission(...args: unknown[]) {
+      const parsed = browserCommandSchema.safeParse({
+        kind: "browser.permission",
+        enabled: args[0],
+      });
+      return args.length === 1 && parsed.success
+        ? recording(parsed.data, browserControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Choose whether to allow browser recording.",
+            ),
+          );
+    },
+    exclusions(...args: unknown[]) {
+      const parsed = browserCommandSchema.safeParse({
+        kind: "browser.exclusions",
+        hosts: args[0],
+      });
+      return args.length === 1 && parsed.success
+        ? recording(parsed.data, browserControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Enter at most 200 valid site host exclusions.",
+            ),
+          );
+    },
+  },
   checkpoints: {
     create(...args: unknown[]) {
       const parsed = checkpointCreateSchema.safeParse(args[0]);

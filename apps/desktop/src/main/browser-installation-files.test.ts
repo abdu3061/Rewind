@@ -248,10 +248,20 @@ it.skipIf(process.platform !== "win32")(
   async () => {
     const key = randomBytes(32),
       storage = new SecureStorage(path.join(profile, "history.sqlite"), key);
-    const name = `com.rewind.test.${randomUUID().replaceAll("-", "")}`,
-      helper = path.join(assetRoot, "browser/RewindBrowserHost.exe");
+    const name = `com.rewind.test.${randomUUID().replaceAll("-", "")}`;
+    const fixtureAssetsRoot = path.join(profile, "browser-assets");
+    await generateBrowserAssets(
+      path.resolve("apps/desktop"),
+      "win32",
+      "x64",
+      fixtureAssetsRoot,
+      name,
+    );
+    const fixtureAssets = await readBrowserAssets(fixtureAssetsRoot, name);
+    if (!fixtureAssets.ok) throw new Error("SYNTHETIC_TEST_ASSET_UNAVAILABLE");
+    const helper = path.join(fixtureAssetsRoot, "RewindBrowserHost.exe");
     const registry = new NativeBrowserRegistration(helper, name),
-      publisher = new BrowserInstallationFiles(profile),
+      publisher = new BrowserInstallationFiles(profile, name),
       bridge = new NativeBrowserBridge();
     bridge.setListener({
       connected() {},
@@ -268,7 +278,7 @@ it.skipIf(process.platform !== "win32")(
         store: storage.browserSetup,
         files: publisher,
         registry,
-        assets: async () => ({ ok: true, value: assets }),
+        assets: async () => fixtureAssets,
         desktop: async () => ({ ok: true, value: desktop }),
         browsers,
         quiesce: () => bridge.close(),

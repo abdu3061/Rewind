@@ -81,12 +81,32 @@ test("packaged app uses the isolated preload bridge for session controls and nav
           "unexpected",
         ]),
         invalidTransition: await api.sessions.pause(),
+        browserKeys: Object.keys(api.browser),
+        invalidBrowserState: await Reflect.apply(
+          api.browser.state,
+          api.browser,
+          [{ path: "C:\\untrusted" }],
+        ),
+        unconfirmedSetup: await Reflect.apply(
+          api.browser.install,
+          api.browser,
+          [["chrome"], false],
+        ),
+        arbitraryFolder: await Reflect.apply(
+          api.browser.openExtensionFolder,
+          api.browser,
+          ["C:\\untrusted"],
+        ),
+        invalidSitePolicy: await api.browser.exclusions([
+          "https://example.test",
+        ]),
       };
     });
     expect(bridge).toMatchObject({
       node: "undefined",
       process: "undefined",
       keys: [
+        "browser",
         "checkpoints",
         "recovery",
         "files",
@@ -100,6 +120,19 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       ],
       invalid: { ok: false, error: { code: "INVALID_INPUT" } },
       invalidTransition: { ok: false, error: { code: "INVALID_TRANSITION" } },
+      browserKeys: [
+        "openExtensionFolder",
+        "state",
+        "install",
+        "remove",
+        "repair",
+        "permission",
+        "exclusions",
+      ],
+      invalidBrowserState: { ok: false, error: { code: "INVALID_INPUT" } },
+      unconfirmedSetup: { ok: false, error: { code: "INVALID_INPUT" } },
+      arbitraryFolder: { ok: false, error: { code: "INVALID_INPUT" } },
+      invalidSitePolicy: { ok: false, error: { code: "INVALID_INPUT" } },
     });
     const sandboxed = await application.evaluate(({ app, BrowserWindow }) => {
       const main = BrowserWindow.getAllWindows()[0];

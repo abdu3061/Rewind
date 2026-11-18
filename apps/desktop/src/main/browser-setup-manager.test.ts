@@ -85,6 +85,7 @@ function fixture() {
           events.push("publish");
           const id = randomUUID(),
             generation: BrowserSetupGeneration = {
+              hostName: browserHostName,
               id,
               createdAt: "2026-11-17T12:00:00.000Z",
               directoryIdentity: `synthetic-directory-${id}`,
@@ -424,4 +425,46 @@ it("rejects unavailable selections and invalid ownership before setup changes", 
   );
   expect((await f.manager.install(true, ["edge"])).ok).toBe(false);
   expect(f.events).toEqual([]);
+});
+it("waits for an in-flight startup proof during shutdown and rejects its late result", async () => {
+  const f = fixture();
+  expect((await f.manager.install(true, ["chrome"])).ok).toBe(true);
+  const previous = [...f.files.values()][0]!,
+    wait = deferred<Result<BrowserInstallation>>();
+  f.options.files.verify.mockImplementationOnce(() => wait.promise);
+  const loading = f.manager.load();
+  await vi.waitFor(() =>
+    expect(f.options.files.verify).toHaveBeenCalledTimes(2),
+  );
+  let closed = false;
+  const closing = f.manager.close().then(() => {
+    closed = true;
+  });
+  await Promise.resolve();
+  expect(closed).toBe(false);
+  wait.resolve(ok(previous));
+  expect((await loading).ok).toBe(false);
+  await closing;
+  expect(f.options.files.close).toHaveBeenCalledTimes(1);
+});
+it("refuses a changed host namespace before setup or registry mutation", async () => {
+  const f = fixture();
+  expect((await f.manager.install(true, ["chrome"])).ok).toBe(true);
+  const original = await f.options.assets();
+  if (!original.ok) throw new Error("SYNTHETIC_ASSET_MISSING");
+  const count = f.options.registry.install.mock.calls.length;
+  f.options.assets.mockResolvedValue(
+    ok({
+      ...original.value,
+      inventory: {
+        ...original.value.inventory,
+        hostName: `com.rewind.test.${"a".repeat(32)}`,
+      },
+    }),
+  );
+  expect((await f.manager.install(true, ["chrome"])).ok).toBe(false);
+  expect((await f.manager.remove(true, "chrome")).ok).toBe(false);
+  expect((await f.manager.load()).ok).toBe(false);
+  expect(f.options.registry.install).toHaveBeenCalledTimes(count);
+  expect(f.options.registry.remove).not.toHaveBeenCalled();
 });

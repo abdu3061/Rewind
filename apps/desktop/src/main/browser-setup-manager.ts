@@ -45,7 +45,26 @@ export class BrowserSetupManager {
   private closed = false;
   private epoch = 0;
   private running: Promise<Result<BrowserSetupJournal>> | null = null;
+  private readonly loads = new Set<
+    Promise<Result<BrowserInstallation | null>>
+  >();
   constructor(private readonly options: Options) {}
+  private async scopedAssets(
+    journal: BrowserSetupJournal,
+  ): Promise<Result<VerifiedBrowserAssets>> {
+    const assets = await this.options.assets();
+    if (!assets.ok) return assets;
+    if (
+      journal.generations.some(
+        (item) => item.hostName !== assets.value.inventory.hostName,
+      )
+    )
+      return failure(
+        "CONFLICT",
+        "Browser setup belongs to a different host namespace.",
+      );
+    return assets;
+  }
   private run(
     work: () => Promise<Result<BrowserSetupJournal>>,
   ): Promise<Result<BrowserSetupJournal>> {
@@ -67,6 +86,7 @@ export class BrowserSetupManager {
     this.closed = true;
     this.epoch++;
     await this.running;
+    await Promise.all([...this.loads]);
     try {
       return await this.options.files.close();
     } catch {
@@ -135,7 +155,7 @@ export class BrowserSetupManager {
           "UNAVAILABLE",
           "A selected browser is not available at a supported installation path.",
         );
-      const assets = await this.options.assets();
+      const assets = await this.scopedAssets(journal);
       if (!assets.ok) return assets;
       const desktop = await this.options.desktop();
       if (!desktop.ok) return desktop;
@@ -196,7 +216,7 @@ export class BrowserSetupManager {
           "NOT_FOUND",
           "No owned browser registration is recorded for this browser.",
         );
-      const assets = await this.options.assets();
+      const assets = await this.scopedAssets(journal);
       if (!assets.ok) return assets;
       if (this.closed) return interrupted();
       const stopped = await this.options.quiesce();
@@ -233,7 +253,7 @@ export class BrowserSetupManager {
           "INVALID_TRANSITION",
           "No interrupted browser setup is recorded.",
         );
-      const assets = await this.options.assets();
+      const assets = await this.scopedAssets(stored.value);
       if (!assets.ok) return assets;
       if (this.closed) return interrupted();
       const stopped = await this.options.quiesce();
@@ -297,7 +317,13 @@ export class BrowserSetupManager {
     return saved.ok ? { ok: true, value: complete } : saved;
   }
   /** Read-only startup verification. An interrupted operation never repairs or registers itself. */
-  async load(): Promise<Result<BrowserInstallation | null>> {
+  load(): Promise<Result<BrowserInstallation | null>> {
+    if (this.closed) return Promise.resolve(interrupted());
+    const work = this.loadCurrent();
+    this.loads.add(work);
+    return work.finally(() => this.loads.delete(work));
+  }
+  private async loadCurrent(): Promise<Result<BrowserInstallation | null>> {
     const ticket = this.epoch;
     const current = () =>
       !this.closed && !this.running && this.epoch === ticket;
@@ -313,7 +339,7 @@ export class BrowserSetupManager {
       const id =
         stored.value.registrations.chrome ?? stored.value.registrations.edge;
       if (!id) return current() ? { ok: true, value: null } : interrupted();
-      const assets = await this.options.assets();
+      const assets = await this.scopedAssets(stored.value);
       if (!assets.ok) return assets;
       const desktop = await this.options.desktop();
       if (!desktop.ok) return desktop;

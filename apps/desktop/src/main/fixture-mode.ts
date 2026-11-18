@@ -31,3 +31,38 @@ export function validateFixtureRoot(value: string): string | null {
     throw new Error("INVALID_FIXTURE_ROOT");
   return root;
 }
+/** Optional, CLI-profile-only browser fixture. The host namespace and asset folder are fixed/bounded. */
+export function readBrowserFixture(
+  root: string | null,
+): { root: string; hostName: string } | null {
+  if (!root) return null;
+  const file = path.join(root, "browser-fixture.json");
+  let info;
+  try {
+    info = lstatSync(file);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    )
+      return null;
+    throw error;
+  }
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 256)
+    throw new Error("INVALID_BROWSER_FIXTURE");
+  const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Object.keys(value).sort().join(",") !== "format,hostName" ||
+    !("format" in value) ||
+    value.format !== 1 ||
+    !("hostName" in value) ||
+    typeof value.hostName !== "string" ||
+    !/^com\.rewind\.test\.[a-f0-9]{32}$/.test(value.hostName)
+  )
+    throw new Error("INVALID_BROWSER_FIXTURE");
+  return { root: path.join(root, "browser-assets"), hostName: value.hostName };
+}

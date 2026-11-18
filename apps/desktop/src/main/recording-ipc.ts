@@ -19,6 +19,8 @@ import {
   checkpointListResponseSchema,
   checkpointViewResponseSchema,
   checkpointDeleteResponseSchema,
+  browserControlResponseSchema,
+  acknowledgementResponseSchema,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
@@ -26,12 +28,29 @@ export async function dispatchRecordingRequest(
   input: unknown,
   chooseFolder?: () => Promise<string | null>,
   chooseCopy?: (sourceName: string) => Promise<string | null>,
+  openBrowserFolder?: () => Promise<Result<true>>,
 ): Promise<Result<unknown>> {
   const parsed = recordingCommandSchema.safeParse(input);
   if (!parsed.success)
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "browser.open-extension": {
+      if (!openBrowserFolder)
+        return failure("UNAVAILABLE", "The extension folder is unavailable.");
+      const verified = await backend.request(
+        { kind: "browser.verify-assets" },
+        acknowledgementResponseSchema,
+      );
+      return verified.ok ? openBrowserFolder() : verified;
+    }
+    case "browser.state":
+    case "browser.install":
+    case "browser.remove":
+    case "browser.repair":
+    case "browser.permission":
+    case "browser.exclusions":
+      return backend.request(command, browserControlResponseSchema);
     case "checkpoints.create":
     case "checkpoints.update":
       return backend.request(command, checkpointResponseSchema);

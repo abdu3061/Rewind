@@ -6,6 +6,8 @@ import type { Result } from "@rewind/contracts";
 
 export const developmentExtensionId = "coenmeplfkocojebfacfbebinadfijoh";
 export const browserHostName = "com.rewind.bridge";
+export const browserHostNamePattern =
+  /^(com\.rewind\.bridge|com\.rewind\.test\.[a-f0-9]{32})$/;
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const file = z.strictObject({
   name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/),
@@ -18,7 +20,7 @@ const file = z.strictObject({
 });
 export const browserAssetInventorySchema = z.strictObject({
   version: z.literal(1),
-  hostName: z.literal(browserHostName),
+  hostName: z.string().regex(browserHostNamePattern),
   extensionId: z.literal(developmentExtensionId),
   nativeSourceHash: digest,
   native: z.strictObject({
@@ -108,6 +110,7 @@ async function directory(file: string): Promise<string[]> {
 /** Build/utility package integrity check. Installation still requires native destination proof. */
 export async function readBrowserAssets(
   root: string,
+  expectedHostName: string = browserHostName,
 ): Promise<Result<VerifiedBrowserAssets>> {
   try {
     const names = await directory(root);
@@ -125,6 +128,8 @@ export async function readBrowserAssets(
         ),
       ),
     );
+    if (inventory.hostName !== expectedHostName)
+      throw new Error("BROWSER_ASSET_NAMESPACE_MISMATCH");
     const native = await readBounded(
       path.join(root, inventory.native.name),
       4 * 1024 * 1024,

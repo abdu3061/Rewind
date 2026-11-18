@@ -52,6 +52,30 @@ select:focus-visible {
 .recording-preferences {
   margin-top: 20px;
 }
+.browser-options,
+.browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.browser-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.browser-options input {
+  flex: none;
+  padding: 0;
+}
+.browser-confirm {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-soft);
+}
 textarea {
   width: 100%;
   resize: vertical;

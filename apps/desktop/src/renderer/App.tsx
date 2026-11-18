@@ -9,6 +9,7 @@ import {
 import { StorageManagement } from "./storage-management";
 import { Files } from "./files";
 import { Checkpoints } from "./checkpoints";
+import { BrowserSettings } from "./browser-settings";
 
 const pages = [
   "Dashboard",
@@ -171,9 +172,9 @@ export function App() {
           </span>
           <p>
             {runtime?.collection === "active"
-              ? runtime.filePermission
-                ? "Approved sources are recording; see Files for capture progress."
-                : "Windows activity is being recorded."
+              ? runtime.filePermission || runtime.browserPermission
+                ? "Approved sources are enabled; see Files and Settings for progress."
+                : "Windows activity recording is enabled."
               : runtime?.collection === "unavailable"
                 ? "Recording service requires attention."
                 : "No active recording authorization."}
@@ -206,10 +207,10 @@ export function App() {
               : "Secure storage unavailable"}
           </strong>
           <span>
-            Windows activity and selected-folder capture need separate approval
-            for this launch and an active session. Verified file versions can be
-            saved as separate recovery copies. Cloud AI and browser visits are
-            unavailable.
+            Windows activity, selected folders and browser metadata need
+            separate approval and an active session. Browser recording also
+            needs the extension's approval. Verified file versions can be saved
+            as separate copies. Cloud AI is disabled.
           </span>
         </div>
 
@@ -369,6 +370,7 @@ export function App() {
           <section className="panel">
             <h2>Privacy comes first</h2>
             <RecordingPreferences runtime={runtime} />
+            <BrowserSettings runtime={runtime} />
             <div className="notice">
               <strong>Privacy settings</strong>
               <span>

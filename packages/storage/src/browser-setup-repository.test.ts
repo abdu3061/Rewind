@@ -58,6 +58,7 @@ function connection(
 const marker = "SyntheticOwnedBrowserSetupReceipt";
 function generation(): BrowserSetupGeneration {
   return {
+    hostName: "com.rewind.bridge",
     id: randomUUID(),
     createdAt: "2026-11-17T12:00:00.000Z",
     directoryIdentity: `${marker}-directory`,

@@ -5,6 +5,8 @@ import {
   preferencesResponseSchema,
   type RuntimeSnapshot,
   type WorkerInput,
+  type BrowserAssetsLocation,
+  browserControlResponseSchema,
 } from "@rewind/contracts";
 import { WorkerClient, type WorkerTransport } from "./worker-client";
 const ready = (): RuntimeSnapshot => ({
@@ -71,7 +73,7 @@ afterEach(async () => {
   for (const client of clients.splice(0)) await client.shutdown();
   vi.useRealTimers();
 });
-function fixture() {
+function fixture(browserAssets?: BrowserAssetsLocation) {
   const children: SyntheticTransport[] = [];
   const spawn = vi.fn(() => {
     const child = new SyntheticTransport();
@@ -82,6 +84,7 @@ function fixture() {
   const client = new WorkerClient({
     root: "C:\\synthetic-fixture",
     synthetic: true,
+    ...(browserAssets ? { browserAssets } : {}),
     loadKey: async () => ({ ok: true, value: randomBytes(32) }),
     spawn,
     onSnapshot: vi.fn(),
@@ -102,6 +105,20 @@ it("starts with verified storage and no grant and acknowledges shutdown before e
   });
   expect((await f.client.execute("get")).ok).toBe(true);
   expect((await f.client.shutdown()).ok).toBe(true);
+});
+it("sends main-owned browser asset locations only in private initialization, without adding a grant or public snapshot field", async () => {
+  const browserAssets = {
+    root: "C:\\SyntheticFixture\\browser-assets",
+    desktopPath: "C:\\SyntheticFixture\\Rewind.exe",
+  };
+  const f = fixture(browserAssets);
+  expect((await f.client.start()).ok).toBe(true);
+  const init = f.children[0]!.messages.find(
+    (message) => message.type === "init",
+  );
+  expect(init).toMatchObject({ type: "init", browserAssets });
+  expect(f.client.getSnapshot()).not.toHaveProperty("browserAssets");
+  expect(f.client.getSnapshot().browserPermission).toBe(false);
 });
 it("terminates recording instead of dropping revocation behind a saturated request map", async () => {
   const f = fixture();
@@ -124,6 +141,24 @@ it("terminates recording instead of dropping revocation behind a saturated reque
   expect((await Promise.all(pending)).every((result) => !result.ok)).toBe(true);
   expect((await f.client.retry()).ok).toBe(true);
   expect(f.spawn).toHaveBeenCalledTimes(2);
+});
+it("stops the worker instead of dropping browser denial behind a saturated request map", async () => {
+  const f = fixture();
+  await f.client.start();
+  f.children[0]!.replyAutomatically = false;
+  const pending = Array.from({ length: 64 }, () => f.client.execute("get"));
+  const revoked = await f.client.request(
+    { kind: "browser.permission", enabled: false },
+    browserControlResponseSchema,
+  );
+  expect(revoked.ok).toBe(false);
+  expect(f.client.getSnapshot()).toMatchObject({
+    service: "unavailable",
+    browserPermission: false,
+  });
+  expect((await Promise.all(pending)).every((result) => !result.ok)).toBe(true);
+  expect((await f.client.retry()).ok).toBe(true);
+  expect(f.client.getSnapshot().browserPermission).toBe(false);
 });
 it("routes concurrent replies by request ID even when they arrive out of order", async () => {
   const f = fixture();

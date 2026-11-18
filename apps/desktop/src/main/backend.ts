@@ -2,12 +2,13 @@ import path from "node:path";
 import { utilityProcess, safeStorage } from "electron";
 import { ProtectedKeyStore } from "@rewind/storage/key-store";
 import { WorkerClient } from "./worker-client";
-import type { RuntimeSnapshot } from "@rewind/contracts";
+import type { BrowserAssetsLocation, RuntimeSnapshot } from "@rewind/contracts";
 
 export function createBackend(options: {
   root: string;
   synthetic: boolean;
   entry: string;
+  browserAssets?: BrowserAssetsLocation;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
 }): WorkerClient {
@@ -30,6 +31,7 @@ export function createBackend(options: {
   return new WorkerClient({
     root: path.join(options.root, "secure"),
     synthetic: options.synthetic,
+    ...(options.browserAssets ? { browserAssets: options.browserAssets } : {}),
     loadKey: () => keys.load(),
     spawn: () => {
       const child = utilityProcess.fork(options.entry, [], {

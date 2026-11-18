@@ -90,7 +90,8 @@ export function RecordingPreferences({
         preferences pauses an active session; start or resume explicitly
         afterward. Browser windows, Rewind itself and excluded applications are
         skipped. File protection has its own selection and launch approval in
-        Files. Browser visits remain unavailable.
+        Files. Browser metadata has separate controls below and extension
+        approval.
       </p>
       <label htmlFor="application-exclusions">
         Excluded applications (one name per line)
@@ -304,8 +305,8 @@ export function RecordedHistory({
       <p>
         Recorded application observations, saved-file events and capture gaps,
         newest first. A window title does not prove that a file was saved or
-        read. Browser recording, idle and lock detection remain unavailable.
-        Cloud AI is disabled.
+        read. Browser metadata needs both approvals. Idle and lock detection
+        remain unavailable. Cloud AI is disabled.
       </p>
       <form
         onSubmit={(event) => {

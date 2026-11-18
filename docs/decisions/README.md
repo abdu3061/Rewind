@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0023](0023-desktop-browser-composition.md) records utility-owned browser setup and recording composition, narrow public controls, failure/drain ordering and isolated whole-packaged Chrome/Edge verification. Implemented locally for owner review.
+
 [ADR 0012](0012-retention-and-snapshot-storage.md) records local retention, explicit deletion, quota/backpressure and the transactional encrypted snapshot direction for the current core integration run.
 
 [ADR 0013](0013-protected-folder-capture.md) records independent file approval, native scoped identity/read guards, bounded reconciliation, atomic encrypted capture, preview expiry and retention freshness.

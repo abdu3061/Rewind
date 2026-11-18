@@ -5,6 +5,7 @@ import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
 import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
+import { browserCommandSchema } from "./browser-controls";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -13,6 +14,8 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("browser.verify-assets") }),
+  ...browserCommandSchema.options,
   ...checkpointCommandSchema.options,
   ...recoveryCommandSchema.options,
   z.strictObject({
@@ -42,6 +45,16 @@ export const workerCommandSchema = z.discriminatedUnion("kind", [
 ]);
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 const base = { version: z.literal(1), bootId: idSchema };
+/** Main-owned boot metadata only; never part of a renderer command or response. */
+export const browserAssetsLocationSchema = z.strictObject({
+  root: z.string().min(4).max(32767),
+  desktopPath: z.string().min(4).max(32767),
+  hostName: z
+    .string()
+    .regex(/^(com\.rewind\.bridge|com\.rewind\.test\.[a-f0-9]{32})$/)
+    .optional(),
+});
+export type BrowserAssetsLocation = z.infer<typeof browserAssetsLocationSchema>;
 export const workerInputSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...base,
@@ -49,6 +62,7 @@ export const workerInputSchema = z.discriminatedUnion("type", [
     root: z.string().min(1).max(32767),
     key: z.instanceof(Uint8Array).refine((value) => value.length === 32),
     synthetic: z.boolean(),
+    browserAssets: browserAssetsLocationSchema.optional(),
   }),
   z.strictObject({
     ...base,
@@ -76,6 +90,13 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     id: idSchema,
     kind: z.enum([
+      "browser.state",
+      "browser.verify-assets",
+      "browser.install",
+      "browser.remove",
+      "browser.repair",
+      "browser.permission",
+      "browser.exclusions",
       "checkpoints.create",
       "checkpoints.view",
       "checkpoints.list",

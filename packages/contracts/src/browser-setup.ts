@@ -17,6 +17,10 @@ const browsers = z
   .max(2)
   .refine((items) => new Set(items).size === items.length);
 export const browserSetupGenerationSchema = z.strictObject({
+  hostName: z
+    .string()
+    .regex(/^(com\.rewind\.bridge|com\.rewind\.test\.[a-f0-9]{32})$/)
+    .default("com.rewind.bridge"),
   id: idSchema,
   createdAt: timestampSchema,
   directoryIdentity: z.string().min(1).max(128),
@@ -58,6 +62,11 @@ export const browserSetupJournalSchema = z
       context.addIssue({
         code: "custom",
         message: "Setup generation IDs must be unique.",
+      });
+    if (new Set(value.generations.map((item) => item.hostName)).size > 1)
+      context.addIssue({
+        code: "custom",
+        message: "Setup generations must belong to one host namespace.",
       });
     if (
       value.registrations.chrome &&

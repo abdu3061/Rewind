@@ -7,6 +7,7 @@ import { WorkerRuntime } from "./worker-runtime";
 import {
   versionListResponseSchema,
   recoveryCopyProposalResponseSchema,
+  browserControlResponseSchema,
 } from "@rewind/contracts";
 import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
@@ -37,6 +38,80 @@ function fixture(strategy?: WindowQueryStrategy) {
   runtimes.push(runtime);
   return { runtime, root, profile, key: retainedKey };
 }
+it("keeps standard synthetic browser setup unavailable, saves real site policy and never grants browser collection", async () => {
+  const f = fixture();
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  const initial = browserControlResponseSchema.parse(
+    await f.runtime.execute({ kind: "browser.state" }),
+  );
+  expect(initial).toMatchObject({
+    ok: true,
+    value: {
+      permission: false,
+      policyValid: true,
+      setup: { state: "unavailable" },
+      bridge: { state: "off", connected: 0 },
+      capture: { state: "off", captured: 0 },
+    },
+  });
+  expect(
+    (await f.runtime.execute({ kind: "browser.permission", enabled: true })).ok,
+  ).toBe(false);
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "browser.install",
+        browsers: ["chrome"],
+        confirmed: true,
+      })
+    ).ok,
+  ).toBe(false);
+  expect((await f.runtime.execute({ kind: "browser.verify-assets" })).ok).toBe(
+    false,
+  );
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  const invalid = await f.runtime.execute({
+    kind: "browser.exclusions",
+    hosts: ["private.example/path"],
+  });
+  expect(invalid).toMatchObject({
+    ok: false,
+    error: { code: "INVALID_INPUT" },
+  });
+  expect(f.runtime.snapshot().session?.status).toBe("active");
+  const saved = browserControlResponseSchema.parse(
+    await f.runtime.execute({
+      kind: "browser.exclusions",
+      hosts: ["Example.COM.", "example.com"],
+    }),
+  );
+  expect(saved).toMatchObject({
+    ok: true,
+    value: {
+      permission: false,
+      excludedSiteHosts: ["example.com"],
+      policyValid: true,
+    },
+  });
+  expect(f.runtime.snapshot().session?.status).toBe("paused");
+  expect((await f.runtime.shutdown()).ok).toBe(true);
+  const restarted = new WorkerRuntime({
+    root: f.root,
+    key: f.key,
+    synthetic: true,
+    onSnapshot: vi.fn(),
+    onActivity: vi.fn(),
+  });
+  runtimes.push(restarted);
+  expect((await restarted.initialize()).ok).toBe(true);
+  expect(await restarted.execute({ kind: "browser.state" })).toMatchObject({
+    ok: true,
+    value: { permission: false, excludedSiteHosts: ["example.com"] },
+  });
+  expect(restarted.snapshot().preferences.collectionConsent).toBe(false);
+});
 it("confirms native recovery copies from retained encrypted bytes and rejects deletion between review and confirmation", async () => {
   const f = fixture(),
     source = join(f.profile, "protected"),
@@ -486,6 +561,11 @@ it("retains a capture gap and readable history when the active window source bec
   await vi.waitFor(() =>
     expect(f.runtime.snapshot().service).toBe("unavailable"),
   );
+  expect(f.runtime.snapshot()).toMatchObject({
+    preferences: { collectionConsent: false },
+    filePermission: false,
+    browserPermission: false,
+  });
   expect(f.runtime.snapshot().secureStorage).toBe(true);
   const result = await f.runtime.execute({
     kind: "timeline",

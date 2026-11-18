@@ -14,6 +14,7 @@ import { build } from "vite";
 import {
   browserAssetInventorySchema,
   browserHostName,
+  browserHostNamePattern,
   developmentExtensionId,
   readBrowserAssets,
 } from "./src/main/browser-assets";
@@ -24,11 +25,14 @@ export async function generateBrowserAssets(
   platform: string,
   arch: string,
   output = path.join(desktopDirectory, ".generated", "browser"),
+  hostName: string = browserHostName,
 ): Promise<void> {
   if (process.platform !== "win32" || platform !== "win32" || arch !== "x64")
     throw new Error(
       "Browser assets support only the verified Windows x64 target.",
     );
+  if (!browserHostNamePattern.test(hostName))
+    throw new Error("Unsupported browser host namespace.");
   const extension = path.resolve(desktopDirectory, "../browser-extension");
   await mkdir(output, { recursive: true });
   const checkDirectory = async (directory: string) => {
@@ -129,6 +133,7 @@ export async function generateBrowserAssets(
     root: extension,
     configFile: path.join(extension, "vite.config.ts"),
     logLevel: "warn",
+    define: { __REWIND_NATIVE_HOST_NAME__: JSON.stringify(hostName) },
     build: { outDir: extensionOutput, emptyOutDir: true },
   });
   const describe = async (directory: string, name: string) => {
@@ -141,7 +146,7 @@ export async function generateBrowserAssets(
   };
   const inventory = browserAssetInventorySchema.parse({
     version: 1,
-    hostName: browserHostName,
+    hostName,
     extensionId: developmentExtensionId,
     nativeSourceHash,
     native: await describe(output, "RewindBrowserHost.exe"),
@@ -155,6 +160,6 @@ export async function generateBrowserAssets(
     path.join(output, "assets.json"),
     `${JSON.stringify(inventory, null, 2)}\n`,
   );
-  if (!(await readBrowserAssets(output)).ok)
+  if (!(await readBrowserAssets(output, hostName)).ok)
     throw new Error("Generated browser assets failed verification.");
 }

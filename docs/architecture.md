@@ -1,5 +1,7 @@
 # Architecture
 
+Current desktop browser composition is implemented locally under [ADR 0023](decisions/0023-desktop-browser-composition.md): private boot assets, utility-owned setup/registration/broker, independent browser consent, exact engine admission and encrypted timeline/search. The real packaged UI passes isolated Chrome and Edge flows. Startup remains passive and approvals expire on restart. Earlier follow-up entries below describe their historical implementation stages.
+
 Browser setup ownership follow-up: [ADR 0022](decisions/0022-durable-browser-setup.md) adds the encrypted revision-checked journal, verified CREATE_NEW installation generations and confirmed setup/repair orchestration. Startup remains read-only and collection approvals remain separate. Worker/private bootstrap and public browser controls are still being integrated.
 
 Browser packaging follow-up: [ADR 0021](decisions/0021-browser-assets-and-owned-registration.md) adds precompiled Windows x64 host assets and the normal extension outside ASAR, bounded inventory/hash verification and an owned per-user registration primitive. Building does not register a host. Receipt-backed installation, worker wiring and public browser controls remain unfinished.
@@ -27,22 +29,23 @@ flowchart LR
   C --> K
   S --> K
   A --> K
-  B[Chrome/Edge extension] -. proposed native host and pipe .-> U
+  B[Chrome/Edge extension] --> H[Authenticated native host and broker]
+  H --> U
 ```
 
-Solid arrows describe implemented composition; dotted arrows remain planned. Browser/folder collectors, native browser host and cloud requests are unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; production uses only SecureStorage with the pinned cipher and protected key.
+Solid arrows describe implemented composition; dotted arrows remain planned. Windows, selected-folder and browser collectors require independent approval and an active session. Cloud requests, article extraction and idle/lock collection remain unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; production uses only SecureStorage with the pinned cipher and protected key.
 
-| Module            | Allowed responsibility / dependency                                                                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                      |
-| engine            | Serialized lifecycle, ingestion authorization, exclusion and drain now; future snapshots, checkpoints, recovery and retention. Contracts/injected ports only, no React/Electron. |
-| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                                |
-| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                      |
-| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                             |
-| desktop main      | Window/tray, exact renderer authorization, Windows DPAPI, utility supervision and dialogs. No SQL or window polling.                                                             |
-| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                          |
-| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                            |
-| browser extension | MV3 background, separate permissions/extraction/transport adapters. No current permissions or monitoring.                                                                        |
+| Module            | Allowed responsibility / dependency                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                   |
+| engine            | Serialized lifecycle, ingestion authorization, exclusion/drain, snapshot orchestration, checkpoints and confirmed recovery. Contracts/injected ports only, no React/Electron. |
+| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                             |
+| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                   |
+| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                          |
+| desktop main      | Window/tray, exact renderer authorization, Windows DPAPI, utility supervision and dialogs. No SQL or window polling.                                                          |
+| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                       |
+| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                         |
+| browser extension | MV3 background/popup, tabs/nativeMessaging/storage permissions, explicit memory-only consent and focused regular-tab metadata.                                                |
 
 Private packages expose TypeScript source bundled by Vite/Vitest. The worker entry lives in desktop composition. `better-sqlite3-multiple-ciphers` 13.1.1 is externalized, copied with its native runtime/license, and its Windows x64 Node-API binary is unpacked from ASAR. Packaged reopen is tested on Electron 44.11.3. SQL/collection never run in main or renderer.
 
@@ -70,12 +73,12 @@ stateDiagram-v2
 
 `get` is valid in every healthy state; unlisted transitions return `INVALID_TRANSITION`. Sessions/history persist encrypted. Active alone never grants recording permission. Approval is explicit per worker launch, settings changes pause without automatic resume, and revocation invalidates generation authority before awaiting cleanup. UTC session timestamps are clamped against backward clock changes. Returned objects are copies.
 
-## Planned ingestion
+## Ingestion
 
 ```mermaid
 flowchart TD
   U[Explicit consent and settings] --> G[Engine session and generation gate]
-  W[Windows foreground / idle / lock] --> N[Validate and normalize]
+  W[Approved Windows foreground activity] --> N[Validate and normalize]
   F[Selected-folder watcher] --> N
   B[Browser extension and native bridge] --> N
   N --> G
@@ -86,19 +89,19 @@ flowchart TD
   V --> O[Encrypted immutable blob store]
 ```
 
-The Windows collector is registered only after secure startup; it samples only after grant plus session activation. One PowerShell helper compiles C# once per run and checks process exclusions before reading titles. Pause/end stop timers, await queries/emits and release the helper. The engine separately rejects stale run/session/source/policy events and drains admitted writes. Browser/file sources are unavailable and lack resource authorization, so cannot be ingested. Idle/lock handling remains unimplemented and is not inferred from a missing foreground window.
+The Windows collector is registered only after secure startup; it samples only after grant plus session activation. One PowerShell helper compiles C# once per run and checks process exclusions before reading titles. Pause/end stop timers, await queries/emits and release the helper. The engine separately rejects stale run/session/source/policy events and drains admitted writes. Selected-folder capture verifies current Windows identities and original bytes. Browser ingestion requires native-proven peers and exact staged event authorization; neither a path record nor a browser assertion is an authorization token. Idle/lock handling remains unimplemented and is not inferred from a missing foreground window.
 
-Subscribe to selected-folder notifications before baseline capture, stabilize reads, reconcile saves/renames/deletes, and explicitly track baseline completion. Folder events show changes, not user attention. Browser page text is captured at permissioned visit time, as bounded plain text, separately from the URL/title. No page content is executed in privileged processes. Idle and lock observations gate collection according to the approved policy.
+Selected folders are reconciled on bounded polling with an initial baseline and periodic full reconciliation; progress and failures are visible. Folder events show saved changes, not user attention, and brief intermediate saves can be missed. Browser capture contains focused regular-tab URL/title metadata only, with exclusions and query/fragment redaction. Article extraction and idle/lock handling are unavailable. Captured markup is never executed.
 
-## Planned storage, retention, and recovery
+## Storage, retention, and recovery
 
 SQLite owns normalized records, relationships, versioned transactions/migrations, and FTS5 indexes. The content store owns immutable encrypted original bytes addressed internally by hashes; public FileVersion models contain no blob paths or encryption keys. Text extraction is a derivative for search/preview; a DOCX recovery must preserve the original formatting bytes. Hashes, verified writes, atomic publication, size limits, crash reconciliation, and protected-folder path checks are required.
 
-ADR 0010 selects authenticated SQLCipher-profile metadata encryption with protected key creation, checksummed migrations, schema/FK/SQLite/FTS integrity checks and encrypted WAL. Temporary SQL storage stays in memory. Missing/wrong keys, plaintext, tampering or unavailable encryption fail closed without replacement. Encrypted blobs, key rotation and independent security review remain release work; stock SQLite, ASAR and file permissions are not encryption.
+ADR 0010 selects authenticated SQLCipher-profile metadata encryption with protected key creation, checksummed migrations, schema/FK/SQLite/FTS integrity checks and encrypted WAL. Temporary SQL storage stays in memory. Missing/wrong keys, plaintext, tampering or unavailable encryption fail closed without replacement. Original bytes are stored in the same encrypted database as immutable hash-verified BLOBs. Key rotation and independent security review remain release work; stock SQLite, ASAR and file permissions are not encryption.
 
-The engine creates recovery proposals from authorized existing file-version IDs. Default recovery writes a new copy after preview and explicit user confirmation. An overwrite additionally preserves and verifies current bytes, checks file identity/hash/mtime against the confirmed target, and aborts if preservation or revalidation fails. Recovery execution is not an assistant tool and is not exposed by current IPC. Reparse points, traversal, destination changes, locked files, corruption, low disk space, and interrupted publication all require tests.
+The engine creates expiring single-use recovery-copy proposals from actual retained file-version IDs and a main-owned native destination dialog. Confirmation rechecks the source and current native parent identity, writes only a new file and verifies complete bytes. Existing destinations are rejected. Narrow public IPC exposes choose/confirm/cancel, never arbitrary filesystem access. Recovery execution is not an assistant tool. Optional overwrite remains unfinished and must preserve/verify current bytes and detect concurrent changes before any mutation; no truncate fallback is authorized by the copy implementation.
 
-Retention starts at a configurable 72 hours with a proposed 2 GiB quota. Keep pins a checkpoint's transitive files/versions/visits/derived content. Cleanup must cover records, FTS, blobs, previews, queues, extension buffers, logs and transient assistant evidence, with reference counting or equivalent integrity. Kept data exceeding quota needs explicit user feedback and a safe stop policy, not silent loss. SQL deletion alone is not a forensic-erasure guarantee. No retention job exists yet.
+Retention defaults to 72 hours and is configurable from 1 to 8760 hours. Physical usage and configurable quota include the encrypted database and journals. Startup, retrieval and periodic cleanup expire unkept evidence; bounded pressure eviction preserves kept checkpoint references and denies new capture if sufficient space cannot be recovered. Explicit cleanup/deletion pauses and drains sources and revokes launch approvals. Settings exposes actual usage, policy and confirmed deletion, with separate inclusion of kept evidence. Session shells, privacy settings and operational setup receipts remain. SQL deletion/compaction does not promise forensic erasure or a hard filesystem quota.
 
 ## Sources and decision status
 
