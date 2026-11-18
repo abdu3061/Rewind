@@ -3,6 +3,7 @@ export * from "./session";
 export * from "./activity";
 export * from "./files";
 export * from "./search";
+export * from "./assistant";
 export * from "./settings";
 export * from "./recovery";
 export * from "./recovery-overwrite";

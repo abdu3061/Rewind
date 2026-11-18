@@ -1,0 +1,141 @@
+{
+  "checkedAt": "2026-11-18",
+  "baselineCommit": "e44095d",
+  "packageLockSha256": "e47373710284560371e28aa8fcd254d4ced804e64ac123a77daf7892cfb0f917",
+  "command": "npm audit --json",
+  "counts": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 23,
+    "critical": 0,
+    "total": 23
+  },
+  "advisories": [
+    {
+      "name": "picomatch",
+      "title": "picomatch vulnerable to ReDoS through single-branch repeated extglobs",
+      "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+      "severity": "high",
+      "range": "<=4.0.7"
+    }
+  ],
+  "affectedPackages": [
+    {
+      "name": "@electron-forge/cli",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/core",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/core-utils",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/maker-base",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/maker-zip",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/plugin-base",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/plugin-vite",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/publisher-base",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron-forge/shared-types",
+      "severity": "high",
+      "resolved": "8.0.1"
+    },
+    {
+      "name": "@electron/rebuild",
+      "severity": "high",
+      "resolved": "4.2.1"
+    },
+    {
+      "name": "@typescript-eslint/eslint-plugin",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "@typescript-eslint/parser",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "@typescript-eslint/type-utils",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "@typescript-eslint/typescript-estree",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "@typescript-eslint/utils",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "severity": "high",
+      "resolved": "6.1.2"
+    },
+    {
+      "name": "fdir",
+      "severity": "high",
+      "resolved": "6.5.0"
+    },
+    {
+      "name": "node-gyp",
+      "severity": "high",
+      "resolved": "12.4.0"
+    },
+    {
+      "name": "picomatch",
+      "severity": "high",
+      "resolved": "4.0.7"
+    },
+    {
+      "name": "tinyglobby",
+      "severity": "high",
+      "resolved": "0.2.17"
+    },
+    {
+      "name": "typescript-eslint",
+      "severity": "high",
+      "resolved": "8.73.0"
+    },
+    {
+      "name": "vite",
+      "severity": "high",
+      "resolved": "8.3.4"
+    },
+    {
+      "name": "vitest",
+      "severity": "high",
+      "resolved": "5.0.5"
+    }
+  ],
+  "limitations": "Point-in-time registry audit. No published fix for the remaining picomatch tooling advisory. Not a security certification."
+}

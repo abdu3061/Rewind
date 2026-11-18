@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0025](0025-approved-evidence-gemini-foundation.md) records the private official-SDK approved-evidence foundation. Normal cloud composition remains unavailable. [ADR 0026](0026-tooling-glob-security-updates.md) records compatible tooling security updates and the remaining unpatched development-tool advisory.
+
 [ADR 0024](0024-confirmed-overwrite-preservation.md) records optional explicitly confirmed overwrite, current target proof, exclusive mapped-file-aware admission, verified preservation before mutation and failure/rollback limits. Implemented locally for owner review.
 
 [ADR 0023](0023-desktop-browser-composition.md) records utility-owned browser setup and recording composition, narrow public controls, failure/drain ordering and isolated whole-packaged Chrome/Edge verification. Implemented locally for owner review.

@@ -10,6 +10,7 @@
     }
   },
   "dependencies": {
+    "@google/genai": "3.5.0",
     "@rewind/contracts": "0.1.0"
   }
 }

@@ -39,6 +39,8 @@ export default tseslint.config(
             "@rewind/storage",
             "@rewind/collectors",
             "@rewind/assistant",
+            "@google/genai",
+            "@google/genai/*",
           ],
         },
       ],
@@ -72,6 +74,21 @@ export default tseslint.config(
   {
     files: ["apps/browser-extension/src/**/*.ts"],
     languageOptions: { globals: { chrome: "readonly" } },
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["@rewind/assistant", "@google/genai", "@google/genai/*"] },
+      ],
+    },
+  },
+  {
+    files: ["apps/desktop/src/preload/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["@rewind/assistant", "@google/genai", "@google/genai/*"] },
+      ],
+    },
   },
   prettier,
 );

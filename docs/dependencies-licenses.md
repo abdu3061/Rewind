@@ -2,6 +2,12 @@
 
 No ActivityWatch, aw-watcher-web, or ZFileTimeMachine implementation source is copied into Rewind. Package-manager dependencies remain external dependencies under their own licenses. Rewind's original-source license is an owner decision; packages are private and marked `UNLICENSED` for now. Do not describe this as a licensed open-source release until that decision is made.
 
+## Current dependency follow-up
+
+18 November 2026: the private assistant workspace now pins official `@google/genai` 3.5.0 (Apache-2.0, installed LICENSE inspected, Node >=22). It is not yet wired into normal desktop cloud controls. No ADK, cloud database, remote auth or file storage is added. SDK keys remain privileged; public composition is gated by ADR 0025. Preserve the SDK and transitive notices when it is bundled for distribution.
+
+Tooling updates pin ESLint 10.15.0 and typescript-eslint 8.73.0; compatible ASAR 4.3.2 resolves patched glob/minimatch versions. ADR 0026 records the audit and remaining unpatched picomatch tooling exposure. A production-only audit reports zero known vulnerabilities; full release review remains required. The historical starter inventory below retains its original date.
+
 ## Used by the starter
 
 Direct package licenses below were checked against the installed package metadata on 17 October 2026. Exact resolved versions/transitives are in `package-lock.json`; this is a practical dependency summary, not a full release notice bundle.
