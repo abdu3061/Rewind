@@ -44,6 +44,8 @@ import {
   browserCommandSchema,
   browserControlResponseSchema,
   acknowledgementResponseSchema,
+  recoveryOverwriteProposalResponseSchema,
+  recoveryOverwriteResultResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -242,6 +244,35 @@ const api: DesktopApi = {
     },
   },
   recovery: {
+    chooseOverwrite(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 1 && parsed.success
+        ? recording(
+            { kind: "recovery.choose-overwrite", versionId: parsed.data },
+            recoveryOverwriteProposalResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A captured version ID is required."),
+          );
+    },
+    confirmOverwrite(...args: unknown[]) {
+      const parsed = idSchema.safeParse(args[0]);
+      return args.length === 2 && parsed.success && args[1] === true
+        ? recording(
+            {
+              kind: "recovery.confirm-overwrite",
+              proposalId: parsed.data,
+              confirmed: true,
+            },
+            recoveryOverwriteResultResponseSchema,
+          )
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "An explicit overwrite confirmation is required.",
+            ),
+          );
+    },
     chooseCopy(...args: unknown[]) {
       const parsed = idSchema.safeParse(args[0]);
       return args.length === 1 && parsed.success

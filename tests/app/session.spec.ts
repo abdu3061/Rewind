@@ -82,6 +82,17 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         ]),
         invalidTransition: await api.sessions.pause(),
         browserKeys: Object.keys(api.browser),
+        recoveryKeys: Object.keys(api.recovery),
+        unconfirmedOverwrite: await Reflect.apply(
+          api.recovery.confirmOverwrite,
+          api.recovery,
+          ["00000000-0000-4000-8000-000000000001", false],
+        ),
+        arbitraryOverwriteTarget: await Reflect.apply(
+          api.recovery.chooseOverwrite,
+          api.recovery,
+          ["00000000-0000-4000-8000-000000000001", "C:\\untrusted"],
+        ),
         invalidBrowserState: await Reflect.apply(
           api.browser.state,
           api.browser,
@@ -130,6 +141,15 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         "exclusions",
       ],
       invalidBrowserState: { ok: false, error: { code: "INVALID_INPUT" } },
+      recoveryKeys: [
+        "chooseOverwrite",
+        "confirmOverwrite",
+        "chooseCopy",
+        "confirmCopy",
+        "cancel",
+      ],
+      unconfirmedOverwrite: { ok: false, error: { code: "INVALID_INPUT" } },
+      arbitraryOverwriteTarget: { ok: false, error: { code: "INVALID_INPUT" } },
       unconfirmedSetup: { ok: false, error: { code: "INVALID_INPUT" } },
       arbitraryFolder: { ok: false, error: { code: "INVALID_INPUT" } },
       invalidSitePolicy: { ok: false, error: { code: "INVALID_INPUT" } },

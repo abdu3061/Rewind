@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { RecoveryCopy } from "./recovery-copy";
+import { RecoveryOverwrite } from "./recovery-overwrite";
 import type {
   CapturedVersionSummary,
   FileProtectionState,
@@ -324,6 +325,10 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             Close preview
           </button>
           <RecoveryCopy key={preview.version.id} preview={preview} />
+          <RecoveryOverwrite
+            key={`overwrite-${preview.version.id}`}
+            preview={preview}
+          />
         </section>
       )}
     </>

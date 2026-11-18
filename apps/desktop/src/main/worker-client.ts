@@ -364,6 +364,8 @@ export class WorkerClient {
         "versions.info",
         "recovery.prepare-copy",
         "recovery.confirm-copy",
+        "recovery.prepare-overwrite",
+        "recovery.confirm-overwrite",
         "recovery.cancel",
         "checkpoints.create",
         "checkpoints.view",
@@ -396,7 +398,9 @@ export class WorkerClient {
             message: "The recording service did not acknowledge the operation.",
           }),
         this.options.requestTimeoutMs ??
-          (command.kind === "recovery.confirm-copy"
+          (command.kind === "recovery.confirm-copy" ||
+          command.kind === "recovery.confirm-overwrite" ||
+          command.kind === "recovery.prepare-overwrite"
             ? 20000
             : ["browser.install", "browser.remove", "browser.repair"].includes(
                   command.kind,

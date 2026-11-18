@@ -10,8 +10,9 @@ export type {
   WindowsCollectorOptions,
 } from "./types";
 
-// Only Windows foreground collection is composed; browser and folder adapters remain unavailable.
-export const collectorImplementationStatus = "windows-consent-gated" as const;
+// Composition and source approval remain the desktop utility/coordinator's responsibility.
+export const collectorImplementationStatus = "consent-gated-sources" as const;
 export { WindowsProtectedFileAccess } from "./windows-file-access";
 export { ProtectedFolderCollector } from "./protected-folder-collector";
 export { WindowsRecoveryCopyWriter } from "./windows-copy-writer";
+export { WindowsRecoveryOverwriteWriter } from "./windows-overwrite-writer";

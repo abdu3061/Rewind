@@ -1,5 +1,7 @@
 # ADR 0014: confirmed original-byte recovery copies
 
+Follow-up: [ADR 0024](0024-confirmed-overwrite-preservation.md) now implements the separate optional overwrite workflow. The copy-only behavior and original evidence below retain their historical scope.
+
 17 November 2026. Implemented locally under the core functionality goal, pending Rasit's final technical review. No remote merge, publication, installer or release approval is implied.
 
 ## Decision and ownership

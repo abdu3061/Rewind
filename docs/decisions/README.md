@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0024](0024-confirmed-overwrite-preservation.md) records optional explicitly confirmed overwrite, current target proof, exclusive mapped-file-aware admission, verified preservation before mutation and failure/rollback limits. Implemented locally for owner review.
+
 [ADR 0023](0023-desktop-browser-composition.md) records utility-owned browser setup and recording composition, narrow public controls, failure/drain ordering and isolated whole-packaged Chrome/Edge verification. Implemented locally for owner review.
 
 [ADR 0012](0012-retention-and-snapshot-storage.md) records local retention, explicit deletion, quota/backpressure and the transactional encrypted snapshot direction for the current core integration run.

@@ -6,10 +6,16 @@ import {
   type WorkerCommand,
   type AppError,
 } from "@rewind/contracts";
-import { RecoveryCopyService, type SessionCoordinator } from "@rewind/engine";
+import {
+  RecoveryCopyService,
+  RecoveryOverwriteService,
+  type RecoveryCopyServiceOptions,
+  type SessionCoordinator,
+} from "@rewind/engine";
 import {
   WindowsProtectedFileAccess,
   WindowsRecoveryCopyWriter,
+  WindowsRecoveryOverwriteWriter,
 } from "@rewind/collectors";
 import type { SecureStorage } from "@rewind/storage";
 
@@ -28,6 +34,7 @@ const inside = (root: string, selected: string) => {
 /** Native-dialog path policy and encrypted source composition live in the utility process. */
 export class RecoveryOperations {
   private readonly service: RecoveryCopyService;
+  private readonly overwrite: RecoveryOverwriteService;
   constructor(options: {
     storage: SecureStorage;
     coordinator: SessionCoordinator;
@@ -35,10 +42,9 @@ export class RecoveryOperations {
     synthetic: boolean;
     storageError(error: AppError): void;
   }) {
-    this.service = new RecoveryCopyService({
+    const shared: Omit<RecoveryCopyServiceOptions, "writer"> = {
       newId: randomUUID,
       now: () => new Date().toISOString(),
-      writer: new WindowsRecoveryCopyWriter(),
       readSnapshot: async (id) => {
         const result = await options.coordinator.read(async () => {
           const cleaned = await options.storage.cleanup();
@@ -118,6 +124,14 @@ export class RecoveryOperations {
           },
         };
       },
+    };
+    this.service = new RecoveryCopyService({
+      ...shared,
+      writer: new WindowsRecoveryCopyWriter(),
+    });
+    this.overwrite = new RecoveryOverwriteService({
+      ...shared,
+      writer: new WindowsRecoveryOverwriteWriter(),
     });
   }
   execute(command: WorkerCommand): Promise<Result<unknown>> {
@@ -126,8 +140,16 @@ export class RecoveryOperations {
         return this.service.prepare(command.versionId, command.path);
       case "recovery.confirm-copy":
         return this.service.confirm(command.proposalId, command.confirmed);
+      case "recovery.prepare-overwrite":
+        return this.overwrite.prepare(command.versionId, command.path);
+      case "recovery.confirm-overwrite":
+        return this.overwrite.confirm(command.proposalId, command.confirmed);
       case "recovery.cancel":
-        return Promise.resolve(this.service.cancel(command.proposalId));
+        return Promise.resolve(
+          this.service.cancel(command.proposalId).ok
+            ? this.overwrite.cancel(command.proposalId)
+            : failure("INVALID_INPUT", "A recovery proposal ID is required."),
+        );
       default:
         return Promise.resolve(
           failure(
@@ -137,7 +159,13 @@ export class RecoveryOperations {
         );
     }
   }
-  close(): Promise<Result<void>> {
-    return this.service.close();
+  async close(): Promise<Result<void>> {
+    const results = await Promise.all([
+      this.service.close(),
+      this.overwrite.close(),
+    ]);
+    return (
+      results.find((result) => !result.ok) ?? { ok: true, value: undefined }
+    );
   }
 }

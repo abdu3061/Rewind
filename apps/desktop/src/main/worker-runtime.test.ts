@@ -8,6 +8,8 @@ import {
   versionListResponseSchema,
   recoveryCopyProposalResponseSchema,
   browserControlResponseSchema,
+  recoveryOverwriteProposalResponseSchema,
+  recoveryOverwriteResultResponseSchema,
 } from "@rewind/contracts";
 import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
@@ -17,6 +19,106 @@ import {
 
 const directories: string[] = [];
 const runtimes: WorkerRuntime[] = [];
+it("overwrites an isolated target only after retaining its current bytes and rejects stale/deleted source proposals", async () => {
+  const f = fixture(),
+    source = join(f.profile, "protected-overwrite"),
+    target = join(f.profile, "overwrite.txt");
+  mkdirSync(source);
+  writeFileSync(join(source, "source.txt"), "Retained synthetic version");
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "files.add", path: source })).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "files.permission", enabled: true })).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  let versionId = "";
+  await vi.waitFor(
+    async () => {
+      const list = versionListResponseSchema.parse(
+        await f.runtime.execute({
+          kind: "versions.list",
+          query: { limit: 10 },
+        }),
+      );
+      expect(list.ok && list.value.length).toBe(1);
+      if (list.ok) versionId = list.value[0]!.version.id;
+    },
+    { timeout: 10000 },
+  );
+  expect((await f.runtime.execute({ kind: "session", action: "end" })).ok).toBe(
+    true,
+  );
+  writeFileSync(target, "Current synthetic target");
+  const prepare = async () => {
+    const result = recoveryOverwriteProposalResponseSchema.parse(
+      await f.runtime.execute({
+        kind: "recovery.prepare-overwrite",
+        versionId,
+        path: target,
+      }),
+    );
+    if (!result.ok || !result.value)
+      throw new Error("SYNTHETIC_OVERWRITE_REVIEW_FAILED");
+    return result.value;
+  };
+  const proposal = await prepare();
+  expect(existsSync(proposal.preservationLabel)).toBe(false);
+  const result = recoveryOverwriteResultResponseSchema.parse(
+    await f.runtime.execute({
+      kind: "recovery.confirm-overwrite",
+      proposalId: proposal.id,
+      confirmed: true,
+    }),
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    value: {
+      mode: "overwrite",
+      fileVersionId: versionId,
+      preservationLabel: proposal.preservationLabel,
+    },
+  });
+  expect(readFileSync(target, "utf8")).toBe("Retained synthetic version");
+  expect(readFileSync(proposal.preservationLabel, "utf8")).toBe(
+    "Current synthetic target",
+  );
+  const stale = await prepare();
+  writeFileSync(target, "Intervening synthetic save");
+  expect(
+    await f.runtime.execute({
+      kind: "recovery.confirm-overwrite",
+      proposalId: stale.id,
+      confirmed: true,
+    }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(readFileSync(target, "utf8")).toBe("Intervening synthetic save");
+  expect(existsSync(stale.preservationLabel)).toBe(false);
+  const pending = await prepare();
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "storage.delete",
+        value: { includeKept: false, confirmed: true },
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    await f.runtime.execute({
+      kind: "recovery.confirm-overwrite",
+      proposalId: pending.id,
+      confirmed: true,
+    }),
+  ).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  expect(existsSync(pending.preservationLabel)).toBe(false);
+  expect(readFileSync(target, "utf8")).toBe("Intervening synthetic save");
+  expect(readFileSync(proposal.preservationLabel, "utf8")).toBe(
+    "Current synthetic target",
+  );
+}, 35000);
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.shutdown();
   for (const directory of directories.splice(0)) removeSecureFixture(directory);

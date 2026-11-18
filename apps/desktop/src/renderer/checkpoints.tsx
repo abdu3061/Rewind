@@ -10,6 +10,7 @@ import type {
   Result,
 } from "@rewind/contracts";
 import { RecoveryCopy } from "./recovery-copy";
+import { RecoveryOverwrite } from "./recovery-overwrite";
 
 const time = (value: string) => new Date(value).toLocaleString();
 function label(event: ActivityEvent): string {
@@ -580,6 +581,10 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 </p>
               )}
               <RecoveryCopy key={preview.version.id} preview={preview} />
+              <RecoveryOverwrite
+                key={`overwrite-${preview.version.id}`}
+                preview={preview}
+              />
             </div>
           )}
           {!deleting ? (

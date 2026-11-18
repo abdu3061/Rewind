@@ -23,6 +23,11 @@ export const workerCommandSchema = z.discriminatedUnion("kind", [
     versionId: idSchema,
     path: z.string().min(4).max(240),
   }),
+  z.strictObject({
+    kind: z.literal("recovery.prepare-overwrite"),
+    versionId: idSchema,
+    path: z.string().min(4).max(240),
+  }),
   ...storageCommandSchema.options,
   ...fileCommandSchema.options,
   z.strictObject({
@@ -103,6 +108,9 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
       "checkpoints.update",
       "checkpoints.delete",
       "recovery.choose-copy",
+      "recovery.choose-overwrite",
+      "recovery.prepare-overwrite",
+      "recovery.confirm-overwrite",
       "recovery.prepare-copy",
       "recovery.confirm-copy",
       "recovery.cancel",

@@ -295,6 +295,15 @@ app
             );
           }
         },
+        async () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return null;
+          const selected = await dialog.showOpenDialog(mainWindow, {
+            title: "Choose an existing file to review for overwrite",
+            buttonLabel: "Review overwrite and preservation",
+            properties: ["openFile"],
+          });
+          return selected.canceled ? null : (selected.filePaths[0] ?? null);
+        },
       );
     });
     await sessions.start();

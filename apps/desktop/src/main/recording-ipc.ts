@@ -21,6 +21,8 @@ import {
   checkpointDeleteResponseSchema,
   browserControlResponseSchema,
   acknowledgementResponseSchema,
+  recoveryOverwriteProposalResponseSchema,
+  recoveryOverwriteResultResponseSchema,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
@@ -29,6 +31,7 @@ export async function dispatchRecordingRequest(
   chooseFolder?: () => Promise<string | null>,
   chooseCopy?: (sourceName: string) => Promise<string | null>,
   openBrowserFolder?: () => Promise<Result<true>>,
+  chooseOverwrite?: () => Promise<string | null>,
 ): Promise<Result<unknown>> {
   const parsed = recordingCommandSchema.safeParse(input);
   if (!parsed.success)
@@ -60,8 +63,10 @@ export async function dispatchRecordingRequest(
       return backend.request(command, checkpointViewResponseSchema);
     case "checkpoints.delete":
       return backend.request(command, checkpointDeleteResponseSchema);
+    case "recovery.choose-overwrite":
     case "recovery.choose-copy": {
-      if (!chooseCopy)
+      const overwrite = command.kind === "recovery.choose-overwrite";
+      if (overwrite ? !chooseOverwrite : !chooseCopy)
         return failure(
           "UNAVAILABLE",
           "The recovery destination dialog is unavailable.",
@@ -71,25 +76,37 @@ export async function dispatchRecordingRequest(
         versionPreviewResponseSchema,
       );
       if (!source.ok) return source;
-      const selected = await chooseCopy(source.value.displayName);
+      const selected = overwrite
+        ? await chooseOverwrite!()
+        : await chooseCopy!(source.value.displayName);
       if (selected && (selected.length < 4 || selected.length > 240))
         return failure(
           "INVALID_INPUT",
           "Choose a local destination with a path of at most 240 characters.",
         );
-      return selected
-        ? backend.request(
-            {
-              kind: "recovery.prepare-copy",
-              versionId: command.versionId,
-              path: selected,
-            },
-            recoveryCopyProposalResponseSchema,
-          )
-        : { ok: true, value: null };
+      if (!selected) return { ok: true, value: null };
+      if (overwrite)
+        return backend.request(
+          {
+            kind: "recovery.prepare-overwrite",
+            versionId: command.versionId,
+            path: selected,
+          },
+          recoveryOverwriteProposalResponseSchema,
+        );
+      return backend.request(
+        {
+          kind: "recovery.prepare-copy",
+          versionId: command.versionId,
+          path: selected,
+        },
+        recoveryCopyProposalResponseSchema,
+      );
     }
     case "recovery.confirm-copy":
       return backend.request(command, recoveryCopyResultResponseSchema);
+    case "recovery.confirm-overwrite":
+      return backend.request(command, recoveryOverwriteResultResponseSchema);
     case "recovery.cancel":
       return backend.request(command, recoveryCancelResponseSchema);
     case "files.select": {

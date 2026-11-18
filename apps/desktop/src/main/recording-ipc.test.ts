@@ -6,9 +6,71 @@ import {
   timelineResponseSchema,
   browserControlResponseSchema,
   acknowledgementResponseSchema,
+  recoveryOverwriteProposalResponseSchema,
+  recoveryOverwriteResultResponseSchema,
 } from "@rewind/contracts";
 import { dispatchRecordingRequest } from "./recording-ipc";
 import type { WorkerClient } from "./worker-client";
+it("prepares overwrite only from the native dialog and rejects renderer paths or missing confirmation", async () => {
+  const id = "00000000-0000-4000-8000-000000000001",
+    request = vi.fn().mockResolvedValue({ ok: true, value: null }),
+    choose = vi.fn().mockResolvedValue("C:\\Synthetic\\selected.txt"),
+    backend = { request } as unknown as WorkerClient;
+  request.mockResolvedValueOnce({
+    ok: true,
+    value: { displayName: "Synthetic source.txt" },
+  });
+  await dispatchRecordingRequest(
+    backend,
+    { kind: "recovery.choose-overwrite", versionId: id },
+    undefined,
+    undefined,
+    undefined,
+    choose,
+  );
+  expect(choose).toHaveBeenCalledTimes(1);
+  expect(request).toHaveBeenLastCalledWith(
+    {
+      kind: "recovery.prepare-overwrite",
+      versionId: id,
+      path: "C:\\Synthetic\\selected.txt",
+    },
+    recoveryOverwriteProposalResponseSchema,
+  );
+  await dispatchRecordingRequest(backend, {
+    kind: "recovery.confirm-overwrite",
+    proposalId: id,
+    confirmed: true,
+  });
+  expect(request).toHaveBeenLastCalledWith(
+    { kind: "recovery.confirm-overwrite", proposalId: id, confirmed: true },
+    recoveryOverwriteResultResponseSchema,
+  );
+  const calls = request.mock.calls.length;
+  for (const input of [
+    { kind: "recovery.prepare-overwrite", versionId: id, path: "C:\\Expanded" },
+    { kind: "recovery.choose-overwrite", versionId: id, path: "C:\\Expanded" },
+    { kind: "recovery.confirm-overwrite", proposalId: id, confirmed: false },
+  ])
+    expect((await dispatchRecordingRequest(backend, input)).ok).toBe(false);
+  expect(request).toHaveBeenCalledTimes(calls);
+  choose.mockResolvedValueOnce(null);
+  request.mockResolvedValueOnce({
+    ok: true,
+    value: { displayName: "Synthetic source.txt" },
+  });
+  expect(
+    await dispatchRecordingRequest(
+      backend,
+      { kind: "recovery.choose-overwrite", versionId: id },
+      undefined,
+      undefined,
+      undefined,
+      choose,
+    ),
+  ).toEqual({ ok: true, value: null });
+  expect(request).toHaveBeenCalledTimes(calls + 1);
+});
 it("forwards only validated browser capabilities and verifies assets before opening the fixed extension folder", async () => {
   const request = vi.fn().mockResolvedValue({ ok: true, value: true }),
     open = vi.fn().mockResolvedValue({ ok: true, value: true }),

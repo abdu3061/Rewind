@@ -438,6 +438,9 @@ export class WorkerRuntime {
           return this.readResult(result);
         }
         case "recovery.choose-copy":
+        case "recovery.choose-overwrite":
+        case "recovery.prepare-overwrite":
+        case "recovery.confirm-overwrite":
         case "recovery.prepare-copy":
         case "recovery.confirm-copy":
         case "recovery.cancel":

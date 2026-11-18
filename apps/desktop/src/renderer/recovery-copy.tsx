@@ -91,7 +91,7 @@ export function RecoveryCopy({ preview }: { preview: VersionPreview }) {
       <p>
         Choose a new filename. The complete verified original bytes will be
         saved, including content beyond this preview. Existing destinations are
-        rejected. Overwrite recovery is not available yet.
+        rejected. Optional overwrite is available separately below.
       </p>
       <p>
         The saved copy is an ordinary file outside Rewind's encrypted history.

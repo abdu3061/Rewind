@@ -106,6 +106,15 @@ export const recoveryCopyResultResponseSchema = resultSchema(
 export const recoveryCancelResponseSchema = resultSchema(z.literal(true));
 export const recoveryCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({
+    kind: z.literal("recovery.choose-overwrite"),
+    versionId: idSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("recovery.confirm-overwrite"),
+    proposalId: idSchema,
+    confirmed: z.literal(true),
+  }),
+  z.strictObject({
     kind: z.literal("recovery.choose-copy"),
     versionId: idSchema,
   }),

@@ -7,6 +7,10 @@ import type { BrowserControlState } from "./browser-controls";
 import type { ProtectedFolder } from "./snapshots";
 import type { FileVersion } from "./files";
 import type { RecoveryCopyProposal, RecoveryCopyResult } from "./recovery";
+import type {
+  RecoveryOverwriteProposal,
+  RecoveryOverwriteResult,
+} from "./recovery-overwrite";
 import type { Checkpoint } from "./files";
 import type {
   CheckpointCreate,
@@ -63,6 +67,13 @@ export interface DesktopApi {
     delete(id: string, confirmed: true): Promise<Result<true>>;
   };
   recovery: {
+    chooseOverwrite(
+      versionId: string,
+    ): Promise<Result<RecoveryOverwriteProposal | null>>;
+    confirmOverwrite(
+      proposalId: string,
+      confirmed: true,
+    ): Promise<Result<RecoveryOverwriteResult>>;
     chooseCopy(versionId: string): Promise<Result<RecoveryCopyProposal | null>>;
     confirmCopy(
       proposalId: string,

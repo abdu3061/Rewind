@@ -12,6 +12,10 @@ export {
   type RecoveryCopyServiceOptions,
 } from "./recovery-copy-service";
 export {
+  RecoveryOverwriteService,
+  type RecoveryOverwriteServiceOptions,
+} from "./recovery-overwrite-service";
+export {
   SessionCoordinator,
   type SessionCoordinatorOptions,
   type CoordinatorStatus,
