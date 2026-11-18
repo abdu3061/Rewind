@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   documentPreviewLimits as limits,
   documentTextSchema,
@@ -11,6 +11,9 @@ import {
   wordNs,
   zipFixture,
 } from "./fixtures.test-support";
+
+beforeAll(() => vi.stubEnv("DISABLE_SYSTEM_FONTS_LOAD", "1"));
+afterAll(() => vi.unstubAllEnvs());
 
 describe("captured DOCX text", () => {
   it.each([false, true])(

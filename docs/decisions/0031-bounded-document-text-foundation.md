@@ -2,6 +2,8 @@
 
 Status: implemented private parsing foundation locally for Rasit's review. Separate utility supervision, resource admission, packaging and user-facing preview integration remain required before production use. This ADR does not approve a release.
 
+Subsequent progress: ADR 0032 implements private utility/resource supervision and verifies actual Forge ASAR/native assets. Normal retained-source and Files/Checkpoints integration is still required; the foundation-stage statements below describe the boundary at this decision.
+
 ## Context and choice
 
 Captured DOCX/PDF original bytes are already encrypted, hash-verified and recoverable. The UTF-8-only preview does not satisfy the document-preview requirement. We need derived text without rendering captured HTML, invoking Office, following links, executing document actions, or sending content to a provider.

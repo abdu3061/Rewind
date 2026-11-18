@@ -21,6 +21,7 @@
     "@rewind/assistant": "0.1.0",
     "@rewind/collectors": "^0.1.0",
     "@rewind/contracts": "0.1.0",
+    "@rewind/documents": "0.1.0",
     "@rewind/engine": "0.1.0",
     "@rewind/storage": "^0.1.0",
     "electron": "44.11.3",

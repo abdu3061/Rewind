@@ -18,7 +18,9 @@ export async function extractPdf(bytes: Uint8Array): Promise<DocumentText> {
   } catch {
     return unavailableDocument("pdf", "unavailable");
   }
-  const require = createRequire(import.meta.url);
+  const require = createRequire(
+    typeof __filename === "string" ? __filename : import.meta.url,
+  );
   const root = dirname(require.resolve("pdfjs-dist/package.json"));
   pdf.GlobalWorkerOptions.workerSrc = pathToFileURL(
     join(root, "legacy/build/pdf.worker.mjs"),

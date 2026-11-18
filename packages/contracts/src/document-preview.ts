@@ -33,8 +33,9 @@ export const documentTextSchema = z
         .max(documentPreviewLimits.textBytes)
         .refine(
           (text) =>
+            text.length <= documentPreviewLimits.textBytes &&
             new TextEncoder().encode(text).byteLength <=
-            documentPreviewLimits.textBytes,
+              documentPreviewLimits.textBytes,
         ),
       truncated: z.boolean(),
       pagesRead: z

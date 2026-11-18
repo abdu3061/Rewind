@@ -40,20 +40,21 @@ If PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in the same commands; cha
 
 Development start and packaging also generate the Windows x64 browser-host executable and extension assets. This requires the Windows Framework64 C# compiler (`Microsoft.NET/Framework64/v4.0.30319/csc.exe`). Generated assets are ignored and packaged under `resources/browser`; building does not register a host or enable browser recording. The installed host will use these precompiled assets, without a runtime host compiler. See [ADR 0021](docs/decisions/0021-browser-assets-and-owned-registration.md).
 
-| Command                                   | Purpose                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------- |
-| `npm run dev`                             | Launch desktop via Electron Forge and Vite                            |
-| `npm run typecheck`                       | Check packages, Electron, renderer, extension, configs, and app tests |
-| `npm run lint`                            | ESLint including renderer import boundaries and React hooks           |
-| `npm test` / `npm run test:watch`         | Vitest unit/contract tests                                            |
-| `npm run format` / `npm run format:check` | Prettier write/check                                                  |
-| `npm run check`                           | Types, lint, formatting, unit tests                                   |
-| `npm run build`                           | Typecheck, extension build, and packaged desktop folder               |
-| `npm run test:app`                        | Launch/test packaged Windows executable; run build first              |
-| `npm run test:browser`                    | Isolated native-relay tests using installed Chrome and Edge           |
-| `npm run make`                            | Build a Windows ZIP through Forge; no signed installer                |
-| `npm run build:extension`                 | Build the browser client into `apps/browser-extension/dist`           |
-| `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser       |
+| Command                                   | Purpose                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `npm run dev`                             | Launch desktop via Electron Forge and Vite                                            |
+| `npm run typecheck`                       | Check packages, Electron, renderer, extension, configs, and app tests                 |
+| `npm run lint`                            | ESLint including renderer import boundaries and React hooks                           |
+| `npm test` / `npm run test:watch`         | Vitest unit/contract tests                                                            |
+| `npm run format` / `npm run format:check` | Prettier write/check                                                                  |
+| `npm run check`                           | Types, lint, formatting, unit tests                                                   |
+| `npm run build`                           | Typecheck, extension build, and packaged desktop folder                               |
+| `npm run test:app`                        | Launch/test packaged Windows executable; run build first                              |
+| `npm run test:browser`                    | Isolated native-relay tests using installed Chrome and Edge                           |
+| `npm run test:documents:packaged`         | Verify private parser utilities against built Windows ASAR/native assets; build first |
+| `npm run make`                            | Build a Windows ZIP through Forge; no signed installer                                |
+| `npm run build:extension`                 | Build the browser client into `apps/browser-extension/dist`                           |
+| `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser                       |
 
 The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`. These outputs are ignored by Git. ARM64 is not yet verified. The Windows CI workflow runs the same checks plus packaged application tests. See [repository status](docs/repository-status.md) for the latest branch review and local verification.
 
