@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { idSchema, timestampSchema, type Result } from "./common";
 import { searchResultSchema, sourceReferenceSchema } from "./search";
+import type { ActivityEvent } from "./activity";
+import type { FileReference } from "./files";
 
 export const assistantEvidenceKeySchema = z
   .string()
@@ -14,6 +16,41 @@ export const assistantEvidenceSchema = z.strictObject({
   evidence: searchResultSchema.shape.evidence,
 });
 export type AssistantEvidence = z.infer<typeof assistantEvidenceSchema>;
+/** Current encrypted-store facts for a disclosure lease; not a filesystem authorization token. */
+export interface AssistantEvidenceSource {
+  event: ActivityEvent;
+  kept: boolean;
+  retentionAnchor: string;
+  file?: FileReference;
+}
+export const assistantReviewPreparationSchema = z.strictObject({
+  question: z.string().trim().min(1).max(1000),
+  activityIds: z
+    .array(idSchema)
+    .min(1)
+    .max(12)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+export const assistantReviewSchema = z.strictObject({
+  id: idSchema,
+  createdAt: timestampSchema,
+  expiresAt: timestampSchema,
+  question: assistantReviewPreparationSchema.shape.question,
+  evidence: z.array(assistantEvidenceSchema).min(1).max(12),
+});
+export type AssistantReview = z.infer<typeof assistantReviewSchema>;
+export const assistantReviewApprovalSchema = z.strictObject({
+  id: idSchema,
+  keys: z
+    .array(assistantEvidenceKeySchema)
+    .min(1)
+    .max(12)
+    .refine((keys) => new Set(keys).size === keys.length),
+  confirmed: z.literal(true),
+});
+export type AssistantReviewApproval = z.infer<
+  typeof assistantReviewApprovalSchema
+>;
 /** Private approved plan, not a renderer-provided evidence or cloud-authorization payload. */
 export const assistantApprovedRequestSchema = z
   .strictObject({

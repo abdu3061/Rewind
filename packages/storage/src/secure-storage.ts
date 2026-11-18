@@ -72,6 +72,7 @@ export class SecureStorage implements SessionStorage {
   constructor(
     private readonly file: string,
     key: Uint8Array,
+    private readonly options: { evidenceChanged?: () => void } = {},
   ) {
     this.key = Buffer.from(key);
   }
@@ -436,16 +437,21 @@ export class SecureStorage implements SessionStorage {
   async cleanup(now = new Date()): Promise<Result<StorageUsage>> {
     const settings = await this.getSettings();
     return settings.ok
-      ? new StorageMaintenance(this.db!, this.file).cleanup(settings.value, now)
+      ? new StorageMaintenance(
+          this.db!,
+          this.file,
+          this.options.evidenceChanged,
+        ).cleanup(settings.value, now)
       : settings;
   }
   async deleteHistory(input: DeleteHistory): Promise<Result<StorageUsage>> {
     const settings = await this.getSettings();
     return settings.ok
-      ? new StorageMaintenance(this.db!, this.file).delete(
-          settings.value,
-          input,
-        )
+      ? new StorageMaintenance(
+          this.db!,
+          this.file,
+          this.options.evidenceChanged,
+        ).delete(settings.value, input)
       : settings;
   }
 }

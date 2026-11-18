@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFileSync, readdirSync } from "node:fs";
 import NativeDatabase from "better-sqlite3-multiple-ciphers";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   createDefaultSettings,
   type ActivityEvent,
@@ -20,12 +20,16 @@ afterEach(async () => {
   for (const store of stores.splice(0)) await store.close();
   for (const root of roots.splice(0)) removeSecureFixture(root);
 });
-async function fixture() {
+async function fixture(evidenceChanged?: () => void) {
   const root = newSecureFixture();
   roots.push(root);
   const file = join(root, "history.sqlite");
   const key = randomBytes(32);
-  const store = new SecureStorage(file, key);
+  const store = new SecureStorage(
+    file,
+    key,
+    evidenceChanged ? { evidenceChanged } : {},
+  );
   stores.push(store);
   expect((await store.open()).ok).toBe(true);
   const sessionId = randomUUID();
@@ -55,6 +59,149 @@ async function fixture() {
   return { store, root, file, key, sessionId, event, inspect };
 }
 const now = new Date("2026-11-17T10:00:00.000Z");
+
+it("reports actual checkpoint retention protection and expires a linked observation only after its newest unkept checkpoint", async () => {
+  const changed = vi.fn(),
+    f = await fixture(changed);
+  const event = f.event("2026-11-10T10:01:00.000Z", "SyntheticLinkedRetention");
+  expect((await f.store.repositories.activities.append([event])).ok).toBe(true);
+  const checkpoint: Checkpoint = {
+    id: randomUUID(),
+    sessionId: f.sessionId,
+    name: "Recent unkept checkpoint",
+    createdAt: "2026-11-14T10:00:00.000Z",
+    kept: false,
+    fileVersionIds: [],
+    activityIds: [event.id],
+    browserVisitIds: [],
+    projectReferences: [],
+  };
+  expect((await f.store.checkpoints.save(checkpoint)).ok).toBe(true);
+  expect(await f.store.evidence.getRetained(event.id)).toEqual({
+    ok: true,
+    value: { event, kept: false, retentionAnchor: checkpoint.createdAt },
+  });
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  expect(changed).not.toHaveBeenCalled();
+  expect((await f.store.evidence.getRetained(event.id)).ok).toBe(true);
+  const olderKept = {
+    ...checkpoint,
+    id: randomUUID(),
+    createdAt: "2026-11-10T10:02:00.000Z",
+    kept: true,
+  };
+  expect((await f.store.checkpoints.save(olderKept)).ok).toBe(true);
+  expect(await f.store.evidence.getRetained(event.id)).toMatchObject({
+    ok: true,
+    value: { kept: true, retentionAnchor: checkpoint.createdAt },
+  });
+  expect((await f.store.cleanup(new Date(now.getTime() + 1))).ok).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(1);
+  expect(await f.store.evidence.getRetained(event.id)).toEqual({
+    ok: true,
+    value: { event, kept: true, retentionAnchor: olderKept.createdAt },
+  });
+  expect(
+    (await f.store.checkpoints.save({ ...olderKept, kept: false })).ok,
+  ).toBe(true);
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  expect(await f.store.evidence.getRetained(event.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+  expect(changed).toHaveBeenCalledTimes(2);
+});
+
+it("recognizes browser checkpoint protection by the actual activity ID across encrypted reopen", async () => {
+  const f = await fixture();
+  const event: ActivityEvent = {
+    id: randomUUID(),
+    sessionId: f.sessionId,
+    occurredAt: "2026-11-10T10:01:00.000Z",
+    type: "browser-visit",
+    source: "browser",
+    payload: {
+      id: randomUUID(),
+      sessionId: f.sessionId,
+      browser: "chrome",
+      title: "Synthetic browser retention",
+      url: "https://example.test/retention",
+      visitedAt: "2026-11-10T10:01:00.000Z",
+      endedAt: null,
+    },
+  };
+  expect((await f.store.repositories.activities.append([event])).ok).toBe(true);
+  const checkpoint: Checkpoint = {
+    id: randomUUID(),
+    sessionId: f.sessionId,
+    name: "Browser checkpoint",
+    createdAt: "2026-11-10T10:02:00.000Z",
+    kept: true,
+    fileVersionIds: [],
+    activityIds: [event.id],
+    browserVisitIds: [event.id],
+    projectReferences: [],
+  };
+  expect((await f.store.checkpoints.save(checkpoint)).ok).toBe(true);
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  await f.store.close();
+  const reopened = new SecureStorage(f.file, f.key);
+  stores.push(reopened);
+  expect((await reopened.open()).ok).toBe(true);
+  expect(await reopened.evidence.getRetained(event.id)).toEqual({
+    ok: true,
+    value: { event, kept: true, retentionAnchor: checkpoint.createdAt },
+  });
+  expect(await reopened.evidence.getRetained(event.payload.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+  expect((await reopened.evidence.getRetained("invalid-id")).ok).toBe(false);
+});
+
+it("invalidates evidence synchronously before deletion commits and rolls back if invalidation fails", async () => {
+  const changed = vi.fn<() => void>(() => {
+    const reader = f.inspect();
+    try {
+      // A separate WAL reader still sees the old committed record while the invalidation runs.
+      expect(
+        reader.prepare("SELECT count(*) AS n FROM activities").get(),
+      ).toEqual({ n: 1 });
+    } finally {
+      reader.close();
+    }
+  });
+  const f = await fixture(changed);
+  const event = f.event("2026-11-10T10:01:00.000Z", "SyntheticBeforeCommit");
+  expect((await f.store.repositories.activities.append([event])).ok).toBe(true);
+  expect((await f.store.usage()).ok).toBe(true);
+  expect((await f.store.evidence.getRetained(event.id)).ok).toBe(true);
+  expect(changed).not.toHaveBeenCalled();
+  changed.mockImplementationOnce(() => {
+    throw new Error("SYNTHETIC_INVALIDATION_FAILED");
+  });
+  expect((await f.store.cleanup(now)).ok).toBe(false);
+  expect(await f.store.evidence.get(event.id)).toEqual({
+    ok: true,
+    value: event,
+  });
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(2);
+  expect(await f.store.evidence.getRetained(event.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  expect(
+    (await f.store.deleteHistory({ confirmed: true, includeKept: true })).ok,
+  ).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(2);
+  expect((await f.store.repositories.activities.append([event])).ok).toBe(true);
+  expect(
+    (await f.store.deleteHistory({ confirmed: true, includeKept: true })).ok,
+  ).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(3);
+});
 
 it("expires old history and FTS entries, retains the boundary, persists settings and survives reopen", async () => {
   const f = await fixture();
@@ -420,7 +567,8 @@ it("scopes deletion, removes search terms and reports a failed transaction witho
     ).toBe(false);
 });
 it("accounts for WAL bytes and enforces quota oldest-first while keeping valid recent data", async () => {
-  const f = await fixture();
+  const changed = vi.fn(),
+    f = await fixture(changed);
   // Generated valid bounded events, never personal files or titles.
   const db = f.inspect();
   try {
@@ -450,8 +598,10 @@ it("accounts for WAL bytes and enforces quota oldest-first while keeping valid r
   });
   const before = await f.store.usage();
   expect(before.ok && before.value.overQuota).toBe(true);
+  expect(changed).not.toHaveBeenCalled();
   const cleaned = await f.store.cleanup(now);
   expect(cleaned).toMatchObject({ ok: true, value: { overQuota: false } });
+  expect(changed).toHaveBeenCalled();
   expect(cleaned.ok && cleaned.value.activityCount).toBeGreaterThan(0);
   expect(cleaned.ok && cleaned.value.activityCount).toBeLessThan(7000);
   await f.store.close();

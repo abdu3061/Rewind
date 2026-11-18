@@ -21,6 +21,7 @@ export class StorageMaintenance {
   constructor(
     private readonly db: Native,
     private readonly file: string,
+    private readonly evidenceChanged?: () => void,
   ) {}
 
   usage(settings: UserSettings): StorageUsage {
@@ -57,7 +58,20 @@ export class StorageMaintenance {
   }
 
   private transaction(operation: () => void): void {
-    this.db.transaction(operation).immediate();
+    this.db
+      .transaction(() => {
+        const changes = () =>
+          (
+            this.db.prepare("SELECT total_changes() AS count").get() as {
+              count: number;
+            }
+          ).count;
+        const before = changes();
+        operation();
+        // Synchronous invalidation runs before commit; no later transmission may use removed evidence.
+        if (changes() !== before) this.evidenceChanged?.();
+      })
+      .immediate();
   }
   private removeOrphans(): void {
     this.db.exec(

@@ -12,6 +12,7 @@ import {
   type Id,
   type Result,
   type Timestamp,
+  type AssistantEvidenceSource,
 } from "@rewind/contracts";
 import { writeFileReference } from "./file-reference";
 
@@ -43,6 +44,46 @@ function rowToActivityEvent(row: ActivityRow): Result<ActivityEvent> {
 
 export class SqliteActivityRepository implements ActivityRepository {
   constructor(private readonly db: DatabaseConnection) {}
+  /** Read after cleanup on the utility queue. Checkpoint protection matches maintenance, including legacy links. */
+  async getRetained(id: Id): Promise<Result<AssistantEvidenceSource | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "An activity ID is required.");
+    try {
+      const links = `SELECT checkpoint_id FROM checkpoint_activities WHERE activity_id=a.id
+        UNION SELECT checkpoint_id FROM checkpoint_browser_visits WHERE browser_visit_id=a.id`;
+      const row = this.db
+        .prepare(
+          `SELECT a.id,a.session_id,a.type,a.source,a.occurred_at,
+        CASE WHEN length(CAST(a.payload AS BLOB))<=262144 THEN a.payload ELSE NULL END AS payload,
+        EXISTS(SELECT 1 FROM checkpoints WHERE kept=1 AND id IN (${links})) AS kept,
+        max(a.occurred_at,coalesce((SELECT max(created_at) FROM checkpoints WHERE id IN (${links})),a.occurred_at)) AS retention_anchor
+        FROM activities a WHERE a.id=?`,
+        )
+        .get(id) as unknown as
+        (ActivityRow & { kept: number; retention_anchor: string }) | undefined;
+      if (!row) return { ok: true, value: null };
+      const event = rowToActivityEvent(row);
+      if (!event.ok) return event;
+      if (
+        ![0, 1].includes(row.kept) ||
+        !timestampSchema.safeParse(row.retention_anchor).success
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "Retained activity protection could not be verified.",
+        );
+      return {
+        ok: true,
+        value: {
+          event: event.value,
+          kept: row.kept === 1,
+          retentionAnchor: row.retention_anchor,
+        },
+      };
+    } catch {
+      return failure("INTEGRITY_FAILURE", "Retained activity is unavailable.");
+    }
+  }
   async get(id: Id): Promise<Result<ActivityEvent | null>> {
     if (!idSchema.safeParse(id).success)
       return failure("INVALID_INPUT", "An activity ID is required.");

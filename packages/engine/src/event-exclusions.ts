@@ -1,6 +1,21 @@
 import { win32 } from "node:path";
 import type { ActivityEvent, UserSettings } from "@rewind/contracts";
 
+export function isExcludedPath(
+  file: string,
+  roots: readonly string[],
+): boolean {
+  return roots.some((root) => {
+    const relative = win32.relative(root.toLowerCase(), file.toLowerCase());
+    return (
+      !relative ||
+      (!relative.startsWith("..\\") &&
+        relative !== ".." &&
+        !win32.isAbsolute(relative))
+    );
+  });
+}
+
 /** Exclusions are additional denials, never proof of canonical path/site authorization. */
 export function isExcluded(
   event: ActivityEvent,
@@ -30,16 +45,10 @@ export function isExcluded(
     event.type === "file-opened" &&
     event.payload.identity.kind === "verified-path"
   ) {
-    const file = event.payload.identity.absolutePath;
-    return settings.excludedFolderPaths.some((root) => {
-      const relative = win32.relative(root.toLowerCase(), file.toLowerCase());
-      return (
-        !relative ||
-        (!relative.startsWith("..\\") &&
-          relative !== ".." &&
-          !win32.isAbsolute(relative))
-      );
-    });
+    return isExcludedPath(
+      event.payload.identity.absolutePath,
+      settings.excludedFolderPaths,
+    );
   }
   return false;
 }

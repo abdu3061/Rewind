@@ -1,5 +1,7 @@
 # Engineering findings
 
+The assistant source-authorization gap now has an engine review/lease implementation (ADR 0028): actual source IDs, explicit immutable subsets, checkpoint-aware expiration, current exclusions and irreversible denial. Encrypted maintenance invalidates authority before actual mutation commits and rolls back when that invalidation fails. Focused tests cover storage/engine behavior; composition must still wire cancellation and privacy invalidation before normal cloud use can be accepted.
+
 Gemini key handling now has encrypted operational storage and native-to-utility sealed entry (ADR 0027), with no plaintext key in main/preload/renderer/PowerShell variables. Tests verify current private primitives, corruption/restart, replay/expiry, quiescence and synthetic CNG-to-cipher interoperability. The interactive dialog and normal public cloud workflow are not yet accepted. No key configuration grants cloud authority.
 
 The conditional Gemini foundation now addresses the old unsafe tool-loop pattern through a fixed reviewed evidence pool, typed citations, explicit source/current-approval checks, bounded actual SDK transport and observed cancellation (ADR 0025). Fifteen synthetic HTTP tests pass; this is not desktop or live-provider acceptance. Private credentials and actual review/consent/source composition remain required. Clean-install audit findings were traced to unchanged baseline tooling; compatible upstream fixes remove glob/minimatch findings, while unpatched picomatch remains a documented tooling risk (ADR 0026).

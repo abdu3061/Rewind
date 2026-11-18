@@ -1,5 +1,7 @@
 # Architecture
 
+Engine-owned assistant sharing reviews now select actual retained activity IDs and expose immutable bounded excerpts for explicit subset approval (ADR 0028). Private disclosure leases revalidate source identity, policy and checkpoint-aware wall/monotonic retention; actual maintenance writes offer synchronous invalidation before commit. Utility/model and public Search composition remain in progress.
+
 Private Gemini credential primitives now use the cipher database and a two-minute native-to-utility sealed entry channel (ADR 0027). Main receives public/sealed metadata only. They are not yet wired to normal public controls; engine review/permission/Search composition remains required.
 
 The conditional assistant now has a private approved-evidence SDK service (ADR 0025), with strict read-only tools, typed citations, current-approval/source checks and bounded/cancellable transport. It is not yet composed into normal desktop cloud controls; credential/review/Search integration remains required. Tooling security updates and the remaining unpatched development advisory are recorded in ADR 0026.

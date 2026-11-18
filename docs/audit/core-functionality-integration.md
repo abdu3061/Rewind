@@ -1,5 +1,13 @@
 # Core functionality integration
 
+## Retained evidence review follow-up: 18 November 2026
+
+The engine now issues bounded immutable local sharing reviews from actual activity IDs, consumes explicit selected-key approval once, and revalidates approved records through a private disclosure lease. Current exclusions, record identity, source changes and retention apply before each transmission. Observed denial or failed source verification permanently ends the lease. Wall and monotonic deadlines account for actual checkpoint protection and can only shorten during revalidation. The encrypted activity repository supplies actual retention anchors; ordinary maintenance synchronously invalidates removed evidence before committing, and a failed invalidation rolls back the transaction. No new schema or dependency is introduced. See ADR 0028.
+
+Eleven engine review tests and thirteen encrypted maintenance tests cover immutable selection, redaction, privacy, changed/deleted sources, both clocks, kept/unkept checkpoint cutoffs, actual browser activity identity, encrypted reopen, no-op reads, pre-commit invalidation, rollback and quota eviction. This is a private integration step: utility composition, native credential routing, launch approval, Search controls and packaged assistant verification remain required. Normal Gemini is still unavailable.
+
+The review checkpoint passes `npm run check`: **460 tests / 55 files**, strict TypeScript, lint, formatting and native install metadata. The preceding credential checkpoint's packaged build/app/browser results below remain historical; this review step does not claim a newly packaged assistant flow.
+
 Latest checkpoint: milestones 1-5 have integrated local implementation and regression evidence, including normal Chrome/Edge recording and confirmed overwrite with verified preservation. Conditional Gemini has a bounded official-SDK foundation plus private encrypted credential/native sealing primitives; normal permission/review/Search composition remains unfinished (ADRs 0025-0027). The current full check passes 446 tests across 54 files, Windows build passes and the rebuilt app passes 16 packaged tests. This is not full-goal completion. Historical sections retain their original scope.
 
 ## Private credential boundary: 18 November 2026

@@ -1,5 +1,7 @@
 # Dependency-ordered development roadmap
 
+Engine-issued sharing reviews and disclosure leases now bind actual retained source IDs to an immutable per-question approval (ADR 0028). Checkpoint-aware wall/monotonic expiry and synchronous pre-commit maintenance invalidation prevent stale authorization. The next step is utility/native credential and cloud-permission composition, followed by real Search controls and synthetic packaged SDK verification. This private step does not enable ordinary cloud use.
+
 Private Gemini credentials now have cipher-backed revision checks and a short-lived sealed native-entry boundary (ADR 0027), verified without real user keys or provider calls. Full checks pass 446 tests and the rebuilt package passes 16 tests. Next wire the private dialog/worker lifecycle and actual source-review/permission/Search flows. Cloud remains unavailable until that complete composition is verified.
 
 Conditional Gemini has a private official-SDK approved-evidence foundation (ADR 0025), with fifteen synthetic SDK/HTTP tests for source/tool validation, privacy revocation, budgets and cancellation. Normal cloud use stays unavailable until private credential handling, engine-issued reviews/source revalidation and real public/Search consent controls are integrated and verified. ADR 0026 tracks compatible tooling security updates and the remaining no-fix development advisory.

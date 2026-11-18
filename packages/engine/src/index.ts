@@ -1,5 +1,10 @@
 export { SessionService, type SessionEnvironment } from "./session-service";
 export {
+  AssistantReviewService,
+  type AssistantDisclosureLease,
+  type AssistantReviewOptions,
+} from "./assistant-review-service";
+export {
   BrowserCollector,
   type BrowserCollectorOptions,
 } from "./browser-collector";
