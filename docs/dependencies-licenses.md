@@ -4,6 +4,8 @@ No ActivityWatch, aw-watcher-web, or ZFileTimeMachine implementation source is c
 
 ## Current dependency follow-up
 
+19 November 2026: the private document-text foundation pins PDF.js `6.5.438` (Apache-2.0), yauzl `3.4.0` (MIT) and sax `1.6.1` (BlueOak-1.0.0), with pinned matching type packages. PDF.js's optional canvas runtime and Windows x64 prebuild resolve to `@napi-rs/canvas` `1.1.1` (MIT). Installed package metadata was inspected and the production-only npm audit reports zero known vulnerabilities. This foundation is not yet exposed in the app; package assets/native compatibility, utility resource admission and full notice preservation remain required. See ADR 0031. Mammoth was considered as a future reference but is not installed; the bounded DOCX projection uses ZIP/XML directly.
+
 18 November 2026: the private assistant workspace now pins official `@google/genai` 3.5.0 (Apache-2.0, installed LICENSE inspected, Node >=22). It is not yet wired into normal desktop cloud controls. No ADK, cloud database, remote auth or file storage is added. SDK keys remain privileged; public composition is gated by ADR 0025. Preserve the SDK and transitive notices when it is bundled for distribution.
 
 Tooling updates pin ESLint 10.15.0 and typescript-eslint 8.73.0; compatible ASAR 4.3.2 resolves patched glob/minimatch versions. ADR 0026 records the audit and remaining unpatched picomatch tooling exposure. A production-only audit reports zero known vulnerabilities; full release review remains required. The historical starter inventory below retains its original date.

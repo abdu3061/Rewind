@@ -39,6 +39,7 @@ export default tseslint.config(
             "@rewind/storage",
             "@rewind/collectors",
             "@rewind/assistant",
+            "@rewind/documents",
             "@google/genai",
             "@google/genai/*",
           ],

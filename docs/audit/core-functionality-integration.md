@@ -1,6 +1,8 @@
 # Core functionality integration
 
-Current checkpoint, 19 November 2026: the recording/storage/recovery/browser UI is integrated, and optional reviewed-evidence Gemini questions now run through normal Settings/Search. **The goal remains active:** DOCX/PDF original bytes are preserved and recoverable, but content previews are still unavailable for those formats. Existing UTF-8 previews do not prove completion of every document-preview requirement. The current full check passes **478 tests / 57 files**, Windows build passes, and the rebuilt executable passes **18 packaged tests** plus **6 installed-browser tests**.
+Document foundation checkpoint, 19 November 2026: private `@rewind/documents` now extracts bounded plain text from actual DOCX ZIP/XML and ordinary PDF bytes. Its 25 synthetic tests pass; the full foundation check passes **503 tests / 58 files**, TypeScript, lint, formatting and native install metadata. ADR 0031 records dependencies, bounds and failure behavior. This package is not yet connected to the app. Separate utility resource admission, deadlines/cancellation, packaged assets and retained-source/UI integration remain active work; do not describe document previews as available yet.
+
+The preceding integrated app checkpoint has recording/storage/recovery/browser UI and optional reviewed-evidence Gemini in normal Settings/Search: **478 tests / 57 files**, Windows build, **18 packaged tests** and **6 installed-browser tests**. Those build/app results predate the document foundation. **The goal remains active:** DOCX/PDF original bytes are preserved and recoverable, but normal content previews remain unavailable for those formats until the new foundation is safely integrated and verified.
 
 ## Public reviewed Gemini questions
 

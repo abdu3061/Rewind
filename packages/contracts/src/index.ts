@@ -5,6 +5,7 @@ export * from "./files";
 export * from "./search";
 export * from "./assistant";
 export * from "./assistant-controls";
+export * from "./document-preview";
 export * from "./settings";
 export * from "./recovery";
 export * from "./recovery-overwrite";
