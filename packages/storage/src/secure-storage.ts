@@ -36,6 +36,10 @@ import {
   BrowserSetupRepository,
   verifyBrowserSetupJournal,
 } from "./browser-setup-repository";
+import {
+  AssistantCredentialRepository,
+  verifyAssistantCredential,
+} from "./assistant-credential-repository";
 
 type Native = InstanceType<typeof NativeDatabase>;
 const ok = (): Result<void> => ({ ok: true, value: undefined });
@@ -84,6 +88,11 @@ export class SecureStorage implements SessionStorage {
     if (!this.repositorySet || !this.db)
       throw new Error("SECURE_STORAGE_UNAVAILABLE");
     return new BrowserSetupRepository(connection(this.db));
+  }
+  get assistantCredential(): AssistantCredentialRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    return new AssistantCredentialRepository(connection(this.db));
   }
   get evidence(): SqliteActivityRepository {
     if (!this.repositorySet || !this.db)
@@ -168,6 +177,7 @@ export class SecureStorage implements SessionStorage {
       verifyRepositorySchema(connection(db));
       verifySnapshotSchema(connection(db));
       verifyBrowserSetupJournal(connection(db));
+      verifyAssistantCredential(connection(db));
       db.prepare("SELECT id, payload FROM runtime_settings LIMIT 0").all();
       db.prepare("SELECT rowid, text FROM activity_fts LIMIT 0").all();
       const triggers = db

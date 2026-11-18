@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { idSchema, timestampSchema } from "./common";
+import { idSchema, timestampSchema, type Result } from "./common";
 import { searchResultSchema, sourceReferenceSchema } from "./search";
 
 export const assistantEvidenceKeySchema = z
@@ -63,3 +63,50 @@ export const evidenceAnswerSchema = z
   })
   .refine((value) => value.insufficientEvidence || value.sources.length > 0);
 export type EvidenceAnswer = z.infer<typeof evidenceAnswerSchema>;
+
+// Privileged credential boundary only. These schemas do not create a renderer capability.
+export const geminiApiKeySchema = z.string().regex(/^[A-Za-z0-9_-]{16,512}$/);
+export const assistantCredentialSchema = z
+  .strictObject({
+    revision: z
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER - 1),
+    apiKey: geminiApiKeySchema.nullable(),
+    updatedAt: timestampSchema.nullable(),
+  })
+  .refine((value) =>
+    value.revision === 0
+      ? value.apiKey === null && value.updatedAt === null
+      : value.updatedAt !== null,
+  );
+export type AssistantCredential = z.infer<typeof assistantCredentialSchema>;
+export interface AssistantCredentialStore {
+  read(): Promise<Result<AssistantCredential>>;
+  write(
+    expectedRevision: number,
+    apiKey: string | null,
+    updatedAt: string,
+  ): Promise<Result<void>>;
+}
+export const assistantCredentialChallengeSchema = z.strictObject({
+  id: idSchema,
+  expiresAt: timestampSchema,
+  modulus: z.string().regex(/^[A-Za-z0-9+/]{683}=$/),
+  exponent: z.literal("AQAB"),
+});
+export type AssistantCredentialChallenge = z.infer<
+  typeof assistantCredentialChallengeSchema
+>;
+export const assistantSealedCredentialSchema = z.strictObject({
+  id: idSchema,
+  sealed: z.string().regex(/^[A-Za-z0-9+/]{683}=$/),
+});
+export type AssistantSealedCredential = z.infer<
+  typeof assistantSealedCredentialSchema
+>;
+export const assistantCredentialPlaintextSchema = z.strictObject({
+  id: idSchema,
+  apiKey: geminiApiKeySchema,
+});

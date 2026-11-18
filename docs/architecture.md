@@ -1,5 +1,7 @@
 # Architecture
 
+Private Gemini credential primitives now use the cipher database and a two-minute native-to-utility sealed entry channel (ADR 0027). Main receives public/sealed metadata only. They are not yet wired to normal public controls; engine review/permission/Search composition remains required.
+
 The conditional assistant now has a private approved-evidence SDK service (ADR 0025), with strict read-only tools, typed citations, current-approval/source checks and bounded/cancellable transport. It is not yet composed into normal desktop cloud controls; credential/review/Search integration remains required. Tooling security updates and the remaining unpatched development advisory are recorded in ADR 0026.
 
 Current recovery composition also includes optional explicitly confirmed overwrite with current target proof, exclusive admission and verified preservation before mutation; [ADR 0024](decisions/0024-confirmed-overwrite-preservation.md) governs this workflow and its interrupted-write limits. Core checks pass 410 unit tests, 16 packaged tests and 6 installed-browser tests.

@@ -280,7 +280,7 @@ it.each(["missing", "malformed", "extra-permission"] as const)(
 
 it("upgrades the previous encrypted schema without replacing existing settings or evidence", async () => {
   const writer = raw();
-  applySecureMigrations(connection(writer), secureMigrations.slice(0, -1));
+  applySecureMigrations(connection(writer), secureMigrations.slice(0, 7));
   const settings = {
     ...createDefaultSettings(),
     excludedApplications: ["SyntheticPriorSchema.exe"],

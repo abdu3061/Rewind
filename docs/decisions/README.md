@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0027](0027-private-gemini-credential-boundary.md) records encrypted operational credential storage and native input sealed directly to a utility-only ephemeral recipient. Private primitives are verified; normal cloud controls remain unfinished.
+
 [ADR 0025](0025-approved-evidence-gemini-foundation.md) records the private official-SDK approved-evidence foundation. Normal cloud composition remains unavailable. [ADR 0026](0026-tooling-glob-security-updates.md) records compatible tooling security updates and the remaining unpatched development-tool advisory.
 
 [ADR 0024](0024-confirmed-overwrite-preservation.md) records optional explicitly confirmed overwrite, current target proof, exclusive mapped-file-aware admission, verified preservation before mutation and failure/rollback limits. Implemented locally for owner review.

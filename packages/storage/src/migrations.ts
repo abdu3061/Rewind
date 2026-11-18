@@ -7,6 +7,7 @@ import snapshotBytes from "../../../db/migrations/005_snapshot_bytes.sql?raw";
 import fileSearch from "../../../db/migrations/006_file_activity_search.sql?raw";
 import checkpointEvidence from "../../../db/migrations/007_checkpoint_activity_evidence.sql?raw";
 import browserSetup from "../../../db/migrations/008_browser_setup_journal.sql?raw";
+import assistantCredential from "../../../db/migrations/009_assistant_credential.sql?raw";
 import type { DatabaseConnection } from "./database";
 
 export interface Migration {
@@ -23,6 +24,7 @@ export const secureMigrations: readonly Migration[] = [
   { version: 6, name: "file-activity-search", sql: fileSearch },
   { version: 7, name: "checkpoint-activity-evidence", sql: checkpointEvidence },
   { version: 8, name: "browser-setup-journal", sql: browserSetup },
+  { version: 9, name: "assistant-credential", sql: assistantCredential },
 ];
 export function applySecureMigrations(
   db: DatabaseConnection,
