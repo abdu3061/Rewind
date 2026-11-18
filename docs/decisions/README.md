@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0029](0029-utility-assistant-composition.md) records actual encrypted-source/SDK utility composition, separate launch approval, private sealed credential routing, mutation invalidation and observed shutdown. Main/preload/Search integration remains in progress.
+
 [ADR 0028](0028-retained-evidence-disclosure-leases.md) records engine-issued immutable sharing reviews, checkpoint-aware retention deadlines, single-use disclosure leases and pre-commit maintenance invalidation. Normal assistant composition remains in progress.
 
 [ADR 0027](0027-private-gemini-credential-boundary.md) records encrypted operational credential storage and native input sealed directly to a utility-only ephemeral recipient. Private primitives are verified; normal cloud controls remain unfinished.

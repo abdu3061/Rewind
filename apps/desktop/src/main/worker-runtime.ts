@@ -29,6 +29,8 @@ import { FileOperations } from "./file-operations";
 import { RecoveryOperations } from "./recovery-operations";
 import { CheckpointOperations } from "./checkpoint-operations";
 import { BrowserOperations } from "./browser-operations";
+import { AssistantOperations } from "./assistant-operations";
+import type { GeminiEvidenceOptions } from "@rewind/assistant";
 import { NativeBrowserBridge } from "./browser-bridge";
 import { SecureStorage } from "@rewind/storage";
 import {
@@ -44,6 +46,8 @@ export interface WorkerRuntimeOptions {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
   strategy?: WindowQueryStrategy;
+  /** Test-only in-process seam; never accepted in the worker bootstrap protocol. */
+  assistantTransport?: GeminiEvidenceOptions["transport"];
 }
 
 /** Privileged worker composition only; fixture observations are explicit and visibly labelled. */
@@ -53,6 +57,7 @@ export class WorkerRuntime {
   private settings: UserSettings = createDefaultSettings();
   private ready = false;
   private closing = false;
+  private stopped = false;
   private fault: AppError | null = null;
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private maintenancePending = false;
@@ -61,10 +66,12 @@ export class WorkerRuntime {
   private recovery: RecoveryOperations | null = null;
   private checkpoints: CheckpointOperations | null = null;
   private browser: BrowserOperations | null = null;
+  private assistant: AssistantOperations | null = null;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
       options.key,
+      { evidenceChanged: () => this.assistant?.invalidate() },
     );
     options.key.fill(0);
   }
@@ -251,7 +258,8 @@ export class WorkerRuntime {
             this.coordinator?.getStatus().unavailable &&
             (this.settings.collectionConsent ||
               this.settings.folderCollectionConsent ||
-              this.settings.browserCollectionConsent)
+              this.settings.browserCollectionConsent ||
+              this.settings.cloudAiEnabled)
           ) {
             this.preferenceRevision++;
             this.settings = {
@@ -259,7 +267,9 @@ export class WorkerRuntime {
               collectionConsent: false,
               folderCollectionConsent: false,
               browserCollectionConsent: false,
+              cloudAiEnabled: false,
             };
+            this.assistant?.revoke();
           }
           if (this.ready) this.options.onSnapshot(this.snapshot());
         },
@@ -317,6 +327,27 @@ export class WorkerRuntime {
       const initialized = await this.coordinator.initialize();
       if (!initialized.ok)
         return await this.initializationFailure(initialized.error);
+      this.assistant = new AssistantOperations({
+        storage: this.storage,
+        coordinator: this.coordinator,
+        available: () =>
+          this.ready &&
+          !this.closing &&
+          !this.fault &&
+          !this.coordinator!.getStatus().unavailable,
+        getSettings: () => this.settings,
+        changePermission: (enabled, current) =>
+          this.changeCloudPermission(enabled, current),
+        notify: () => {
+          if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+        ...(this.options.assistantTransport
+          ? { transport: this.options.assistantTransport }
+          : {}),
+      });
+      const assistantInitialized = await this.assistant.initialize();
+      if (!assistantInitialized.ok)
+        return await this.initializationFailure(assistantInitialized.error);
       this.browser = new BrowserOperations({
         root: this.options.root,
         synthetic: this.options.synthetic,
@@ -390,6 +421,7 @@ export class WorkerRuntime {
   }
   private async initializationFailure(error: AppError): Promise<Result<never>> {
     this.fault = error;
+    await this.assistant?.close();
     await this.browser?.close();
     if (this.coordinator) await this.coordinator.shutdown();
     else await this.storage.close();
@@ -409,7 +441,38 @@ export class WorkerRuntime {
         "The secure recording service is unavailable.",
       );
     try {
+      if (
+        [
+          "preferences.update",
+          "storage.update",
+          "storage.cleanup",
+          "storage.delete",
+          "files.add",
+          "files.permission",
+          "files.remove",
+          "browser.install",
+          "browser.remove",
+          "browser.repair",
+          "browser.permission",
+          "browser.exclusions",
+          "checkpoints.create",
+          "checkpoints.update",
+          "checkpoints.delete",
+        ].includes(command.kind)
+      )
+        this.denyAssistant();
       switch (command.kind) {
+        case "assistant.state":
+        case "assistant.permission":
+        case "assistant.forget":
+        case "assistant.prepare":
+        case "assistant.ask":
+        case "assistant.cancel":
+        case "assistant.stop":
+        case "assistant.credential.prepare":
+        case "assistant.credential.accept":
+        case "assistant.credential.cancel":
+          return await this.assistant!.execute(command);
         case "browser.verify-assets":
           return await this.browser!.verifyAssets();
         case "browser.state":
@@ -576,11 +639,61 @@ export class WorkerRuntime {
       this.settings.collectionConsent = false;
       this.settings.folderCollectionConsent = false;
       this.settings.browserCollectionConsent = false;
+      this.denyAssistant();
       void this.coordinator.revokeConsent();
       return { ok: false, error: this.fault };
     } finally {
       this.options.onSnapshot(this.snapshot());
     }
+  }
+  private denyAssistant(): void {
+    this.settings = { ...this.settings, cloudAiEnabled: false };
+    this.assistant?.revoke();
+  }
+  private async changeCloudPermission(
+    enabled: boolean,
+    current: () => boolean,
+  ): Promise<Result<void>> {
+    const revision = ++this.preferenceRevision;
+    if (!enabled) this.settings = { ...this.settings, cloudAiEnabled: false };
+    const candidate = { ...this.settings, cloudAiEnabled: enabled };
+    const authorized = () =>
+      !this.closing && revision === this.preferenceRevision && current();
+    if (!authorized())
+      return failure(
+        "CONFLICT",
+        "A newer privacy operation superseded cloud approval.",
+      );
+    const changed = await this.coordinator!.updateSettings(
+      candidate,
+      async () => {
+        if (!authorized())
+          return failure(
+            "CONFLICT",
+            "Cloud approval changed before persistence.",
+          );
+        const saved = await this.storage.saveSettings(candidate);
+        if (!saved.ok) return saved;
+        if (!authorized())
+          return failure(
+            "CONFLICT",
+            "Cloud approval changed during persistence.",
+          );
+        this.settings = candidate;
+        return { ok: true, value: undefined };
+      },
+    );
+    if (!changed.ok && revision === this.preferenceRevision) {
+      this.settings = {
+        ...this.settings,
+        collectionConsent: false,
+        folderCollectionConsent: false,
+        browserCollectionConsent: false,
+        cloudAiEnabled: false,
+      };
+      this.assistant?.revoke();
+    }
+    return changed.ok ? { ok: true, value: undefined } : changed;
   }
   private async freshTimeline(query: Parameters<SecureStorage["timeline"]>[0]) {
     const cleaned = await this.storage.cleanup();
@@ -598,6 +711,7 @@ export class WorkerRuntime {
     try {
       const result = await this.coordinator.read(() => this.storage.cleanup());
       if (!result.ok || result.value.overQuota) {
+        this.denyAssistant();
         this.settings.collectionConsent = false;
         this.settings.folderCollectionConsent = false;
         this.settings.browserCollectionConsent = false;
@@ -619,6 +733,7 @@ export class WorkerRuntime {
       )
     ) {
       this.fault = result.error;
+      this.denyAssistant();
       this.ready = false;
       this.settings.collectionConsent = false;
       this.settings.folderCollectionConsent = false;
@@ -628,9 +743,11 @@ export class WorkerRuntime {
     return result;
   }
   async shutdown(): Promise<Result<true>> {
+    if (this.stopped) return { ok: true, value: true };
     if (this.maintenanceTimer) clearInterval(this.maintenanceTimer);
     this.maintenanceTimer = null;
     this.closing = true;
+    this.denyAssistant();
     this.preferenceRevision++;
     this.settings.collectionConsent = false;
     this.settings.folderCollectionConsent = false;
@@ -641,6 +758,8 @@ export class WorkerRuntime {
     if (browserStopped && !browserStopped.ok) return browserStopped;
     const recoveryStopped = await this.recovery?.close();
     if (recoveryStopped && !recoveryStopped.ok) return recoveryStopped;
+    const assistantStopped = await this.assistant?.close();
+    if (assistantStopped && !assistantStopped.ok) return assistantStopped;
     const stopped = this.coordinator
       ? await this.coordinator.shutdown()
       : await this.storage.close();
@@ -649,6 +768,7 @@ export class WorkerRuntime {
       return stopped;
     }
     this.ready = false;
+    this.stopped = true;
     return { ok: true, value: true };
   }
 }

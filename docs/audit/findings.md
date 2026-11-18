@@ -1,5 +1,7 @@
 # Engineering findings
 
+Assistant utility composition now joins actual cipher-backed source reviews, sealed credential configuration and bounded SDK execution under separate launch approval (ADR 0029). Tests found and corrected repeated-shutdown failure and an older grant failure invalidating a newer denial. A transport ignoring abort remains tracked and prevents replacement. This closes the private composition gap, while main/native public routing, preload/UI and packaged assistant acceptance remain actionable.
+
 The assistant source-authorization gap now has an engine review/lease implementation (ADR 0028): actual source IDs, explicit immutable subsets, checkpoint-aware expiration, current exclusions and irreversible denial. Encrypted maintenance invalidates authority before actual mutation commits and rolls back when that invalidation fails. Focused tests cover storage/engine behavior; composition must still wire cancellation and privacy invalidation before normal cloud use can be accepted.
 
 Gemini key handling now has encrypted operational storage and native-to-utility sealed entry (ADR 0027), with no plaintext key in main/preload/renderer/PowerShell variables. Tests verify current private primitives, corruption/restart, replay/expiry, quiescence and synthetic CNG-to-cipher interoperability. The interactive dialog and normal public cloud workflow are not yet accepted. No key configuration grants cloud authority.

@@ -1,5 +1,9 @@
 # Dependency-ordered development roadmap
 
+The utility now integrates encrypted source review, private sealed credentials, separate launch approval and actual official-SDK requests (ADR 0029), tested with synthetic HTTP and actual cipher history. Cancellation/replacement, deletion, restart, exclusions and denial races are covered. Next wire the owned native dialog lifecycle into main, add explicit validated preload capabilities, implement Settings/Search sharing controls and verify the full packaged flow. Ordinary cloud use remains unavailable until that work is done.
+
+The utility checkpoint passes the full 470-test check, Windows build, 16 rebuilt app tests and 6 installed-browser tests. These are private assistant integration and existing-core regression results, not normal assistant UI or live-provider acceptance.
+
 Engine-issued sharing reviews and disclosure leases now bind actual retained source IDs to an immutable per-question approval (ADR 0028). Checkpoint-aware wall/monotonic expiry and synchronous pre-commit maintenance invalidation prevent stale authorization. The next step is utility/native credential and cloud-permission composition, followed by real Search controls and synthetic packaged SDK verification. This private step does not enable ordinary cloud use.
 
 Private Gemini credentials now have cipher-backed revision checks and a short-lived sealed native-entry boundary (ADR 0027), verified without real user keys or provider calls. Full checks pass 446 tests and the rebuilt package passes 16 tests. Next wire the private dialog/worker lifecycle and actual source-review/permission/Search flows. Cloud remains unavailable until that complete composition is verified.

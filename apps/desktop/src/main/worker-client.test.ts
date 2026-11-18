@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   preferencesResponseSchema,
@@ -7,6 +7,8 @@ import {
   type WorkerInput,
   type BrowserAssetsLocation,
   browserControlResponseSchema,
+  assistantControlResponseSchema,
+  assistantAnswerResponseSchema,
 } from "@rewind/contracts";
 import { WorkerClient, type WorkerTransport } from "./worker-client";
 const ready = (): RuntimeSnapshot => ({
@@ -73,7 +75,10 @@ afterEach(async () => {
   for (const client of clients.splice(0)) await client.shutdown();
   vi.useRealTimers();
 });
-function fixture(browserAssets?: BrowserAssetsLocation) {
+function fixture(
+  browserAssets?: BrowserAssetsLocation,
+  requestTimeoutMs: number | null = 30,
+) {
   const children: SyntheticTransport[] = [];
   const spawn = vi.fn(() => {
     const child = new SyntheticTransport();
@@ -90,7 +95,7 @@ function fixture(browserAssets?: BrowserAssetsLocation) {
     onSnapshot: vi.fn(),
     onActivity: vi.fn(),
     startupTimeoutMs: 30,
-    requestTimeoutMs: 30,
+    ...(requestTimeoutMs === null ? {} : { requestTimeoutMs }),
   });
   clients.push(client);
   return { client, children, spawn };
@@ -159,6 +164,58 @@ it("stops the worker instead of dropping browser denial behind a saturated reque
   expect((await Promise.all(pending)).every((result) => !result.ok)).toBe(true);
   expect((await f.client.retry()).ok).toBe(true);
   expect(f.client.getSnapshot().browserPermission).toBe(false);
+});
+it.each([
+  { kind: "assistant.permission", enabled: false },
+  { kind: "assistant.stop" },
+  { kind: "assistant.forget", confirmed: true },
+] as const)(
+  "stops the worker instead of dropping $kind behind a saturated request map",
+  async (command) => {
+    const f = fixture();
+    await f.client.start();
+    f.children[0]!.replyAutomatically = false;
+    const pending = Array.from({ length: 64 }, () => f.client.execute("get"));
+    expect(
+      (await f.client.request(command, assistantControlResponseSchema)).ok,
+    ).toBe(false);
+    expect(f.client.getSnapshot().service).toBe("unavailable");
+    expect((await Promise.all(pending)).every((result) => !result.ok)).toBe(
+      true,
+    );
+  },
+);
+it("allows the bounded model request to finish beyond the ordinary command deadline", async () => {
+  vi.useFakeTimers();
+  const f = fixture(undefined, null);
+  await f.client.start();
+  const child = f.children[0]!;
+  child.replyAutomatically = false;
+  const asking = f.client.request(
+    {
+      kind: "assistant.ask",
+      value: { id: randomUUID(), keys: ["E1"], confirmed: true },
+    },
+    assistantAnswerResponseSchema,
+  );
+  const command = child.messages
+    .filter((message) => message.type === "command")
+    .at(-1);
+  if (!command || command.type !== "command")
+    throw new Error("SYNTHETIC_COMMAND_MISSING");
+  await vi.advanceTimersByTimeAsync(39999);
+  expect(f.client.getSnapshot().service).toBe("ready");
+  child.reply(command, {
+    answer: {
+      text: "Insufficient synthetic evidence.",
+      sources: [],
+      insufficientEvidence: true,
+    },
+    revision: 1,
+    expiresAt: new Date().toISOString(),
+  });
+  expect((await asking).ok).toBe(true);
+  child.replyAutomatically = true;
 });
 it("routes concurrent replies by request ID even when they arrive out of order", async () => {
   const f = fixture();

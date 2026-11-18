@@ -337,6 +337,11 @@ export class WorkerClient {
     decoder: Decoder<T>,
   ): Promise<Result<T>> {
     const allowedStop =
+      command.kind === "assistant.stop" ||
+      command.kind === "assistant.forget" ||
+      command.kind === "assistant.cancel" ||
+      command.kind === "assistant.credential.cancel" ||
+      (command.kind === "assistant.permission" && !command.enabled) ||
       (command.kind === "browser.permission" && !command.enabled) ||
       command.kind === "shutdown" ||
       command.kind === "storage.delete" ||
@@ -359,6 +364,7 @@ export class WorkerClient {
         "storage.usage",
         "files.state",
         "browser.state",
+        "assistant.state",
         "versions.list",
         "versions.preview",
         "versions.info",
@@ -398,15 +404,21 @@ export class WorkerClient {
             message: "The recording service did not acknowledge the operation.",
           }),
         this.options.requestTimeoutMs ??
-          (command.kind === "recovery.confirm-copy" ||
-          command.kind === "recovery.confirm-overwrite" ||
-          command.kind === "recovery.prepare-overwrite"
-            ? 20000
-            : ["browser.install", "browser.remove", "browser.repair"].includes(
-                  command.kind,
-                )
-              ? 60000
-              : 7000),
+          (command.kind === "assistant.ask"
+            ? 40000
+            : command.kind === "assistant.credential.prepare"
+              ? 20000
+              : command.kind === "recovery.confirm-copy" ||
+                  command.kind === "recovery.confirm-overwrite" ||
+                  command.kind === "recovery.prepare-overwrite"
+                ? 20000
+                : [
+                      "browser.install",
+                      "browser.remove",
+                      "browser.repair",
+                    ].includes(command.kind)
+                  ? 60000
+                  : 7000),
       );
       this.pending.set(id, { kind: command.kind, resolve, timer });
       try {

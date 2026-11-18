@@ -441,6 +441,7 @@ export class GeminiEvidenceAssistant {
     }
     const parsed = assistantModelAnswerSchema.safeParse(value);
     if (!parsed.success) return invalid();
+    if (parsed.data.text.includes(this.options.apiKey)) return invalid();
     if (parsed.data.sourceKeys.some((key) => !selected.has(key)))
       return invalid();
     const final = await verify(chosen);

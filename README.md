@@ -66,7 +66,7 @@ packages/contracts/   Validated domain models, ports, public desktop API
 packages/engine/      Pure session state machine and failure-aware coordinator
 packages/storage/     Encrypted SQLite, migrations, repositories and protected-key port
 packages/collectors/  Windows foreground helper, lifecycle ports and inactive browser framing
-packages/assistant/   Validated-tool design boundary; no cloud requests
+packages/assistant/   Official Gemini SDK adapter; public integration in progress
 tests/app/            Packaged Electron integration tests
 docs/                 Specification, architecture, ownership, backlog, ADRs
 .github/              Windows CI, PR template, CODEOWNERS

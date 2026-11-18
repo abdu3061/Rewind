@@ -6,6 +6,7 @@ import { fileCommandSchema } from "./file-controls";
 import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
 import { browserCommandSchema } from "./browser-controls";
+import { assistantWorkerCommandSchema } from "./assistant-controls";
 import {
   collectionPreferencesSchema,
   historyQuerySchema,
@@ -14,6 +15,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...assistantWorkerCommandSchema.options,
   z.strictObject({ kind: z.literal("browser.verify-assets") }),
   ...browserCommandSchema.options,
   ...checkpointCommandSchema.options,
@@ -95,6 +97,16 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     id: idSchema,
     kind: z.enum([
+      "assistant.state",
+      "assistant.permission",
+      "assistant.forget",
+      "assistant.prepare",
+      "assistant.ask",
+      "assistant.cancel",
+      "assistant.stop",
+      "assistant.credential.prepare",
+      "assistant.credential.accept",
+      "assistant.credential.cancel",
       "browser.state",
       "browser.verify-assets",
       "browser.install",

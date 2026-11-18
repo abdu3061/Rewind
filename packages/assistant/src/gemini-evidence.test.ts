@@ -280,6 +280,24 @@ it("treats captured instructions as data without granting additional tools", asy
   expect((await g.service.ask(g.request)).ok).toBe(false);
   expect(g.transport).not.toHaveBeenCalled();
 });
+it("refuses a provider answer that echoes the configured credential, including JSON-escaped text", async () => {
+  for (const escaped of [false, true]) {
+    const f = fixture();
+    let text = JSON.stringify({
+      text: "Synthetic_Private_Key_8712",
+      sourceKeys: ["E1"],
+      insufficientEvidence: false,
+    });
+    if (escaped) text = text.replaceAll("S", "\\u0053");
+    f.responses[1] = reply([{ text }]);
+    const result = await f.service.ask(f.request);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "INTEGRITY_FAILURE" },
+    });
+    expect(JSON.stringify(result)).not.toContain("Synthetic_Private_Key_8712");
+  }
+});
 it("sanitizes provider failures and disables retry and automatic continuation", async () => {
   const f = fixture();
   f.responses[0] = new Response(

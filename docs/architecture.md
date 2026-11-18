@@ -1,5 +1,7 @@
 # Architecture
 
+The utility now composes private assistant credentials, engine source reviews and the official SDK under separate launch consent (ADR 0029). Current privacy/storage/checkpoint changes invalidate active authority; SDK work must actually close before replacement or storage shutdown. Main/native public routing and Search controls remain unfinished, so ordinary cloud use is still unavailable.
+
 Engine-owned assistant sharing reviews now select actual retained activity IDs and expose immutable bounded excerpts for explicit subset approval (ADR 0028). Private disclosure leases revalidate source identity, policy and checkpoint-aware wall/monotonic retention; actual maintenance writes offer synchronous invalidation before commit. Utility/model and public Search composition remain in progress.
 
 Private Gemini credential primitives now use the cipher database and a two-minute native-to-utility sealed entry channel (ADR 0027). Main receives public/sealed metadata only. They are not yet wired to normal public controls; engine review/permission/Search composition remains required.
