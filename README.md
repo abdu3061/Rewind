@@ -15,9 +15,11 @@ Rewind is a Windows desktop work-session memory project. This local development 
 - Tray status and acknowledged shutdown. Closing the window ends the session and quits. A worker failure disables recording and requires reconnect/fresh approval.
 - Chrome/Edge metadata recording through explicit Settings setup, the normal Manifest V3 extension and an authenticated native host. Separate desktop/extension approvals and an active session are required. Website exclusions, pause/resume/end, encrypted timeline/search, restart and disconnect recovery are verified in isolated packaged tests.
 
+- Optional Gemini questions over one to twelve explicitly selected saved observations. Settings separates encrypted key configuration from launch approval; Search shows the exact local sharing review before Send. The utility uses the official SDK with bounded read-only tools, actual source citations, current retention/exclusion checks, cancellation and explicit insufficient-evidence/provider errors. Page text, file contents and full paths are excluded from this feature.
+
 History now has configurable retention, automatic expiration, usage/quota backpressure and confirmed deletion in Settings; see the [core integration report](docs/audit/core-functionality-integration.md) for policy and verification. Kept checkpoint evidence is protected by ordinary cleanup. Quotas include database journals and can temporarily be exceeded during bounded writes/compaction; deletion cannot promise forensic erasure.
 
-Idle/lock detection, article extraction and Gemini remain unavailable. Use nonsensitive development sessions only; independent security review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history and captured original bytes use a keyed native cipher and Windows-protected key instead.
+Idle/lock detection and article extraction remain unavailable. Gemini's packaged flow is tested with an offline provider and synthetic sealed key; positive interactive native key entry and a live account request still need manual acceptance. Use nonsensitive development sessions only; independent security review, provider-policy review, licensing and distribution remain release gates. ASAR packaging is not data encryption: history and captured original bytes use a keyed native cipher and Windows-protected key instead.
 
 ## Windows / PowerShell setup
 
@@ -57,6 +59,12 @@ The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZI
 
 To test browser recording, open **Settings**, select Chrome and/or Edge and explicitly confirm **Set up browser connection**. Use **Open extension folder**, enable Developer mode at `chrome://extensions` or `edge://extensions`, choose **Load unpacked** and select that opened folder. The extension requests tabs, native messaging and storage permissions. In its popup, choose **Allow and connect**; separately choose **Allow browser activity for this launch** in Rewind, then start/resume a session. Approvals expire on app/service/extension restart. Only a random profile tag persists in browser storage. Private browsing and page text are excluded; query strings and fragments are removed. Setup/removal changes only owned per-user registrations after confirmation. Building or opening the app never registers a host automatically. Use nonsensitive test pages. See [browser integration](docs/browser-integration.md) and [ADR 0023](docs/decisions/0023-desktop-browser-composition.md) for evidence and limits.
 
+## Optional Gemini questions
+
+In **Settings**, choose **Configure Gemini key**. Enter your own key in the native Windows dialog's Password field; it never enters the renderer. Saving it does not allow cloud use. Choose **Allow cloud questions for this launch** separately. In **Search**, filter local history, select up to twelve observations, write a question and choose **Prepare local sharing review**. Check only the records you want to share, then choose **Send reviewed question to Gemini**. Preparing a review sends nothing. Answers cite the selected recorded observations; titles do not prove file paths, document reading or uncaptured application state.
+
+**Stop Gemini request** cancels publication, and leaving Search cancels an active question. Approval expires on restart; privacy and explicit history maintenance revoke it. Source changes invalidate affected reviews/answers. A separate confirmed Settings action removes the saved key without deleting history. Local history deletion cannot recall data already sent to Google. No key or cloud connection is needed for local search, capture, checkpoints or recovery. See [ADR 0030](docs/decisions/0030-public-reviewed-gemini-questions.md) for the tested boundary and remaining manual acceptance gates.
+
 ## Repository map
 
 ```text
@@ -66,7 +74,7 @@ packages/contracts/   Validated domain models, ports, public desktop API
 packages/engine/      Pure session state machine and failure-aware coordinator
 packages/storage/     Encrypted SQLite, migrations, repositories and protected-key port
 packages/collectors/  Windows foreground helper, lifecycle ports and inactive browser framing
-packages/assistant/   Official Gemini SDK adapter; public integration in progress
+packages/assistant/   Official Gemini SDK over approved observations; utility only
 tests/app/            Packaged Electron integration tests
 docs/                 Specification, architecture, ownership, backlog, ADRs
 .github/              Windows CI, PR template, CODEOWNERS

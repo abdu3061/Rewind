@@ -69,6 +69,7 @@ export const workerInputSchema = z.discriminatedUnion("type", [
     root: z.string().min(1).max(32767),
     key: z.instanceof(Uint8Array).refine((value) => value.length === 32),
     synthetic: z.boolean(),
+    assistantFixture: z.literal(true).optional(),
     browserAssets: browserAssetsLocationSchema.optional(),
   }),
   z.strictObject({

@@ -1,5 +1,11 @@
 # Dependency-ordered development roadmap
 
+Current checkpoint, 19 November 2026: normal Settings/Search now wire native sealed-key orchestration, separate cloud approval, local evidence review, explicit subset sharing, bounded official-SDK answers, actual source citations, cancellation and restart fencing (ADR 0030). The full check passes 478 tests, the rebuilt Windows app passes 18 packaged tests and all 6 installed-browser tests pass. Live-account and interactive native-entry acceptance remain manual gates.
+
+Completion review keeps **DOCX/PDF content previews** as active core work. Their original bytes can be captured/recovered, but UTF-8-only content previews do not close that requirement. Next add bounded background extraction over verified stored bytes, safe plaintext rendering and malformed/oversize/timeout/restart tests. Keep original-byte preservation and cloud content exclusions intact. Earlier stages below retain their historical scope.
+
+A fresh fetch finds `origin/main` at `0354ec1` with the old PR #6 stack, including automatic consent and stock-SQLite/in-memory fallbacks. Preserve the verified branch and existing teammate refs; do not merge/rebase/push that stack automatically. Owner-reviewed integration is a separate final action.
+
 The utility now integrates encrypted source review, private sealed credentials, separate launch approval and actual official-SDK requests (ADR 0029), tested with synthetic HTTP and actual cipher history. Cancellation/replacement, deletion, restart, exclusions and denial races are covered. Next wire the owned native dialog lifecycle into main, add explicit validated preload capabilities, implement Settings/Search sharing controls and verify the full packaged flow. Ordinary cloud use remains unavailable until that work is done.
 
 The utility checkpoint passes the full 470-test check, Windows build, 16 rebuilt app tests and 6 installed-browser tests. These are private assistant integration and existing-core regression results, not normal assistant UI or live-provider acceptance.

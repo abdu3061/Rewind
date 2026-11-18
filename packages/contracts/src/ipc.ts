@@ -4,6 +4,12 @@ import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
 import type { BrowserControlState } from "./browser-controls";
+import type {
+  AssistantControlState,
+  AssistantReviewReceipt,
+  AssistantAnswerReceipt,
+} from "./assistant-controls";
+import type { AssistantReviewApproval } from "./assistant";
 import type { ProtectedFolder } from "./snapshots";
 import type { FileVersion } from "./files";
 import type { RecoveryCopyProposal, RecoveryCopyResult } from "./recovery";
@@ -44,6 +50,21 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  assistant: {
+    state(): Promise<Result<AssistantControlState>>;
+    configure(confirmed: true): Promise<Result<AssistantControlState | null>>;
+    permission(enabled: boolean): Promise<Result<AssistantControlState>>;
+    forget(confirmed: true): Promise<Result<AssistantControlState>>;
+    prepare(value: {
+      question: string;
+      activityIds: string[];
+    }): Promise<Result<AssistantReviewReceipt>>;
+    ask(
+      value: AssistantReviewApproval,
+    ): Promise<Result<AssistantAnswerReceipt>>;
+    cancel(id: string): Promise<Result<true>>;
+    stop(): Promise<Result<true>>;
+  };
   browser: {
     openExtensionFolder(): Promise<Result<true>>;
     state(): Promise<Result<BrowserControlState>>;

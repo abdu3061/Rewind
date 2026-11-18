@@ -19,6 +19,7 @@ import {
   type AssistantCredentialChallenge,
 } from "@rewind/contracts";
 import { SecureStorage } from "@rewind/storage";
+import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import {
   preparePrivateDirectory,
   secureDatabaseName,
@@ -86,7 +87,7 @@ function seal(challenge: AssistantCredentialChallenge, apiKey: string) {
     ).toString("base64"),
   };
 }
-async function fixture() {
+async function fixture(offlineFixture = false) {
   const root = newSecureFixture();
   roots.push(root);
   const secure = join(root, "secure"),
@@ -151,7 +152,9 @@ async function fixture() {
       root: secure,
       key: Buffer.from(key),
       synthetic: true,
-      assistantTransport: transport,
+      ...(offlineFixture
+        ? { assistantFixture: true as const }
+        : { assistantTransport: transport }),
       onSnapshot: vi.fn(),
       onActivity: vi.fn(),
     });
@@ -196,6 +199,22 @@ async function fixture() {
     prepare,
   };
 }
+it("runs the fixed offline fixture through the actual SDK without invoking global network access", async () => {
+  const f = await fixture(true);
+  await f.grant();
+  const receipt = await f.prepare();
+  expect(
+    await f.runtime.execute({
+      kind: "assistant.ask",
+      value: { id: receipt.review.id, keys: ["E1"], confirmed: true },
+    }),
+  ).toMatchObject({
+    ok: true,
+    value: { answer: { insufficientEvidence: false } },
+  });
+  expect(f.transport).not.toHaveBeenCalled();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});
 it("uses actual encrypted history and SDK transport only after launch approval and explicit reviewed subset confirmation", async () => {
   const f = await fixture();
   expect(await f.state()).toMatchObject({
@@ -292,7 +311,7 @@ it("revokes a pending model request before confirmed deletion and refuses to rep
     expect((await asking).ok).toBe(false);
     expect(await f.state()).toMatchObject({
       ok: true,
-      value: { permission: false },
+      value: { permission: false, busy: true },
     });
     expect(
       await f.runtime.execute({ kind: "assistant.permission", enabled: true }),
@@ -317,6 +336,37 @@ it("revokes a pending model request before confirmed deletion and refuses to rep
   ).toBe(false);
   expect(f.transport).toHaveBeenCalledTimes(1);
 }, 15000);
+it("reports a real retained-source integrity failure as unavailable and revokes cloud authority before transmission", async () => {
+  const f = await fixture();
+  await f.grant();
+  const receipt = await f.prepare();
+  const tamper = new NativeDatabase(join(f.secure, secureDatabaseName));
+  try {
+    tamper.pragma("cipher=sqlcipher");
+    tamper.pragma("legacy=4");
+    tamper.key(f.key);
+    tamper
+      .prepare(
+        "UPDATE activities SET payload=json_set(payload,'$.windowTitle',123) WHERE id=?",
+      )
+      .run(f.events[0]!.id);
+  } finally {
+    tamper.close();
+  }
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "assistant.ask",
+        value: { id: receipt.review.id, keys: ["E1"], confirmed: true },
+      })
+    ).ok,
+  ).toBe(false);
+  expect(f.runtime.snapshot()).toMatchObject({
+    service: "unavailable",
+    assistant: { permission: false },
+  });
+  expect(f.transport).not.toHaveBeenCalled();
+});
 it("invalidates old reviews before exclusion changes and applies current exclusions after fresh approval", async () => {
   const f = await fixture();
   await f.grant();

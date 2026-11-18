@@ -46,6 +46,11 @@ import {
   acknowledgementResponseSchema,
   recoveryOverwriteProposalResponseSchema,
   recoveryOverwriteResultResponseSchema,
+  assistantCommandSchema,
+  assistantConfigureResponseSchema,
+  assistantControlResponseSchema,
+  assistantReviewResponseSchema,
+  assistantAnswerResponseSchema,
 } from "@rewind/contracts";
 
 interface Decoder<T> {
@@ -97,7 +102,58 @@ function command(action: SessionAction) {
   };
 }
 
+function assistantArgument<T>(
+  kind: string,
+  field: "confirmed" | "enabled" | "value" | "id",
+  decoder: Decoder<T>,
+) {
+  return (...args: unknown[]): Promise<Result<T>> => {
+    const parsed = assistantCommandSchema.safeParse({ kind, [field]: args[0] });
+    return args.length === 1 && parsed.success
+      ? recording(parsed.data, decoder)
+      : Promise.resolve(
+          failure(
+            "INVALID_INPUT",
+            "A valid assistant capability argument is required.",
+          ),
+        );
+  };
+}
 const api: DesktopApi = {
+  assistant: {
+    state: noArgs({ kind: "assistant.state" }, assistantControlResponseSchema),
+    configure: assistantArgument(
+      "assistant.configure",
+      "confirmed",
+      assistantConfigureResponseSchema,
+    ),
+    permission: assistantArgument(
+      "assistant.permission",
+      "enabled",
+      assistantControlResponseSchema,
+    ),
+    forget: assistantArgument(
+      "assistant.forget",
+      "confirmed",
+      assistantControlResponseSchema,
+    ),
+    prepare: assistantArgument(
+      "assistant.prepare",
+      "value",
+      assistantReviewResponseSchema,
+    ),
+    ask: assistantArgument(
+      "assistant.ask",
+      "value",
+      assistantAnswerResponseSchema,
+    ),
+    cancel: assistantArgument(
+      "assistant.cancel",
+      "id",
+      acknowledgementResponseSchema,
+    ),
+    stop: noArgs({ kind: "assistant.stop" }, acknowledgementResponseSchema),
+  },
   browser: {
     openExtensionFolder: noArgs(
       { kind: "browser.open-extension" },

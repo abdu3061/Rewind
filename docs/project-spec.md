@@ -1,6 +1,6 @@
 # Project specification
 
-Specification baseline: 17 October 2026; product owner and technical approver: Rasit (`@RXD3`). The version-one requirements below remain targets. Current local Windows recording/encrypted-history implementation and remaining capabilities are tracked in the [integration report](audit/secure-storage-collection-integration.md).
+Specification baseline: 17 October 2026; product owner and technical approver: Rasit (`@RXD3`). The version-one requirements below remain targets. Current integrated Windows/browser recording, encrypted versions, confirmed recovery, checkpoints, privacy management and optional reviewed-evidence Gemini functionality are tracked in the [core implementation report](audit/core-functionality-integration.md). This remains a local development branch; the report distinguishes verified behavior from manual acceptance and release gates.
 
 ## Product and scope
 

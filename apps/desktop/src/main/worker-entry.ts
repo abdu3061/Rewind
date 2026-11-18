@@ -47,6 +47,7 @@ port.on("message", async ({ data }: { data: unknown }) => {
       root: message.root,
       key: message.key,
       synthetic: message.synthetic,
+      ...(message.assistantFixture ? { assistantFixture: true as const } : {}),
       ...(message.browserAssets
         ? { browserAssets: message.browserAssets }
         : {}),

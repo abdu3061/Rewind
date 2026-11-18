@@ -12,6 +12,14 @@ import {
 } from "@rewind/contracts";
 import { WorkerClient, type WorkerTransport } from "./worker-client";
 const ready = (): RuntimeSnapshot => ({
+  assistant: {
+    generation: "00000000-0000-4000-8000-000000000001",
+    configured: false,
+    permission: false,
+    busy: false,
+    credentialPending: false,
+    revision: 0,
+  },
   service: "ready",
   collection: "off",
   secureStorage: true,
@@ -206,6 +214,7 @@ it("allows the bounded model request to finish beyond the ordinary command deadl
   await vi.advanceTimersByTimeAsync(39999);
   expect(f.client.getSnapshot().service).toBe("ready");
   child.reply(command, {
+    generation: randomUUID(),
     answer: {
       text: "Insufficient synthetic evidence.",
       sources: [],
@@ -310,7 +319,7 @@ it("does not launch a second worker while a failed worker survives termination",
   child.killWorks = true;
   child.emit("exit", 0);
 });
-it.each(["active", "browser", "files"] as const)(
+it.each(["active", "browser", "files", "cloud"] as const)(
   "rejects a forged ready message with %s monitoring authority",
   async (mode) => {
     const f = fixture();
@@ -337,7 +346,15 @@ it.each(["active", "browser", "files"] as const)(
                 }
               : mode === "browser"
                 ? { browserPermission: true }
-                : { filePermission: true }),
+                : mode === "cloud"
+                  ? {
+                      assistant: {
+                        ...ready().assistant,
+                        configured: true,
+                        permission: true,
+                      },
+                    }
+                  : { filePermission: true }),
           },
         });
       });

@@ -1,8 +1,8 @@
 # Rewind audit — 16 November 2026
 
-**Current implementation follow-up:** [Secure storage and recording integration](secure-storage-collection-integration.md) records the locally completed encrypted metadata, protected keys, utility supervision, launch-scoped Windows consent and DB-backed Timeline/Search workflow. It builds on [backend stabilization](backend-stabilization.md). The original audit/PR manifest below is historical evidence; shared main and remote PRs are unchanged. Browser/folder capture, retention/deletion, recovery and AI remain unavailable.
+**Current implementation follow-up, 19 November 2026:** [Core functionality integration](core-functionality-integration.md) records encrypted retention/snapshots, guarded recovery/checkpoints, normal Chrome/Edge recording and reviewed-evidence Gemini Settings/Search. The current check passes 478 tests, Windows build, 18 packaged tests and 6 installed-browser tests. DOCX/PDF content previews remain active core work. Interactive native-entry/live-account acceptance and release gates are explicit. The original audit/PR manifest below remains historical evidence; a fresh fetch now finds remote main at `0354ec1` with the earlier unsafe PR #6 stack, which has not been merged into the verified feature branch.
 
-The current local branch is a Windows recording development prototype, verified with synthetic activity. It is not a recording beta or public release. The reports below describe earlier revisions unless explicitly updated.
+The current local branch is a Windows development implementation verified with synthetic profiles/files. It is not a public release or a completed version-one product. Reports below describe earlier revisions unless explicitly updated.
 
 - [Executive report](executive-report.md): conclusions, work kept/redone, owned next tasks, approval decisions and a copyable next goal.
 - [Current state](current-state.md): merged/local/PR capability inventory and installed runtime evidence.

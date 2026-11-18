@@ -30,6 +30,7 @@ import { RecoveryOperations } from "./recovery-operations";
 import { CheckpointOperations } from "./checkpoint-operations";
 import { BrowserOperations } from "./browser-operations";
 import { AssistantOperations } from "./assistant-operations";
+import { syntheticAssistantTransport } from "./synthetic-assistant";
 import type { GeminiEvidenceOptions } from "@rewind/assistant";
 import { NativeBrowserBridge } from "./browser-bridge";
 import { SecureStorage } from "@rewind/storage";
@@ -42,6 +43,7 @@ export interface WorkerRuntimeOptions {
   root: string;
   key: Uint8Array;
   synthetic: boolean;
+  assistantFixture?: true;
   browserAssets?: BrowserAssetsLocation;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
@@ -67,6 +69,7 @@ export class WorkerRuntime {
   private checkpoints: CheckpointOperations | null = null;
   private browser: BrowserOperations | null = null;
   private assistant: AssistantOperations | null = null;
+  private readonly assistantGeneration = randomUUID();
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
@@ -78,6 +81,14 @@ export class WorkerRuntime {
   snapshot(): RuntimeSnapshot {
     const health = this.coordinator?.getStatus();
     return {
+      assistant: this.assistant?.state() ?? {
+        generation: this.assistantGeneration,
+        configured: false,
+        permission: false,
+        busy: false,
+        credentialPending: false,
+        revision: 0,
+      },
       service: this.closing
         ? "stopping"
         : this.fault || health?.unavailable
@@ -112,6 +123,11 @@ export class WorkerRuntime {
   }
   async initialize(): Promise<Result<RuntimeSnapshot>> {
     try {
+      if (this.options.assistantFixture && !this.options.synthetic)
+        return await this.initializationFailure({
+          code: "FORBIDDEN",
+          message: "Assistant fixtures require an isolated synthetic profile.",
+        });
       await preparePrivateDirectory(this.options.root);
       const opened = await this.storage.open();
       if (!opened.ok) return await this.initializationFailure(opened.error);
@@ -328,6 +344,9 @@ export class WorkerRuntime {
       if (!initialized.ok)
         return await this.initializationFailure(initialized.error);
       this.assistant = new AssistantOperations({
+        storageError: (error) => {
+          this.readResult({ ok: false, error });
+        },
         storage: this.storage,
         coordinator: this.coordinator,
         available: () =>
@@ -343,7 +362,9 @@ export class WorkerRuntime {
         },
         ...(this.options.assistantTransport
           ? { transport: this.options.assistantTransport }
-          : {}),
+          : this.options.assistantFixture
+            ? { transport: syntheticAssistantTransport }
+            : {}),
       });
       const assistantInitialized = await this.assistant.initialize();
       if (!assistantInitialized.ok)

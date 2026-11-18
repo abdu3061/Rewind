@@ -37,6 +37,7 @@ export interface WorkerClientOptions {
   root: string;
   synthetic: boolean;
   browserAssets?: BrowserAssetsLocation;
+  assistantFixture?: true;
   loadKey: () => Promise<Result<Uint8Array>>;
   spawn: () => WorkerTransport;
   onSnapshot: (state: RuntimeSnapshot) => void;
@@ -68,6 +69,14 @@ export class WorkerClient {
   private state: RuntimeSnapshot;
   constructor(private readonly options: WorkerClientOptions) {
     this.state = {
+      assistant: {
+        generation: this.bootId,
+        configured: false,
+        permission: false,
+        busy: false,
+        credentialPending: false,
+        revision: 0,
+      },
       service: "starting",
       collection: "off",
       session: null,
@@ -112,6 +121,14 @@ export class WorkerClient {
     this.publish({
       ...this.state,
       service: "starting",
+      assistant: {
+        generation: this.bootId,
+        configured: false,
+        permission: false,
+        busy: false,
+        credentialPending: false,
+        revision: 0,
+      },
       collection: "off",
       secureStorage: false,
       filePermission: false,
@@ -182,6 +199,9 @@ export class WorkerClient {
                   root: this.options.root,
                   key,
                   synthetic: this.options.synthetic,
+                  ...(this.options.assistantFixture
+                    ? { assistantFixture: true as const }
+                    : {}),
                   ...(this.options.browserAssets
                     ? { browserAssets: this.options.browserAssets }
                     : {}),
@@ -232,6 +252,12 @@ export class WorkerClient {
     this.publish({
       ...this.state,
       service: "unavailable",
+      assistant: {
+        ...this.state.assistant,
+        permission: false,
+        busy: false,
+        credentialPending: false,
+      },
       collection: "unavailable",
       secureStorage: false,
       filePermission: false,
@@ -286,6 +312,9 @@ export class WorkerClient {
         message.state.preferences.collectionConsent ||
         message.state.filePermission ||
         message.state.browserPermission ||
+        message.state.assistant.permission ||
+        message.state.assistant.busy ||
+        message.state.assistant.credentialPending ||
         message.state.synthetic !== this.options.synthetic
       ) {
         this.fail({
@@ -303,6 +332,10 @@ export class WorkerClient {
     } else if (message.type === "snapshot") {
       if (
         message.state.synthetic !== this.options.synthetic ||
+        (message.state.assistant.permission &&
+          (!message.state.assistant.configured ||
+            !message.state.secureStorage ||
+            message.state.service !== "ready")) ||
         (message.state.collection === "active" &&
           (!message.state.secureStorage ||
             (!message.state.preferences.collectionConsent &&

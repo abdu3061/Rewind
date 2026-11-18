@@ -5,6 +5,7 @@ import {
   type AssistantControlState,
   type AssistantEvidenceSource,
   type AssistantWorkerCommand,
+  type AppError,
   type Result,
   type UserSettings,
 } from "@rewind/contracts";
@@ -30,6 +31,7 @@ interface Options {
     current: () => boolean,
   ): Promise<Result<void>>;
   notify(): void;
+  storageError(error: AppError): void;
   /** Trusted synthetic HTTP seam only; never populated from renderer or worker messages. */
   transport?: GeminiEvidenceOptions["transport"];
 }
@@ -46,6 +48,7 @@ const busy = () =>
 
 /** Utility-only composition. Credentials and actual evidence never become model-granted capabilities. */
 export class AssistantOperations {
+  private readonly generation = randomUUID();
   private readonly reviews: AssistantReviewService;
   private readonly credentials: AssistantCredentials;
   private apiKey: string | null = null;
@@ -65,24 +68,30 @@ export class AssistantOperations {
       settings: options.getSettings,
       read: (id) =>
         options.coordinator.read<AssistantEvidenceSource | null>(async () => {
-          const cleaned = await options.storage.cleanup();
+          const cleaned = this.checked(await options.storage.cleanup());
           if (!cleaned.ok) return cleaned;
-          const result = await options.storage.evidence.getRetained(id);
+          const result = this.checked(
+            await options.storage.evidence.getRetained(id),
+          );
           if (
             !result.ok ||
             !result.value ||
             result.value.event.type !== "file-change"
           )
             return result;
-          const file = await options.storage.repositories.files.getReference(
-            result.value.event.payload.fileId,
+          const file = this.checked(
+            await options.storage.repositories.files.getReference(
+              result.value.event.payload.fileId,
+            ),
           );
           if (!file.ok) return file;
           return file.value
             ? { ok: true, value: { ...result.value, file: file.value } }
-            : failure(
-                "INTEGRITY_FAILURE",
-                "The retained file observation has no matching identity.",
+            : this.checked(
+                failure(
+                  "INTEGRITY_FAILURE",
+                  "The retained file observation has no matching identity.",
+                ),
               );
         }),
       disclosable: (record) =>
@@ -95,9 +104,21 @@ export class AssistantOperations {
       quiesce: () => this.quiesce(),
     });
   }
+  private checked<T>(result: Result<T>): Result<T> {
+    if (
+      !result.ok &&
+      ["UNAVAILABLE", "INTEGRITY_FAILURE", "INTERNAL"].includes(
+        result.error.code,
+      )
+    )
+      this.options.storageError(result.error);
+    return result;
+  }
   async initialize(): Promise<Result<void>> {
     if (this.closed) return denied();
-    const result = await this.options.storage.assistantCredential.read();
+    const result = this.checked(
+      await this.options.storage.assistantCredential.read(),
+    );
     if (!result.ok) return result;
     if (this.closed) return denied();
     this.apiKey = result.value.apiKey;
@@ -114,12 +135,14 @@ export class AssistantOperations {
   }
   state(): AssistantControlState {
     return {
+      generation: this.generation,
       configured: this.apiKey !== null,
       permission: this.permitted(),
       busy:
         this.asking !== null ||
         this.permissionWork > 0 ||
-        this.credentials.busy,
+        this.credentials.busy ||
+        this.model?.busy === true,
       credentialPending: this.credentials.busy,
       revision: this.revision,
     };
@@ -212,6 +235,7 @@ export class AssistantOperations {
       this.lease = lease;
       if (!this.model)
         this.model = new GeminiEvidenceAssistant({
+          onSettled: () => this.notify(),
           apiKey: this.apiKey!,
           current: (id) =>
             this.permitted() &&
@@ -229,7 +253,12 @@ export class AssistantOperations {
         return denied();
       return {
         ok: true,
-        value: { answer: result.value, revision, expiresAt: lease.expiresAt },
+        value: {
+          generation: this.generation,
+          answer: result.value,
+          revision,
+          expiresAt: lease.expiresAt,
+        },
       };
     } finally {
       lease.finish();
@@ -257,18 +286,35 @@ export class AssistantOperations {
         case "assistant.cancel":
           return this.reviews.cancel(command.id);
         case "assistant.prepare": {
-          if (this.credentials.busy || this.permissionWork || this.asking)
+          if (
+            this.credentials.busy ||
+            this.permissionWork ||
+            this.asking ||
+            this.model?.busy
+          )
             return busy();
           if (this.apiKey && command.value.question.includes(this.apiKey))
             return denied();
           const revision = this.revision;
           const prepared = await this.reviews.prepare(command.value);
           return prepared.ok
-            ? { ok: true, value: { review: prepared.value, revision } }
+            ? {
+                ok: true,
+                value: {
+                  generation: this.generation,
+                  review: prepared.value,
+                  revision,
+                },
+              }
             : prepared;
         }
         case "assistant.ask": {
-          if (this.credentials.busy || this.permissionWork || this.asking)
+          if (
+            this.credentials.busy ||
+            this.permissionWork ||
+            this.asking ||
+            this.model?.busy
+          )
             return busy();
           const work = this.ask(command);
           this.asking = work;

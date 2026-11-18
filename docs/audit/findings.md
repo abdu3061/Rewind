@@ -1,5 +1,11 @@
 # Engineering findings
 
+Current 19 November checkpoint: normal assistant Settings/Search are integrated through sealed native orchestration and validated preload capabilities (ADR 0030), with two packaged tests for actual source citations, explicit sharing, escaped content, failures, uncertainty, cancellation, key removal and restart. The full check passes 478 tests, Windows build passes, and 18 packaged plus 6 installed-browser tests pass. A corrupted retained source now faults the service and revokes cloud authority; pending transport stays visibly busy until actual settlement.
+
+Completion review leaves DOCX/PDF content previews open: original-byte capture/recovery is verified, but those formats still return unsupported content previews. Treat this as remaining core functionality and continue with bounded utility-process parsing. Interactive native credential submission and live Gemini-account use remain explicitly unverified.
+
+The fresh `origin/main` head `0354ec1` merges the earlier PR #6 stack. Current source still defaults recording consent on and uses stock SQLite with successful in-memory fallback. The prior findings therefore also apply to today's remote main; they are not just hypothetical future merge risks. The verified feature branch retains its encrypted/default-off utility composition, and no integration is performed automatically.
+
 Assistant utility composition now joins actual cipher-backed source reviews, sealed credential configuration and bounded SDK execution under separate launch approval (ADR 0029). Tests found and corrected repeated-shutdown failure and an older grant failure invalidating a newer denial. A transport ignoring abort remains tracked and prevents replacement. This closes the private composition gap, while main/native public routing, preload/UI and packaged assistant acceptance remain actionable.
 
 The assistant source-authorization gap now has an engine review/lease implementation (ADR 0028): actual source IDs, explicit immutable subsets, checkpoint-aware expiration, current exclusions and irreversible denial. Encrypted maintenance invalidates authority before actual mutation commits and rolls back when that invalidation fails. Focused tests cover storage/engine behavior; composition must still wire cancellation and privacy invalidation before normal cloud use can be accepted.

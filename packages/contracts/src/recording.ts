@@ -14,6 +14,10 @@ import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
 import { sanitizeBrowserMetadataUrl } from "./browser-transport";
 import { browserCommandSchema } from "./browser-controls";
+import {
+  assistantCommandSchema,
+  assistantControlStateSchema,
+} from "./assistant-controls";
 
 export const collectionPreferencesSchema = userSettingsSchema
   .pick({
@@ -54,6 +58,7 @@ export const historyQuerySchema = z.strictObject({
 });
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 export const runtimeSnapshotSchema = z.strictObject({
+  assistant: assistantControlStateSchema,
   service: z.enum(["starting", "ready", "unavailable", "stopping"]),
   collection: z.enum(["off", "starting", "active", "stopping", "unavailable"]),
   session: sessionSchema.nullable(),
@@ -93,6 +98,7 @@ export const RECORDING_CHANNEL = "rewind:recording" as const;
 export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
 export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
 export const recordingCommandSchema = z.discriminatedUnion("kind", [
+  ...assistantCommandSchema.options,
   z.strictObject({ kind: z.literal("browser.open-extension") }),
   ...browserCommandSchema.options,
   ...checkpointCommandSchema.options,

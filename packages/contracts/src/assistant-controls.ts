@@ -10,6 +10,7 @@ import {
 } from "./assistant";
 
 export const assistantControlStateSchema = z.strictObject({
+  generation: idSchema,
   configured: z.boolean(),
   permission: z.boolean(),
   busy: z.boolean(),
@@ -21,6 +22,7 @@ export const assistantControlResponseSchema = resultSchema(
   assistantControlStateSchema,
 );
 export const assistantReviewReceiptSchema = z.strictObject({
+  generation: idSchema,
   review: assistantReviewSchema,
   revision: assistantControlStateSchema.shape.revision,
 });
@@ -28,6 +30,7 @@ export const assistantReviewResponseSchema = resultSchema(
   assistantReviewReceiptSchema,
 );
 export const assistantAnswerReceiptSchema = z.strictObject({
+  generation: idSchema,
   answer: evidenceAnswerSchema,
   expiresAt: timestampSchema,
   revision: assistantControlStateSchema.shape.revision,
@@ -37,6 +40,15 @@ export const assistantAnswerResponseSchema = resultSchema(
 );
 export const assistantCredentialChallengeResponseSchema = resultSchema(
   assistantCredentialChallengeSchema,
+);
+export type AssistantReviewReceipt = z.infer<
+  typeof assistantReviewReceiptSchema
+>;
+export type AssistantAnswerReceipt = z.infer<
+  typeof assistantAnswerReceiptSchema
+>;
+export const assistantConfigureResponseSchema = resultSchema(
+  assistantControlStateSchema.nullable(),
 );
 
 /** These operations carry IDs and confirmations, never renderer-supplied evidence or API keys. */
@@ -81,3 +93,10 @@ export const assistantWorkerCommandSchema = z.discriminatedUnion("kind", [
 export type AssistantWorkerCommand = z.infer<
   typeof assistantWorkerCommandSchema
 >;
+export const assistantCommandSchema = z.discriminatedUnion("kind", [
+  ...assistantOperationCommandSchema.options,
+  z.strictObject({
+    kind: z.literal("assistant.configure"),
+    confirmed: z.literal(true),
+  }),
+]);

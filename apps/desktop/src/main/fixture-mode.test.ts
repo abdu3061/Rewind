@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { readBrowserFixture, validateFixtureRoot } from "./fixture-mode";
+import {
+  readBrowserFixture,
+  readAssistantFixture,
+  validateFixtureRoot,
+} from "./fixture-mode";
 
 let root: string;
 beforeEach(() => {
@@ -11,6 +15,29 @@ beforeEach(() => {
     path.join(root, "synthetic-fixture.json"),
     JSON.stringify({ format: 1, synthetic: true }),
   );
+});
+it("requires an explicit bounded assistant marker and never activates it without a selected CLI profile", () => {
+  expect(readAssistantFixture(null)).toBe(false);
+  expect(readAssistantFixture(root)).toBe(false);
+  writeFileSync(
+    path.join(root, "assistant-fixture.json"),
+    JSON.stringify({ format: 1, syntheticAssistant: true }),
+  );
+  expect(readAssistantFixture(root)).toBe(true);
+  expect(readAssistantFixture(null)).toBe(false);
+  for (const value of [
+    { format: 1, syntheticAssistant: false },
+    { format: 2, syntheticAssistant: true },
+    { format: 1, syntheticAssistant: true, endpoint: "https://example.test" },
+  ]) {
+    writeFileSync(
+      path.join(root, "assistant-fixture.json"),
+      JSON.stringify(value),
+    );
+    expect(() => readAssistantFixture(root)).toThrow(
+      "INVALID_ASSISTANT_FIXTURE",
+    );
+  }
 });
 afterEach(() => {
   const relative = path.relative(path.resolve(tmpdir()), path.resolve(root));

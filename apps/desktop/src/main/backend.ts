@@ -7,6 +7,7 @@ import type { BrowserAssetsLocation, RuntimeSnapshot } from "@rewind/contracts";
 export function createBackend(options: {
   root: string;
   synthetic: boolean;
+  assistantFixture?: true;
   entry: string;
   browserAssets?: BrowserAssetsLocation;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
@@ -31,6 +32,7 @@ export function createBackend(options: {
   return new WorkerClient({
     root: path.join(options.root, "secure"),
     synthetic: options.synthetic,
+    ...(options.assistantFixture ? { assistantFixture: true as const } : {}),
     ...(options.browserAssets ? { browserAssets: options.browserAssets } : {}),
     loadKey: () => keys.load(),
     spawn: () => {

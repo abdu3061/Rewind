@@ -10,6 +10,7 @@ import { StorageManagement } from "./storage-management";
 import { Files } from "./files";
 import { Checkpoints } from "./checkpoints";
 import { BrowserSettings } from "./browser-settings";
+import { AssistantSettings } from "./assistant";
 
 const pages = [
   "Dashboard",
@@ -179,7 +180,9 @@ export function App() {
                 ? "Recording service requires attention."
                 : "No active recording authorization."}
             <br />
-            Cloud AI is disabled.
+            {runtime?.assistant.permission
+              ? "Cloud questions approved."
+              : "Cloud approval is off."}
           </p>
         </div>
 
@@ -210,7 +213,8 @@ export function App() {
             Windows activity, selected folders and browser metadata need
             separate approval and an active session. Browser recording also
             needs the extension's approval. Verified file versions can be saved
-            as separate copies. Cloud AI is disabled.
+            as separate copies. Optional Gemini questions need separate approval
+            and a sharing review.
           </span>
         </div>
 
@@ -371,6 +375,7 @@ export function App() {
             <h2>Privacy comes first</h2>
             <RecordingPreferences runtime={runtime} />
             <BrowserSettings runtime={runtime} />
+            <AssistantSettings runtime={runtime} />
             <div className="notice">
               <strong>Privacy settings</strong>
               <span>
@@ -382,7 +387,8 @@ export function App() {
 
             <StorageManagement runtime={runtime} />
             <p>
-              Cloud Gemini and article extraction remain off and unavailable.
+              Article extraction remains off and unavailable. Gemini requires
+              separate approval and a reviewed question in Search.
             </p>
 
             <p className="footnote">

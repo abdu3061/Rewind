@@ -474,3 +474,9 @@ dd {
   display: block;
   padding: 6px 0;
 }
+.assistant-search {
+  overflow-wrap: anywhere;
+}
+.assistant-answer-text {
+  white-space: pre-wrap;
+}

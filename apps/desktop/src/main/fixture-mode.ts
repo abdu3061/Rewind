@@ -66,3 +66,36 @@ export function readBrowserFixture(
     throw new Error("INVALID_BROWSER_FIXTURE");
   return { root: path.join(root, "browser-assets"), hostName: value.hostName };
 }
+
+/** A fixed offline assistant seam exists only in an explicitly validated CLI test profile. */
+export function readAssistantFixture(root: string | null): boolean {
+  if (!root) return false;
+  const file = path.join(root, "assistant-fixture.json");
+  let info;
+  try {
+    info = lstatSync(file);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    )
+      return false;
+    throw error;
+  }
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 256)
+    throw new Error("INVALID_ASSISTANT_FIXTURE");
+  const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Object.keys(value).sort().join(",") !== "format,syntheticAssistant" ||
+    !("format" in value) ||
+    value.format !== 1 ||
+    !("syntheticAssistant" in value) ||
+    value.syntheticAssistant !== true
+  )
+    throw new Error("INVALID_ASSISTANT_FIXTURE");
+  return true;
+}

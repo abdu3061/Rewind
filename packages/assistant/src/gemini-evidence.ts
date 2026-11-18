@@ -78,6 +78,8 @@ export interface GeminiEvidenceOptions {
   /** Trusted transport seam for synthetic tests; normal composition uses the fixed Google endpoint. */
   transport?: typeof fetch;
   deadlineMs?: number;
+  /** Observe actual underlying settlement, including work that outlives an abort acknowledgement. */
+  onSettled?(): void;
 }
 interface Active {
   controller: AbortController;
@@ -98,6 +100,9 @@ export class GeminiEvidenceAssistant {
       this.deadline > 30000
     )
       throw new Error("ASSISTANT_DEADLINE_INVALID");
+  }
+  get busy(): boolean {
+    return this.active !== null;
   }
   cancel(): Result<true> {
     this.revision++;
@@ -176,7 +181,14 @@ export class GeminiEvidenceAssistant {
     const active = { controller, work };
     this.active = active;
     void work.finally(() => {
-      if (this.active === active) this.active = null;
+      if (this.active === active) {
+        this.active = null;
+        try {
+          this.options.onSettled?.();
+        } catch {
+          /* An observer cannot alter request authority. */
+        }
+      }
     });
     try {
       return await Promise.race([work, aborted]);

@@ -1,5 +1,7 @@
 # Architecture
 
+Normal Settings/Search now compose the optional assistant through typed preload capabilities and main-owned sealed native credential entry (ADR 0030). A separate launch grant and explicit per-question evidence review authorize bounded official-SDK calls in the utility. Generation/revision/expiry fencing clears stale UI evidence and exposes actual outstanding work. Packaged verification uses a fixed offline provider inside marked synthetic profiles; interactive native entry and live-account compatibility remain manual acceptance gates. Older implementation-stage notes below retain their historical scope.
+
 The utility now composes private assistant credentials, engine source reviews and the official SDK under separate launch consent (ADR 0029). Current privacy/storage/checkpoint changes invalidate active authority; SDK work must actually close before replacement or storage shutdown. Main/native public routing and Search controls remain unfinished, so ordinary cloud use is still unavailable.
 
 Engine-owned assistant sharing reviews now select actual retained activity IDs and expose immutable bounded excerpts for explicit subset approval (ADR 0028). Private disclosure leases revalidate source identity, policy and checkpoint-aware wall/monotonic retention; actual maintenance writes offer synchronous invalidation before commit. Utility/model and public Search composition remain in progress.
@@ -34,7 +36,7 @@ flowchart LR
   U --> E[Engine: serialized coordinator and session state machine]
   U --> C[Consent-gated Windows collector]
   U --> S[Encrypted SQLite and FTS5]
-  U -. later .-> A[Optional Gemini assistant]
+  U -. approved question .-> A[Optional Gemini assistant]
   E --> K[Shared contracts and ports]
   C --> K
   S --> K
@@ -43,7 +45,7 @@ flowchart LR
   H --> U
 ```
 
-Solid arrows describe implemented composition; dotted arrows remain planned. Windows, selected-folder and browser collectors require independent approval and an active session. Cloud requests, article extraction and idle/lock collection remain unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; production uses only SecureStorage with the pinned cipher and protected key.
+The dashed assistant path is implemented but requires separate cloud approval and per-question evidence review. Windows, selected-folder and browser collectors require independent approval and an active session. Article extraction and idle/lock collection remain unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; the verified feature branch uses only SecureStorage with the pinned cipher and protected key. Remote main's prototype composition is not an approved replacement.
 
 | Module            | Allowed responsibility / dependency                                                                                                                                           |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,7 +53,7 @@ Solid arrows describe implemented composition; dotted arrows remain planned. Win
 | engine            | Serialized lifecycle, ingestion authorization, exclusion/drain, snapshot orchestration, checkpoints and confirmed recovery. Contracts/injected ports only, no React/Electron. |
 | storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                             |
 | collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                   |
-| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                          |
+| assistant         | Official Gemini SDK over immutable approved evidence, bounded read-only tools, real source citations and observed cancellation; no recovery/deletion authority.               |
 | desktop main      | Window/tray, exact renderer authorization, Windows DPAPI, utility supervision and dialogs. No SQL or window polling.                                                          |
 | preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                       |
 | renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                         |

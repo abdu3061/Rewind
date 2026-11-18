@@ -25,8 +25,15 @@ import {
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 import { QuitGuard } from "./quit-guard";
 import { createBackend } from "./backend";
-import { readBrowserFixture, validateFixtureRoot } from "./fixture-mode";
+import {
+  readBrowserFixture,
+  readAssistantFixture,
+  validateFixtureRoot,
+} from "./fixture-mode";
+import { sealSyntheticAssistantCredential } from "./synthetic-assistant";
 import { dispatchRecordingRequest } from "./recording-ipc";
+import { AssistantConfiguration } from "./assistant-configuration";
+import { NativeCredentialPrompt } from "./native-credential-prompt";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -37,12 +44,14 @@ protocol.registerSchemesAsPrivileged([
 
 let fixtureRoot: string | null = null;
 let browserFixture: ReturnType<typeof readBrowserFixture> = null;
+let assistantFixture = false;
 try {
   fixtureRoot = validateFixtureRoot(
     app.commandLine.getSwitchValue("rewind-fixture-root"),
   );
   if (fixtureRoot) app.setPath("userData", fixtureRoot);
   browserFixture = readBrowserFixture(fixtureRoot);
+  assistantFixture = readAssistantFixture(fixtureRoot);
 } catch {
   console.error(
     JSON.stringify({ level: "error", code: "INVALID_VERIFICATION_PROFILE" }),
@@ -61,6 +70,7 @@ const browserAssets = {
 const sessions = createBackend({
   root: app.getPath("userData"),
   synthetic: fixtureRoot !== null,
+  ...(assistantFixture ? { assistantFixture: true as const } : {}),
   entry: path.join(__dirname, "worker-entry.cjs"),
   browserAssets,
   onSnapshot: () => publishState(),
@@ -74,6 +84,25 @@ const sessions = createBackend({
   },
 });
 let mainWindow: BrowserWindow | null = null;
+const nativeCredentialPrompt = new NativeCredentialPrompt(() => {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const handle = mainWindow.getNativeWindowHandle();
+  if (handle.length !== 8) return null;
+  return {
+    parent: handle.readBigUInt64LE().toString(),
+    processId: process.pid,
+  };
+});
+const assistantConfiguration = new AssistantConfiguration(sessions, {
+  prompt: (challenge) =>
+    assistantFixture
+      ? Promise.resolve({
+          ok: true as const,
+          value: sealSyntheticAssistantCredential(challenge),
+        })
+      : nativeCredentialPrompt.prompt(challenge),
+  close: () => nativeCredentialPrompt.close(),
+});
 let tray: Tray | null = null;
 const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
@@ -304,6 +333,7 @@ app
           });
           return selected.canceled ? null : (selected.filePaths[0] ?? null);
         },
+        () => assistantConfiguration.configure(),
       );
     });
     await sessions.start();
@@ -326,7 +356,10 @@ app
   });
 
 const quitGuard = new QuitGuard({
-  shutdown: () => sessions.shutdown(),
+  shutdown: async () => {
+    const closed = await assistantConfiguration.close();
+    return closed.ok ? sessions.shutdown() : closed;
+  },
   quit: () => {
     tray?.destroy();
     tray = null;

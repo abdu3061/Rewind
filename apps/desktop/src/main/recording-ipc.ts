@@ -23,6 +23,10 @@ import {
   acknowledgementResponseSchema,
   recoveryOverwriteProposalResponseSchema,
   recoveryOverwriteResultResponseSchema,
+  assistantControlResponseSchema,
+  assistantReviewResponseSchema,
+  assistantAnswerResponseSchema,
+  type AssistantControlState,
 } from "@rewind/contracts";
 import type { WorkerClient } from "./worker-client";
 export async function dispatchRecordingRequest(
@@ -32,12 +36,31 @@ export async function dispatchRecordingRequest(
   chooseCopy?: (sourceName: string) => Promise<string | null>,
   openBrowserFolder?: () => Promise<Result<true>>,
   chooseOverwrite?: () => Promise<string | null>,
+  configureAssistant?: () => Promise<Result<AssistantControlState | null>>,
 ): Promise<Result<unknown>> {
   const parsed = recordingCommandSchema.safeParse(input);
   if (!parsed.success)
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "assistant.configure":
+      return configureAssistant
+        ? configureAssistant()
+        : failure(
+            "UNAVAILABLE",
+            "Native credential configuration is unavailable.",
+          );
+    case "assistant.state":
+    case "assistant.permission":
+    case "assistant.forget":
+      return backend.request(command, assistantControlResponseSchema);
+    case "assistant.prepare":
+      return backend.request(command, assistantReviewResponseSchema);
+    case "assistant.ask":
+      return backend.request(command, assistantAnswerResponseSchema);
+    case "assistant.cancel":
+    case "assistant.stop":
+      return backend.request(command, acknowledgementResponseSchema);
     case "browser.open-extension": {
       if (!openBrowserFolder)
         return failure("UNAVAILABLE", "The extension folder is unavailable.");

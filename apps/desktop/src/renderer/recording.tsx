@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AssistantSearch } from "./assistant";
 import type {
   ActivityEvent,
   RuntimeSnapshot,
@@ -172,6 +173,14 @@ export function RecordedHistory({
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [selectedEvidence, setSelectedEvidence] = useState<string[]>([]);
+  useEffect(() => {
+    const visible = new Set(events.map((event) => event.id));
+    setSelectedEvidence((ids) => {
+      const retained = ids.filter((id) => visible.has(id));
+      return retained.length === ids.length ? ids : retained;
+    });
+  }, [events]);
   const [query, setQuery] = useState<TimelineQuery>({ limit: 50 });
   const [text, setText] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -306,7 +315,8 @@ export function RecordedHistory({
         Recorded application observations, saved-file events and capture gaps,
         newest first. A window title does not prove that a file was saved or
         read. Browser metadata needs both approvals. Idle and lock detection
-        remain unavailable. Cloud AI is disabled.
+        remain unavailable. Optional Gemini questions require separate cloud
+        approval and per-question sharing review.
       </p>
       <form
         onSubmit={(event) => {
@@ -423,9 +433,37 @@ export function RecordedHistory({
           and start or resume a session to collect permitted observations.
         </p>
       )}
+      {search && (
+        <AssistantSearch
+          runtime={runtime}
+          selectedIds={selectedEvidence}
+          clearSelection={() => setSelectedEvidence([])}
+        />
+      )}
       <ol className="timeline-events" aria-label="Recorded events">
         {events.map((event) => (
           <li key={event.id} data-testid="timeline-event">
+            {search && (
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Select observation for Gemini"
+                  checked={selectedEvidence.includes(event.id)}
+                  disabled={
+                    !selectedEvidence.includes(event.id) &&
+                    selectedEvidence.length >= 12
+                  }
+                  onChange={(input) =>
+                    setSelectedEvidence((ids) =>
+                      input.target.checked
+                        ? [...ids, event.id]
+                        : ids.filter((id) => id !== event.id),
+                    )
+                  }
+                />{" "}
+                Select for Gemini review
+              </label>
+            )}
             <time dateTime={event.occurredAt}>
               {displayTime(event.occurredAt)}
             </time>

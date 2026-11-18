@@ -1,6 +1,8 @@
 # Repository status
 
-Current local implementation: [secure storage and recording integration](audit/secure-storage-collection-integration.md) on `feature/secure-storage-collection`. Encrypted SQLite, protected keys, utility supervision, explicit launch-scoped Windows recording and DB-backed Timeline/Search are implemented and verified with synthetic activity. Shared main and remote PRs remain unchanged. The earlier cleanup/audit evidence below is historical.
+Current local implementation, 19 November 2026: [core functionality integration](audit/core-functionality-integration.md) on `feature/core-functionality`. Encrypted retention/snapshots, guarded copies/overwrite/checkpoints, normal Chrome/Edge recording and reviewed-evidence Gemini Settings/Search pass the full 478-test check, Windows build, 18 packaged tests and 6 installed-browser tests. DOCX/PDF content previews remain active core work; live-account and interactive native-entry acceptance remain manual gates. The implementation goal is not marked complete.
+
+A fresh fetch finds `origin/main` at `0354ec1`, which merges the earlier PR #6 prototype stack. Its automatic-consent and stock-SQLite/in-memory-success fallback composition conflicts with this verified branch's requirements. Local `main` remains `0391630`, and remote main is not an ancestor of the feature branch. No merge, rebase, push, PR, release or branch deletion was performed. Preserve the feature branch and teammate refs pending explicit owner-reviewed integration. Earlier branch/PR/CI states below are historical snapshots.
 
 This is the earlier cleanup snapshot. The [full engineering audit](audit/README.md) extends it with PR #6, reproduced failure cases, isolated stabilization and a dependency-ordered roadmap. Audit fixes have not been merged into shared main.
 

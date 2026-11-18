@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0030](0030-public-reviewed-gemini-questions.md) records normal Settings/Search controls, sealed native key orchestration, separate launch/question approvals, generation-fenced replies, source citations and packaged offline-provider verification. Live-account and interactive native-entry acceptance remain manual gates.
+
 [ADR 0029](0029-utility-assistant-composition.md) records actual encrypted-source/SDK utility composition, separate launch approval, private sealed credential routing, mutation invalidation and observed shutdown. Main/preload/Search integration remains in progress.
 
 [ADR 0028](0028-retained-evidence-disclosure-leases.md) records engine-issued immutable sharing reviews, checkpoint-aware retention deadlines, single-use disclosure leases and pre-commit maintenance invalidation. Normal assistant composition remains in progress.
