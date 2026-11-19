@@ -75,7 +75,9 @@ for (const entry of [
   "document-entry.cjs",
   "preload.cjs",
 ])
-  assert.ok(extractFile(archive, `.vite/build/${entry}`).length > 100);
+  assert.ok(
+    extractFile(archive, path.join(".vite", "build", entry)).length > 100,
+  );
 assert.ok(
   listPackage(archive).every(
     (file) => !/(^|[\\/])(\.env[^\\/]*|synthetic-fixture\.json)$/.test(file),
@@ -225,7 +227,7 @@ try {
     executable,
     [`--rewind-fixture-root=${profile}`, "--inspect=127.0.0.1:0"],
     {
-      windowsHide: true,
+      windowsHide: false,
       stdio: ["ignore", "ignore", "pipe"],
       env: {
         ...process.env,
