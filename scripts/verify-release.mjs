@@ -18,6 +18,7 @@ import { getCurrentFuseWire, FuseV1Options, FuseState } from "@electron/fuses";
 
 const require = createRequire(import.meta.url);
 const { extractFile, listPackage } = require("@electron/asar");
+const { convertVersion } = require("electron-winstaller");
 const yauzl = require("yauzl");
 const root = path.resolve("apps/desktop/out/Rewind-win32-x64");
 const executable = path.join(root, "Rewind.exe");
@@ -154,7 +155,10 @@ assert.equal(zip.length, 1, "Expected exactly one versioned Windows ZIP");
 const files = [
   path.join(zipDirectory, zip[0]),
   path.join(make, "squirrel.windows/x64/Rewind-Setup.exe"),
-  path.join(make, `squirrel.windows/x64/Rewind-${manifest.version}-full.nupkg`),
+  path.join(
+    make,
+    `squirrel.windows/x64/Rewind-${convertVersion(manifest.version)}-full.nupkg`,
+  ),
   path.join(make, "squirrel.windows/x64/RELEASES"),
 ];
 
