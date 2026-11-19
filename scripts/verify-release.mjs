@@ -238,6 +238,44 @@ async function inspectZip(file) {
 await inspectZip(files[0]);
 await inspectZip(files[2]);
 
+// Read the bootstrapper's embedded package without executing or installing it.
+// This catches a stale Setup.exe even when the neighboring NuGet/ZIP are current.
+for (const payload of [files[2], files[3]]) {
+  const expectedBytes = (await stat(payload)).size;
+  const expectedHash = await hash(payload);
+  await new Promise((resolve, reject) => {
+    const extractor = spawn(
+      path.resolve("node_modules/electron-winstaller/vendor/7z-x64.exe"),
+      ["x", "-so", "-bd", "-y", files[1], path.basename(payload)],
+      { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const value = createHash("sha256");
+    let bytes = 0;
+    const deadline = setTimeout(() => {
+      extractor.kill();
+    }, 60000);
+    extractor.stdout.on("data", (chunk) => {
+      bytes += chunk.length;
+      value.update(chunk);
+      if (bytes > expectedBytes) extractor.kill();
+    });
+    extractor.once("error", () => {
+      clearTimeout(deadline);
+      reject(new Error("INSTALLER_PAYLOAD_VERIFICATION_FAILED"));
+    });
+    extractor.once("close", (code) => {
+      clearTimeout(deadline);
+      if (
+        code !== 0 ||
+        bytes !== expectedBytes ||
+        value.digest("hex") !== expectedHash
+      )
+        reject(new Error("INSTALLER_PAYLOAD_MISMATCH"));
+      else resolve();
+    });
+  });
+}
+
 // Actual hardened binary: marked temporary profile only, no main-process inspector.
 const profile = await mkdtemp(path.join(tmpdir(), "rewind-e2e-"));
 let child,
