@@ -11,6 +11,17 @@ import { Files } from "./files";
 import { Checkpoints } from "./checkpoints";
 import { BrowserSettings } from "./browser-settings";
 import { AssistantSettings } from "./assistant";
+import {
+  HouseIcon,
+  ClockCounterClockwiseIcon,
+  MagnifyingGlassIcon,
+  FolderSimpleIcon,
+  BookmarkSimpleIcon,
+  SlidersHorizontalIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react";
+import { Mascot } from "./Mascot";
+import { usePresentation } from "./presentation";
 
 const pages = [
   "Dashboard",
@@ -21,6 +32,14 @@ const pages = [
   "Settings",
 ] as const;
 type Page = (typeof pages)[number];
+const pageIcons = [
+  HouseIcon,
+  ClockCounterClockwiseIcon,
+  MagnifyingGlassIcon,
+  FolderSimpleIcon,
+  BookmarkSimpleIcon,
+  SlidersHorizontalIcon,
+];
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -32,6 +51,15 @@ function formatTime(value: string): string {
 export function App() {
   const { runtime, runtimeError } = useRecordingRuntime();
   const [page, setPage] = useState<Page>("Dashboard");
+  const presentation = usePresentation();
+  const lastNavigation = useRef(-1);
+  useEffect(() => {
+    const intent = presentation?.navigation;
+    if (intent && intent.revision > lastNavigation.current) {
+      lastNavigation.current = intent.revision;
+      setPage(intent.page);
+    }
+  }, [presentation?.navigation]);
   const [state, setState] = useState<SessionState>({ session: null });
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -145,28 +173,31 @@ export function App() {
       </a>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ↶
-          </span>
+          <Mascot className="brand-mark" />
           <span>
-            Rewind<small>WORK SESSION MEMORY</small>
+            Rewind<small>A LITTLE LESS LOST.</small>
           </span>
         </div>
 
         <nav aria-label="Main navigation">
-          {pages.map((item, i) => (
-            <button
-              key={item}
-              className={page === item ? "nav-item selected" : "nav-item"}
-              aria-current={page === item ? "page" : undefined}
-              onClick={() => setPage(item)}
-            >
-              <span className="nav-number" aria-hidden="true">
-                0{i + 1}
-              </span>
-              {item}
-            </button>
-          ))}
+          {pages.map((item, i) => {
+            const Icon = pageIcons[i] ?? HouseIcon;
+            return (
+              <button
+                key={item}
+                className={page === item ? "nav-item selected" : "nav-item"}
+                aria-current={page === item ? "page" : undefined}
+                onClick={() => setPage(item)}
+              >
+                <Icon
+                  size={21}
+                  weight={page === item ? "duotone" : "regular"}
+                  aria-hidden="true"
+                />
+                {item}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-note">
@@ -189,7 +220,10 @@ export function App() {
           </p>
         </div>
 
-        <div className="build-label">v0.1 · Development build</div>
+        <div className="build-label">
+          <ShieldCheckIcon size={15} aria-hidden="true" /> Private by design ·
+          v0.1 beta
+        </div>
       </aside>
 
       <main id="main-content" tabIndex={-1}>
@@ -202,11 +236,12 @@ export function App() {
           <span className="badge">
             {runtime?.synthetic
               ? "Synthetic verification mode"
-              : "Local development"}
+              : "On your device"}
           </span>
         </header>
 
-        <div className="notice">
+        <div className="notice secure-summary">
+          <ShieldCheckIcon size={19} aria-hidden="true" />
           <strong>
             {!runtime || runtime.service === "starting"
               ? "Connecting to secure history"
@@ -215,11 +250,9 @@ export function App() {
                 : "Secure storage unavailable"}
           </strong>
           <span>
-            Windows activity, selected folders and browser metadata need
-            separate approval and an active session. Browser recording also
-            needs the extension's approval. Verified file versions can be saved
-            as separate copies. Optional Gemini questions need separate approval
-            and a sharing review.
+            {runtime?.assistant.permission
+              ? "Cloud questions approved · Each question needs a sharing review"
+              : "Cloud off · You choose what Rewind remembers"}
           </span>
         </div>
 
@@ -253,7 +286,10 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">SESSION CONTROLS</p>
-                  <h2 id="session-heading">Dashboard</h2>
+                  <h2 id="session-heading">Stay in your flow.</h2>
+                  <p className="session-greeting">
+                    A good place to pick things up.
+                  </p>
                 </div>
 
                 <span
@@ -266,8 +302,8 @@ export function App() {
               </div>
 
               <p>
-                Starting without permission records no activity. Approve Windows
-                activity below before starting or resuming a recording session.
+                Start a session, then choose what to remember. Nothing is
+                recorded without a separate source approval.
               </p>
 
               <div className="controls" aria-label="Session controls">
@@ -322,16 +358,19 @@ export function App() {
               </div>
             </section>
 
-            <RecordingPreferences runtime={runtime} />
-
             <div className="card-grid">
               <section className="panel">
+                <ClockCounterClockwiseIcon
+                  className="card-icon"
+                  size={24}
+                  weight="duotone"
+                  aria-hidden="true"
+                />
                 <p className="eyebrow">ACTIVITY HISTORY</p>
                 <h2>Timeline</h2>
 
                 <p>
-                  View recorded Windows observations, capture gaps and previous
-                  sessions from encrypted storage.
+                  Find your way back through recorded moments and past sessions.
                 </p>
 
                 <button
@@ -343,13 +382,18 @@ export function App() {
               </section>
 
               <section className="panel">
+                <FolderSimpleIcon
+                  className="card-icon"
+                  size={24}
+                  weight="duotone"
+                  aria-hidden="true"
+                />
                 <p className="eyebrow">FILE PROTECTION</p>
                 <h2>Saved file versions</h2>
 
                 <p>
-                  Select folders and approve capture to preserve supported saved
-                  bytes. Inspect capture progress and verified versions in
-                  Files.
+                  Revisit captured versions and recover a verified copy when you
+                  need it.
                 </p>
 
                 <button
@@ -361,9 +405,12 @@ export function App() {
               </section>
             </div>
 
+            <RecordingPreferences runtime={runtime} />
+
             <p className="footnote">
-              Sessions and history persist. Closing the window ends the session
-              and quits Rewind. Recording permission expires on restart.
+              Minimize to keep Rewind within reach in the notch. Closing the
+              window ends the session and quits. Recording approvals expire on
+              restart.
             </p>
           </>
         )}

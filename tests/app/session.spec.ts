@@ -118,6 +118,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       node: "undefined",
       process: "undefined",
       keys: [
+        "presentation",
         "content",
         "assistant",
         "browser",

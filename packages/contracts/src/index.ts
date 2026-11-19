@@ -11,6 +11,7 @@ export * from "./recovery";
 export * from "./recovery-overwrite";
 export * from "./ports";
 export * from "./ipc";
+export * from "./presentation";
 export * from "./recording";
 export * from "./worker";
 export * from "./browser-transport";

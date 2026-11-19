@@ -83,17 +83,15 @@ export function RecordingPreferences({
     >
       <h2 id="recording-heading">Windows activity permission</h2>
       <p>
-        Allow Rewind to record application names, window titles and timestamps
-        during an active session. Titles can contain sensitive information.
-        Records stay in encrypted local storage on this Windows account.
+        Approve application names, window titles and timestamps during active
+        sessions. Titles may contain sensitive information. Records stay
+        encrypted on this Windows account.
       </p>
       <p>
-        Approval expires when Rewind or its recording service restarts. Changing
-        preferences pauses an active session; start or resume explicitly
-        afterward. Browser windows, Rewind itself and excluded applications are
-        skipped. File protection has its own selection and launch approval in
-        Files. Browser metadata has separate controls below and extension
-        approval.
+        Approval expires when Rewind or its recording service restarts.
+        Preference changes pause active sessions; resume explicitly. Rewind,
+        browser windows and excluded apps are skipped. Folders (Files) and
+        browser metadata (Settings and the extension) need separate approvals.
       </p>
       <label htmlFor="application-exclusions">
         Excluded applications (one name per line)

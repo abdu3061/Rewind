@@ -3,6 +3,7 @@ import { resultSchema, type Result } from "./common";
 import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
+import type { PresentationCommand, PresentationState } from "./presentation";
 import type { FileTextQuery } from "./file-text";
 import type {
   FileTextControlState,
@@ -56,6 +57,10 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  presentation: {
+    send(command: PresentationCommand): Promise<Result<PresentationState>>;
+    onChanged(listener: (state: PresentationState) => void): () => void;
+  };
   content: {
     state(): Promise<Result<FileTextControlState>>;
     indexSaved(

@@ -54,6 +54,8 @@ See also [ADR 0008](0008-audit-stabilization.md): bounded audit fixes implemente
 
 For a new decision: state context, options, recommendation, consequences, owner/status, and acceptance evidence. Do not mark a proposed binding/protocol approved because a placeholder interface exists.
 
+[ADR 0037](0037-connected-desktop-notch.md) records the connected full desktop/notch presentation, main-owned window roles, smaller validated bridge, monitor/DIP behavior and real local quick actions. It retains one existing worker and all consent/security boundaries. Its implementation and Windows visual/regression evidence are recorded in the premium-notch implementation report.
+
 [ADR 0031](0031-bounded-document-text-foundation.md) records the bounded DOCX/PDF parsing foundation. It is not yet connected to production previews; separate utility/resource/packaging/lifecycle verification is required.
 
 [ADR 0032](0032-supervised-document-utility.md) records the single-use parser utility, Windows Job Object admission, external deadline and actual-exit fencing. Private supervision is verified; normal retained-source and Files/Checkpoints integration remains active work.

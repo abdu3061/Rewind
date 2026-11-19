@@ -8,6 +8,7 @@ const roots = [
   "electron",
   "react",
   "react-dom",
+  "@phosphor-icons/react",
   "zod",
   "@google/genai",
   "better-sqlite3-multiple-ciphers",

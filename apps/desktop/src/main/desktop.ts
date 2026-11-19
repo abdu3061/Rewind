@@ -21,6 +21,8 @@ import {
   RUNTIME_CHANGED_CHANNEL,
   boundedWorkerMessage,
   type SessionAction,
+  PRESENTATION_CHANNEL,
+  presentationCommandSchema,
 } from "@rewind/contracts";
 import { dispatchSessionRequest, isTrustedRendererUrl } from "./session-ipc";
 import { QuitGuard } from "./quit-guard";
@@ -36,6 +38,9 @@ import { AssistantConfiguration } from "./assistant-configuration";
 import { NativeCredentialPrompt } from "./native-credential-prompt";
 import { OperationalLog } from "./operational-log";
 import { shutdownDesktop } from "./desktop-shutdown";
+import { NotchWindow } from "./notch-window";
+import { notchAllowsRecording } from "./notch-policy";
+import { trayPresentation } from "./tray-presentation";
 
 let fixtureRoot: string | null = null;
 let browserFixture: ReturnType<typeof readBrowserFixture> = null;
@@ -61,10 +66,7 @@ const operationalLog = new OperationalLog(
 operationalLog.write("DESKTOP_STARTING");
 let lastService: string | null = null;
 app.on("second-instance", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+  notch?.open();
 });
 const applicationIcon = path.join(
   app.isPackaged
@@ -103,15 +105,13 @@ const sessions = createBackend({
     publishState();
   },
   onActivity: (sessionId) => {
-    if (
-      mainWindow &&
-      !mainWindow.isDestroyed() &&
-      isTrustedRendererUrl(mainWindow.webContents.getURL(), rendererUrl)
-    )
-      mainWindow.webContents.send(ACTIVITY_CHANGED_CHANNEL, sessionId);
+    for (const window of trustedWindows())
+      window.webContents.send(ACTIVITY_CHANGED_CHANNEL, sessionId);
   },
 });
 let mainWindow: BrowserWindow | null = null;
+let notch: NotchWindow | null = null;
+let trayWindows: ReturnType<typeof trayPresentation> | null = null;
 const nativeCredentialPrompt = new NativeCredentialPrompt(() => {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const handle = mainWindow.getNativeWindowHandle();
@@ -136,26 +136,28 @@ const rendererUrl =
   MAIN_WINDOW_VITE_DEV_SERVER_URL ?? "rewind://app/index.html";
 function trusted(event: Electron.IpcMainInvokeEvent): boolean {
   return (
-    !!mainWindow &&
-    event.sender === mainWindow.webContents &&
+    trustedWindows().some((window) => event.sender === window.webContents) &&
     !!event.senderFrame &&
     event.senderFrame === event.sender.mainFrame &&
     isTrustedRendererUrl(event.senderFrame.url, rendererUrl)
   );
 }
 
+function trustedWindows(): BrowserWindow[] {
+  return [mainWindow, notch?.window].filter(
+    (window): window is BrowserWindow =>
+      !!window &&
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed() &&
+      isTrustedRendererUrl(window.webContents.getURL(), rendererUrl),
+  );
+}
+
 function publishState(): void {
   const state = sessions.getState();
-  if (
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    isTrustedRendererUrl(mainWindow.webContents.getURL(), rendererUrl)
-  ) {
-    mainWindow.webContents.send(SESSION_CHANGED_CHANNEL, state);
-    mainWindow.webContents.send(
-      RUNTIME_CHANGED_CHANNEL,
-      sessions.getSnapshot(),
-    );
+  for (const window of trustedWindows()) {
+    window.webContents.send(SESSION_CHANGED_CHANNEL, state);
+    window.webContents.send(RUNTIME_CHANGED_CHANNEL, sessions.getSnapshot());
   }
   updateTray();
 }
@@ -178,11 +180,13 @@ function updateTray(): void {
     Menu.buildFromTemplate([
       {
         label: "Open Rewind",
-        click: () => {
-          mainWindow?.show();
-          mainWindow?.focus();
-        },
+        click: () => trayWindows?.open(),
       },
+      {
+        label: "Show Rewind notch",
+        click: () => trayWindows?.show(),
+      },
+      { label: "Hide notch", click: () => trayWindows?.hide() },
       {
         label: `Session: ${status} | Collection ${runtime.collection}`,
         enabled: false,
@@ -251,7 +255,7 @@ async function createWindow(): Promise<void> {
     minHeight: 600,
     title: "Rewind",
     icon: applicationIcon,
-    backgroundColor: "#f5f6f8",
+    backgroundColor: "#f5f5fc",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -260,32 +264,77 @@ async function createWindow(): Promise<void> {
       webSecurity: true,
     },
   });
-  Menu.setApplicationMenu(null);
-  mainWindow.webContents.session.setPermissionRequestHandler(
-    (_contents, _permission, callback) => callback(false),
-  );
-  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-  mainWindow.webContents.on("will-attach-webview", (event) =>
-    event.preventDefault(),
-  );
-  mainWindow.webContents.on("render-process-gone", () => {
-    operationalLog.write("RENDERER_GONE");
-    // Losing the consent UI must not leave a recording session running invisibly.
-    app.quit();
+  secureWindow(mainWindow);
+  mainWindow.on("minimize", () => {
+    void notch?.showCompact().catch(() => {
+      operationalLog.write("RENDERER_GONE");
+      app.quit();
+    });
   });
+  mainWindow.on("restore", () => notch?.hide());
+  mainWindow.on("move", () => notch?.rememberDesktopDisplay());
+  mainWindow.on("resize", () => notch?.rememberDesktopDisplay());
+  mainWindow.on("show", () => notch?.hide());
+  mainWindow.on("enter-full-screen", () => notch?.hide());
   mainWindow.on("closed", () => {
     mainWindow = null;
     app.quit();
   });
   await mainWindow.loadURL(rendererUrl);
+  notch?.rememberDesktopDisplay();
+}
+
+function secureWindow(window: BrowserWindow): void {
+  window.webContents.session.setPermissionRequestHandler(
+    (_contents, _permission, callback) => callback(false),
+  );
+  window.webContents.session.setPermissionCheckHandler(() => false);
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("will-attach-webview", (event) =>
+    event.preventDefault(),
+  );
+  window.webContents.on("render-process-gone", () => {
+    operationalLog.write("RENDERER_GONE");
+    // Losing the consent UI must not leave a recording session running invisibly.
+    app.quit();
+  });
 }
 
 app
   .whenReady()
   .then(async () => {
     if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) installLocalProtocol();
+    Menu.setApplicationMenu(null);
+    notch = new NotchWindow({
+      desktop: () => mainWindow,
+      rendererUrl,
+      secure: secureWindow,
+    });
+    trayWindows = trayPresentation({
+      desktop: () => mainWindow,
+      notch,
+      failed: () => app.quit(),
+    });
+    ipcMain.handle(PRESENTATION_CHANNEL, (event, ...args: unknown[]) => {
+      if (!trusted(event))
+        return failure(
+          "FORBIDDEN",
+          "This frame cannot control Rewind windows.",
+        );
+      const command = presentationCommandSchema.safeParse(args[0]);
+      if (args.length !== 1 || !command.success)
+        return failure("INVALID_INPUT", "A valid window action is required.");
+      if (
+        event.sender !== notch?.window?.webContents &&
+        command.data.action !== "get" &&
+        command.data.action !== "open"
+      )
+        return failure("FORBIDDEN", "This window cannot control the notch.");
+      return notch
+        ? { ok: true, value: notch.handle(command.data) }
+        : failure("UNAVAILABLE", "Window service is starting.");
+    });
     ipcMain.handle(SESSION_CHANNEL, async (event, ...args: unknown[]) => {
       if (!trusted(event)) {
         return failure(
@@ -313,6 +362,11 @@ app
           "INVALID_INPUT",
           "Exactly one bounded recording command is required.",
         );
+      if (
+        event.sender === notch?.window?.webContents &&
+        !notchAllowsRecording(args[0])
+      )
+        return failure("FORBIDDEN", "Open Rewind to use this capability.");
       return dispatchRecordingRequest(
         sessions,
         args[0],
@@ -372,6 +426,7 @@ app
         .createFromPath(applicationIcon)
         .resize({ width: 16, height: 16 }),
     );
+    tray.on("double-click", () => trayWindows?.open());
     updateTray();
     await createWindow();
     operationalLog.write("DESKTOP_READY");
@@ -390,15 +445,18 @@ app
   });
 
 const quitGuard = new QuitGuard({
-  shutdown: () =>
-    shutdownDesktop({
+  shutdown: () => {
+    notch?.hide();
+    return shutdownDesktop({
       closePrompt: () => assistantConfiguration.close(),
       shutdownWorker: () => sessions.shutdown(),
-    }),
+    });
+  },
   quit: () => {
     operationalLog.write("DESKTOP_STOPPED");
     tray?.destroy();
     tray = null;
+    notch?.dispose();
     app.quit();
   },
   failed: () => {

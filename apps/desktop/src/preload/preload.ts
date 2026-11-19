@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   failure,
+  PRESENTATION_CHANNEL,
+  PRESENTATION_CHANGED_CHANNEL,
+  presentationCommandSchema,
+  presentationStateSchema,
+  presentationResponseSchema,
   fileTextCommandSchema,
   fileTextControlResponseSchema,
   fileTextSearchResponseSchema,
@@ -123,6 +128,32 @@ function assistantArgument<T>(
   };
 }
 const api: DesktopApi = {
+  presentation: {
+    send: async (...args: unknown[]) => {
+      const parsed = presentationCommandSchema.safeParse(args[0]);
+      if (args.length !== 1 || !parsed.success)
+        return failure("INVALID_INPUT", "A valid window action is required.");
+      try {
+        const response = presentationResponseSchema.safeParse(
+          await ipcRenderer.invoke(PRESENTATION_CHANNEL, parsed.data),
+        );
+        return response.success
+          ? response.data
+          : failure("INTERNAL", "The window response is invalid.");
+      } catch {
+        return failure("UNAVAILABLE", "The window service is unavailable.");
+      }
+    },
+    onChanged: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+        const parsed = presentationStateSchema.safeParse(value);
+        if (parsed.success) listener(parsed.data);
+      };
+      ipcRenderer.on(PRESENTATION_CHANGED_CHANNEL, handler);
+      return () =>
+        ipcRenderer.removeListener(PRESENTATION_CHANGED_CHANNEL, handler);
+    },
+  },
   content: {
     state: noArgs({ kind: "content.state" }, fileTextControlResponseSchema),
     stop: noArgs({ kind: "content.stop" }, fileTextControlResponseSchema),
@@ -597,4 +628,14 @@ const api: DesktopApi = {
     },
   },
 };
-contextBridge.exposeInMainWorld("rewind", api);
+const exposed = process.argv.includes("--rewind-surface=notch")
+  ? {
+      presentation: api.presentation,
+      sessions: api.sessions,
+      runtime: { get: api.runtime.get, onChanged: api.runtime.onChanged },
+      timeline: api.timeline,
+      versions: { list: api.versions.list },
+      checkpoints: { create: api.checkpoints.create },
+    }
+  : api;
+contextBridge.exposeInMainWorld("rewind", exposed);
