@@ -21,7 +21,10 @@ Additional notices are committed under `apps/desktop/assets/third-party-notices`
 - Initial current-source `npm run check`: native lock, types, lint, formatting and 662 tests / 76 files passed (233.33 seconds).
 - An initial full desktop run passed 32/33; the recording/filter/restart case timed out with a busy Chromium temporary-profile file during cleanup. Its unchanged focused trace run passed in 9.1 seconds. The complete beta-package suite is rerun before publication; no production deadline or assertion was weakened.
 - Beta verification package built successfully from committed runtime source `c71743b`. Subsequent commits affect release verification only. Types, lint, formatting, native-lock metadata and all 256 committed original notice/source hashes pass.
-- Full packaged app, installed-browser, document-runtime, final production packaging and hardened release checks are being completed before publication; final observed results and artifact hashes will be recorded here.
+- Complete beta-package desktop suite: **33/33 passed** (3.9 minutes), including Chrome/Edge UI flows, change-only/no-import/deduplication, exclusions, recovery/preservation, checkpoints/Keep, encrypted restart, consent, renderer/worker failure and storage deletion.
+- Separate installed Chrome/Edge suite: **6/6 passed** (51.3 seconds), with marked synthetic profiles and scoped test host registrations.
+- Actual packaged DOCX/PDF utility/native guard harness: **1/1 passed** (5.00 seconds).
+- Final production packaging and hardened release checks are completed before publication; the manifest records the exact committed build source and artifact hashes. Installed-machine acceptance is not implied by these archive/runtime checks.
 
 ## Deferred acceptance
 
