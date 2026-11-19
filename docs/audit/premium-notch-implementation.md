@@ -46,7 +46,18 @@ All automated application runs use marked temporary synthetic profiles, observat
 | New notch checks                | Four packaged tests cover transitions/focus/keyboard/single worker/restricted bridge; real recording/search/checkpoint/retention/restart; renderer-loss drain; and worker failure/reconnect without approval. Unit checks cover geometry, monitor removal/scaling, asynchronous restore, tray callbacks and activity-only automatic expiration. |
 | Installed Chrome/Edge           | All **six isolated installed-browser tests passed** (47.5 seconds): Chrome/Edge dual consent, exclusions, authenticated native relay and engine lifecycle.                                                                                                                                                                                      |
 | Packaged document harness       | Actual-ASAR/native-guard harness passed (4.95 seconds), retaining admission/resource deadlines and original-byte recovery checks.                                                                                                                                                                                                               |
-| Unsigned ZIP/Squirrel candidate | Final committed-source make and hardened payload/runtime verification pending. Installer/signing/upgrade acceptance is separate.                                                                                                                                                                                                                |
+| Unsigned ZIP/Squirrel candidate | `npm run make` and `npm run verify:release` passed: hardened fuses, matching ZIP/NuGet payloads, native/resource hashes, 64 notice entries and actual synthetic startup/graceful shutdown. Both application and Setup signatures are NotSigned.                                                                                                 |
+
+## Local unsigned candidate
+
+Artifacts were built from clean committed source `f831b6c31b4543dcea86d53218f0237ec62d2511` in release mode, with lock SHA-256 `bb5cac043b94dc01dbf7481921eff8045f2553e083a3a2727c161e0846137453`. This report's subsequent documentation-only update does not change product sources or relabel that build. The generated [release manifest](../../apps/desktop/out/make/release-manifest.json) records exact sizes and hashes:
+
+| Artifact                                                                                     |     Bytes | SHA-256                                                            |
+| -------------------------------------------------------------------------------------------- | --------: | ------------------------------------------------------------------ |
+| [Windows ZIP](../../apps/desktop/out/make/zip/win32/x64/Rewind-win32-x64-0.1.0.zip)          | 178578888 | `fb5a5b95e831600cbd7b5946e1c675a39f0423884ada7fc92ce9491d576122a7` |
+| [Unsigned Squirrel Setup](../../apps/desktop/out/make/squirrel.windows/x64/Rewind-Setup.exe) | 173336064 | `0f02e0fcf7f22743539981c6b27ec2cd8e0ee0fb15780919848d551b8f2b2668` |
+
+Additional actual-ASAR inspection confirms that the bundled transparent mascot is byte-identical to the source PNG, recall and worker-failure views are present, and the restricted presentation bridge is included. Release inspection confirms no Rewind process remains after the acknowledged smoke shutdown. Installation, upgrade/removal, Authenticode trust and live Gemini acceptance are not claimed.
 
 ## Visual evidence
 
@@ -57,3 +68,5 @@ All automated application runs use marked temporary synthetic profiles, observat
 - [Real local matches](../design/premium-notch/notch-search.png), [acknowledged checkpoint success](../design/premium-notch/notch-checkpoint.png), [worker failure](../design/premium-notch/notch-unavailable.png) and the [combined design comparison](../design/premium-notch/comparison-final.png).
 
 The overlay uses normal floating priority and may yield to exclusive fullscreen applications. It does not inspect foreground titles/geometry or promise detection of every borderless game. Physical multi-monitor/DPI hotplug, every fullscreen application, assistive technology and extended resource soak remain manual device acceptance, distinct from automated geometry/focus coverage. Existing independent security, signing/licensing, VM install/upgrade/removal and native Gemini/live-account release gates in [Windows release](../windows-release.md) remain unchanged.
+
+Automatic approval review rejected optional cleanup of five earlier failed synthetic test-profile directories with the stated reason “blocked by policy.” Those Temp directories were left untouched. The successful verification fixtures cleaned up normally; no Rewind process remains. This optional housekeeping does not affect the build or product verification.
