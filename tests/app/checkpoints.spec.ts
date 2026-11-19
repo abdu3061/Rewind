@@ -33,6 +33,7 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
       ];
     });
     expect(setup.every((result) => result.ok)).toBe(true);
+    writeFileSync(path.join(folder, "checkpoint.txt"), text);
     await page.getByRole("button", { name: /Files/ }).click();
     await expect(page.getByTestId("captured-version")).toHaveCount(1, {
       timeout: 15000,
@@ -43,6 +44,9 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
       ),
     ).toMatchObject({ ok: true });
     await page.getByRole("button", { name: /Checkpoints/ }).click();
+    await expect(
+      page.getByRole("group", { name: "Recorded activity (0 selected)" }),
+    ).toContainText("checkpoint.txt · updated");
     await page.getByLabel("Checkpoint name", { exact: true }).fill(name);
     await page
       .getByRole("checkbox", { name: /Select version checkpoint.txt/ })

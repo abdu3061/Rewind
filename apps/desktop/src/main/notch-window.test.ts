@@ -14,6 +14,7 @@ vi.mock("electron", async () => {
     destroyed = false;
     focused = false;
     minimized = false;
+    top = false;
     bounds = { x: 0, y: 0, width: 1000, height: 800 };
     webContents = { send: vi.fn(), isDestroyed: () => this.destroyed };
     constructor(options: object) {
@@ -32,7 +33,12 @@ vi.mock("electron", async () => {
     isFocused() {
       return this.focused;
     }
-    setAlwaysOnTop() {}
+    setAlwaysOnTop(value: boolean) {
+      this.top = value;
+    }
+    isAlwaysOnTop() {
+      return this.top;
+    }
     getBounds() {
       return this.bounds;
     }
@@ -41,6 +47,7 @@ vi.mock("electron", async () => {
     }
     showInactive() {
       this.visible = true;
+      this.top = false;
     }
     show() {
       this.visible = true;
@@ -94,6 +101,7 @@ it("keeps one overlay, shows inactive, collapses on blur and restores the existi
   const overlay = controller.window;
   expect(overlay?.isVisible()).toBe(true);
   expect(overlay?.isFocused()).toBe(false);
+  expect(overlay?.isAlwaysOnTop()).toBe(true);
   expect(secure).toHaveBeenCalledOnce();
   controller.handle({ action: "expand" });
   expect(controller.snapshot().expanded).toBe(true);

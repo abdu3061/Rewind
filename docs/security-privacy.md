@@ -4,7 +4,7 @@ Rasit owns security decisions and backend authorization. This document distingui
 
 ## Enforced in this local development branch
 
-- Windows, selected-folder and browser collection start off, require independent explicit approvals and an active session, and expire on app/worker restart. Browser collection also requires extension approval. Exclusions persist; changes pause without automatic resume. Idle/lock and article extraction remain unavailable.
+- Collection starts off. One-time local setup explicitly grants Windows metadata and verified default-folder capture, remembers local approval and starts a session on normal opening. Manual local grants still expire on restart. Browser recording keeps independent desktop/extension launch approval. Reconnect remains off and interrupted sessions remain paused. Exclusions persist; an active automatic session continues only after exclusion changes are installed. Idle/lock and article extraction remain unavailable. See ADR 0038.
 - The renderer is sandboxed without Node. Explicit session, history, files, recovery, checkpoint, browser, storage and assistant capabilities validate arguments, responses and events. Main authorizes exact sender, main frame and page. No raw IPC, generic filesystem or plaintext key API is exposed.
 - SQL, collectors, file verification and the optional SDK run in a supervised utility process. It opens only a verified encrypted store; main supplies Windows-protected key access. Generation fencing, stop/drain, deadlines and heartbeat leases prevent silent continuation after lost authority.
 - Packaged UI assets use a bounded custom protocol and CSP; external navigation, popup windows, webviews, and permission grants are denied. Renderer code cannot access secrets or privileged filesystem operations.
@@ -16,7 +16,7 @@ History, FTS, retained original-byte blobs and operational credentials use the c
 
 ## Consent and lifecycle requirements
 
-Before real collection, show exactly which data is captured, protected-folder scope, exclusions, optional page text/cloud sharing, retention/quota behavior, and clear status controls. Consent is separate from an Active session and can be revoked. Collection must be visible in window/tray, off by default, and never enabled silently on startup, reconnect, update, or worker restart.
+Before real collection, show exactly which data is captured, folder scope, exclusions, optional page text/cloud sharing, retention/quota behavior and status controls. Consent is separate from an Active session and can be revoked. Collection must be visible and off until approval. Only the reviewed one-time local setup authorizes remembered normal-launch startup for approved folders; expanding scope requires fresh approval. Reconnect/worker restart do not renew it. Browser/cloud approval is never implied.
 
 Pause/end/revocation must stop collectors, close subscriptions, quiesce queues, invalidate a generation/capability, and reject stale ingestion. Quit must fail safely. Locked/idle behavior must be explicitly specified and tested. An extension flag alone is insufficient: the engine rechecks permissions, active session, source, scope, and payload limits on every ingestion batch. Exclusion changes need explicit treatment of queued/previously captured content.
 

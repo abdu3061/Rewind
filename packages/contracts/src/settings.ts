@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { idSchema } from "./common";
+import { automaticFoldersSchema } from "./automatic-recording";
 
 export const userSettingsSchema = z.strictObject({
   collectionConsent: z.boolean(),
   folderCollectionConsent: z.boolean().default(false),
+  // Absent on older profiles: a new, explicit setup approval is required.
+  automaticRecording: z.boolean().optional(),
+  automaticRecordingLocations: automaticFoldersSchema.optional(),
   browserCollectionConsent: z.boolean().default(false),
   cloudAiEnabled: z.boolean(),
   articleExtractionEnabled: z.boolean(),

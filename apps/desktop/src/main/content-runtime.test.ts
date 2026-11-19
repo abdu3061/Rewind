@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import {
@@ -83,6 +83,12 @@ function fixture(allFormats = true) {
         query: { text: needle, limit: 25 },
       }),
     );
+  const save = () => {
+    for (const name of allFormats
+      ? ["ordinary.pdf", "ordinary.txt", "ordinary.docx"]
+      : ["ordinary.pdf"])
+      writeFileSync(join(folder, name), readFileSync(join(folder, name)));
+  };
   const start = async () => {
     expect((await runtime.initialize()).ok).toBe(true);
     expect(
@@ -95,7 +101,20 @@ function fixture(allFormats = true) {
       (await runtime.execute({ kind: "session", action: "start" })).ok,
     ).toBe(true);
   };
-  return { runtime, open, folder, state, search, start, extract, stop };
+  return {
+    runtime,
+    open,
+    folder,
+    state,
+    search,
+    start: async () => {
+      await start();
+      save();
+    },
+    save,
+    extract,
+    stop,
+  };
 }
 const wait = async (work: () => Promise<void>) =>
   vi.waitFor(work, { timeout: 15000 });
@@ -121,6 +140,7 @@ it("ordinary worker indexes actual captured UTF-8/DOCX/PDF bodies after file app
   expect(
     (await f.runtime.execute({ kind: "session", action: "resume" })).ok,
   ).toBe(true);
+  f.save();
   await wait(async () => {
     expect(await f.state()).toMatchObject({
       ok: true,
@@ -180,6 +200,7 @@ it("Stop pauses automatic indexing for this launch and explicit saved-history in
   expect(
     (await f.runtime.execute({ kind: "session", action: "start" })).ok,
   ).toBe(true);
+  f.save();
   await wait(async () => {
     expect(await f.state()).toMatchObject({
       ok: true,

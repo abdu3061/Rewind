@@ -24,6 +24,8 @@ export const nativeFileListingSchema = z
     paths: z.array(z.string().min(1).max(240)).max(2000),
     stamps: z.array(z.string().max(80)).max(2000),
     overflow: z.boolean(),
+    continuation: z.boolean().optional(),
+    skipped: z.number().int().min(0).max(2000).optional(),
   })
   .refine((value) => value.paths.length === value.stamps.length);
 export const nativeFileBytesSchema = z.strictObject({
@@ -41,6 +43,12 @@ export interface ProtectedFileAccess {
     path: string,
   ): Promise<Result<z.infer<typeof nativeFolderProofSchema>>>;
   list(
+    folder: ProtectedFolder,
+  ): Promise<Result<z.infer<typeof nativeFileListingSchema>>>;
+  /** Arm native notifications without listing or reading existing files. */
+  watch(folder: ProtectedFolder): Promise<Result<void>>;
+  /** Bounded, coalesced hints only; every content read needs fresh native proof. */
+  changes(
     folder: ProtectedFolder,
   ): Promise<Result<z.infer<typeof nativeFileListingSchema>>>;
   read(

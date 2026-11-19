@@ -1,5 +1,6 @@
 import {
   failure,
+  automaticRecordingResponseSchema,
   fileTextControlResponseSchema,
   fileTextSearchResponseSchema,
   historyResponseSchema,
@@ -46,6 +47,9 @@ export async function dispatchRecordingRequest(
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "recording.state":
+    case "recording.configure":
+      return backend.request(command, automaticRecordingResponseSchema);
     case "content.state":
     case "content.index":
     case "content.stop":

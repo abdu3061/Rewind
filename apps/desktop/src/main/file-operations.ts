@@ -36,6 +36,7 @@ interface Options {
   changeSettings: (
     settings: UserSettings,
     write?: () => Promise<Result<void>>,
+    current?: () => boolean,
   ) => Promise<Result<void>>;
 }
 const inside = (root: string, selected: string) => {
@@ -424,12 +425,14 @@ export class FileOperations {
           {
             ...this.options.getSettings(),
             folderCollectionConsent: false,
+            automaticRecording: false,
             protectedFolderIds: [
               ...listed.value.map((value) => value.id),
               folder.id,
             ],
           },
           () => storage.snapshots.saveFolder(folder),
+          current,
         );
         return changed.ok ? { ok: true, value: folder } : changed;
       }
@@ -456,17 +459,26 @@ export class FileOperations {
               "CONFLICT",
               "A newer privacy operation superseded file approval.",
             );
-          const changed = await this.options.changeSettings({
-            ...this.options.getSettings(),
-            folderCollectionConsent: true,
-            protectedFolderIds: available.value.map((folder) => folder.id),
-          });
+          const changed = await this.options.changeSettings(
+            {
+              ...this.options.getSettings(),
+              folderCollectionConsent: true,
+              protectedFolderIds: available.value.map((folder) => folder.id),
+            },
+            undefined,
+            current,
+          );
           if (!changed.ok) return changed;
         } else {
-          const changed = await this.options.changeSettings({
-            ...this.options.getSettings(),
-            folderCollectionConsent: false,
-          });
+          const changed = await this.options.changeSettings(
+            {
+              ...this.options.getSettings(),
+              folderCollectionConsent: false,
+              automaticRecording: false,
+            },
+            undefined,
+            current,
+          );
           if (!changed.ok) return changed;
         }
         return this.state();
@@ -476,11 +488,13 @@ export class FileOperations {
           {
             ...this.options.getSettings(),
             folderCollectionConsent: false,
+            automaticRecording: false,
             protectedFolderIds: this.options
               .getSettings()
               .protectedFolderIds.filter((id) => id !== command.id),
           },
           () => storage.snapshots.removeFolder(command.id),
+          current,
         );
         return changed.ok ? this.state() : changed;
       }

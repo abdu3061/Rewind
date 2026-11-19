@@ -299,6 +299,75 @@ it.each(["checksum", "future"])(
     }
   },
 );
+it("excludes recovery backups before paging and search while retaining explicit access to them", async () => {
+  const storage = adapter();
+  await populate(storage);
+  const fileId = "20000000-0000-4000-8000-000000000001";
+  expect(
+    (
+      await storage.repositories.files.saveReference({
+        id: fileId,
+        displayName: "Synthetic stored reference",
+        identity: { kind: "unverified", observedTitle: "Synthetic fixture" },
+      })
+    ).ok,
+  ).toBe(true);
+  const appended = await storage.repositories.activities.append([
+    ...[1, 2, 3].map((index) => ({
+      id: `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      sessionId: session.id,
+      occurredAt: "2026-11-17T10:00:10.000Z",
+      type: "file-change" as const,
+      source: "filesystem" as const,
+      payload: {
+        fileId,
+        displayName: "InitialBackupMarker.txt",
+        change: "captured" as const,
+      },
+    })),
+    {
+      id: "30000000-0000-4000-8000-000000000004",
+      sessionId: session.id,
+      occurredAt: "2026-11-17T10:00:05.000Z",
+      type: "file-change",
+      source: "filesystem",
+      payload: {
+        fileId,
+        displayName: "ActualSaveMarker.txt",
+        change: "updated",
+      },
+    },
+  ]);
+  expect(appended.ok).toBe(true);
+  const page = await storage.timeline({ limit: 1 });
+  expect(page).toMatchObject({
+    ok: true,
+    value: [{ payload: { change: "updated" } }],
+  });
+  if (!page.ok || !page.value[0])
+    throw new Error("Synthetic saved change missing");
+  expect(
+    await storage.timeline({
+      limit: 1,
+      before: { id: page.value[0].id, occurredAt: page.value[0].occurredAt },
+    }),
+  ).toMatchObject({ ok: true, value: [{ type: "foreground" }] });
+  expect(
+    await storage.timeline({ limit: 100, text: "InitialBackupMarker" }),
+  ).toEqual({ ok: true, value: [] });
+  const included = await storage.timeline({
+    limit: 100,
+    text: "InitialBackupMarker",
+    includeFileBackups: true,
+  });
+  expect(included.ok && included.value).toHaveLength(3);
+  expect(
+    await storage.timeline({ limit: 100, types: ["file-change"] }),
+  ).toMatchObject({ ok: true, value: [{ payload: { change: "updated" } }] });
+  expect((await storage.repositories.activities.list(session.id, 100)).ok).toBe(
+    true,
+  );
+});
 it("keeps timeline date/session/type/search filters scoped and deterministic", async () => {
   const storage = adapter();
   await populate(storage);

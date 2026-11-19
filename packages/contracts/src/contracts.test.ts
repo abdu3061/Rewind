@@ -15,12 +15,61 @@ import {
   workerInputSchema,
   recordingCommandSchema,
   runtimeSnapshotSchema,
+  timelineQuerySchema,
 } from "./index";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const at = "2026-01-01T00:00:00.000Z";
 
 describe("trust-boundary contracts", () => {
+  it("allows a strictly typed recovery-backup history filter without granting collection", () => {
+    expect(
+      timelineQuerySchema.safeParse({ limit: 50, includeFileBackups: true })
+        .success,
+    ).toBe(true);
+    expect(
+      timelineQuerySchema.safeParse({ limit: 50, includeFileBackups: "true" })
+        .success,
+    ).toBe(false);
+    expect(
+      timelineQuerySchema.safeParse({
+        limit: 50,
+        includeFileBackups: true,
+        path: "C:\\untrusted",
+      }).success,
+    ).toBe(false);
+  });
+  it("requires explicit recording approval and never accepts renderer-provided automatic roots", () => {
+    expect(
+      recordingCommandSchema.safeParse({
+        kind: "recording.configure",
+        enabled: true,
+        confirmed: true,
+      }).success,
+    ).toBe(true);
+    for (const value of [
+      { kind: "recording.configure", enabled: true },
+      { kind: "recording.configure", enabled: true, confirmed: false },
+      {
+        kind: "recording.configure",
+        enabled: true,
+        confirmed: true,
+        paths: ["C:\\"],
+      },
+      { kind: "recording.state", automaticStart: true },
+    ])
+      expect(recordingCommandSchema.safeParse(value).success).toBe(false);
+    expect(
+      recordingCommandSchema.safeParse({
+        kind: "privacy.update",
+        value: {
+          collectionConsent: true,
+          excludedApplications: [],
+          excludedFolderPaths: ["relative/path"],
+        },
+      }).success,
+    ).toBe(false);
+  });
   it("accepts bounded private browser bootstrap metadata without admitting it as a renderer operation", () => {
     const browserAssets = {
       root: "C:\\SyntheticFixture\\browser-assets",

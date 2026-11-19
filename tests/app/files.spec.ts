@@ -55,6 +55,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
     await expect(page.getByTestId("collection-status")).toHaveText(
       "Collection active",
     );
+    writeFileSync(file, alpha);
     expect(
       await page.evaluate(() =>
         (window as unknown as { rewind: DesktopApi }).rewind.privacy.get(),
@@ -89,6 +90,13 @@ test("selected synthetic folders capture saved bytes with independent consent an
       }),
     );
     expect(timeline.ok && timeline.value.length).toBe(2);
+    expect(timeline).toMatchObject({
+      ok: true,
+      value: [
+        { payload: { change: "updated" } },
+        { payload: { change: "updated" } },
+      ],
+    });
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(

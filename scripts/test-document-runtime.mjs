@@ -6,8 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const resources = path.join(
-  root,
-  "apps/desktop/out/Rewind-win32-x64/resources",
+  path.dirname(
+    path.resolve(
+      root,
+      process.env.REWIND_TEST_EXECUTABLE ??
+        "apps/desktop/out/Rewind-win32-x64/Rewind.exe",
+    ),
+  ),
+  "resources",
 );
 if (process.platform !== "win32" || process.arch !== "x64") {
   console.error(

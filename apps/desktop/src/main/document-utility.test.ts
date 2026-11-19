@@ -24,7 +24,15 @@ it.skipIf(process.platform !== "win32")(
     const root = newSecureFixture(),
       require = createRequire(import.meta.url);
     const appRoot = path.join(root, "synthetic-app"),
-      resources = path.resolve("apps/desktop/out/Rewind-win32-x64/resources"),
+      resources = path.join(
+        path.dirname(
+          path.resolve(
+            process.env.REWIND_TEST_EXECUTABLE ??
+              "apps/desktop/out/Rewind-win32-x64/Rewind.exe",
+          ),
+        ),
+        "resources",
+      ),
       guard = packagedArtifacts
         ? path.join(resources, "documents/RewindDocumentGuard.exe")
         : path.join(root, "SyntheticDocumentGuard.exe"),

@@ -54,6 +54,9 @@ port.on("message", async ({ data }: { data: unknown }) => {
       root: message.root,
       key: message.key,
       synthetic: message.synthetic,
+      ...(message.automaticFolders
+        ? { automaticFolders: message.automaticFolders }
+        : {}),
       documentProcessor: documents,
       ...(message.assistantFixture ? { assistantFixture: true as const } : {}),
       ...(message.browserAssets
@@ -72,9 +75,12 @@ port.on("message", async ({ data }: { data: unknown }) => {
     const ready = await runtime.initialize();
     initializing = false;
     lastHeartbeat = Date.now();
-    if (ready.ok)
+    if (ready.ok) {
       send({ version: 1, type: "ready", bootId, state: ready.value });
-    else send({ version: 1, type: "fault", bootId, error: ready.error });
+      // Keep the supervisor's secure/default-off ready handshake intact. Only
+      // the first worker boot of an app launch may renew remembered approval.
+      if (message.automaticStart) await runtime.restoreAutomaticRecording();
+    } else send({ version: 1, type: "fault", bootId, error: ready.error });
     return;
   }
   if (message.bootId !== bootId) return;

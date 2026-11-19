@@ -15,6 +15,8 @@ import {
   type StorageUsage,
   type BrowserAssetsLocation,
   type DocumentProcessor,
+  type AutomaticFolder,
+  type AutomaticRecordingState,
 } from "@rewind/contracts";
 import {
   BrowserCollector,
@@ -45,6 +47,7 @@ export interface WorkerRuntimeOptions {
   root: string;
   key: Uint8Array;
   synthetic: boolean;
+  automaticFolders?: AutomaticFolder[];
   assistantFixture?: true;
   browserAssets?: BrowserAssetsLocation;
   documentProcessor?: DocumentProcessor;
@@ -67,6 +70,7 @@ export class WorkerRuntime {
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private maintenancePending = false;
   private preferenceRevision = 0;
+  private automaticRecordingIssue: string | null = null;
   private files: FileOperations | null = null;
   private content: ContentOperations | null = null;
   private documentMutations = 0;
@@ -130,9 +134,12 @@ export class WorkerRuntime {
       preferences: {
         collectionConsent: this.settings.collectionConsent,
         excludedApplications: [...this.settings.excludedApplications],
+        excludedFolderPaths: [...this.settings.excludedFolderPaths],
       },
       secureStorage: this.ready,
       filePermission: this.settings.folderCollectionConsent,
+      automaticRecording: this.settings.automaticRecording === true,
+      automaticRecordingIssue: this.automaticRecordingIssue,
       browserPermission: this.settings.browserCollectionConsent,
       synthetic: this.options.synthetic,
       error:
@@ -159,7 +166,8 @@ export class WorkerRuntime {
       if (!opened.ok) return await this.initializationFailure(opened.error);
       const settings = await this.storage.getSettings();
       if (!settings.ok) return await this.initializationFailure(settings.error);
-      // Permission expires with this worker lifetime. Exclusions persist; every launch needs a fresh grant.
+      // All live grants start off. Remembered local approval is renewed only
+      // after the supervisor accepts the secure default-off ready handshake.
       this.settings = {
         ...settings.value,
         collectionConsent: false,
@@ -249,6 +257,15 @@ export class WorkerRuntime {
         getFolders: () => this.storage.snapshots.listFolders(),
         resolveFileId: (folderId, relativePath) =>
           this.storage.snapshots.resolveFileId(folderId, relativePath),
+        getLatestVersion: async (fileId) => {
+          const result = await this.storage.snapshots.listVersions({
+            fileId,
+            limit: 1,
+          });
+          return result.ok
+            ? { ok: true, value: result.value[0] ?? null }
+            : result;
+        },
         onChanged: () => {
           if (this.ready) this.options.onSnapshot(this.snapshot());
         },
@@ -333,7 +350,7 @@ export class WorkerRuntime {
         root: this.options.root,
         synthetic: this.options.synthetic,
         getSettings: () => this.settings,
-        changeSettings: async (candidate, write) => {
+        changeSettings: async (candidate, write, current) => {
           if (!candidate.folderCollectionConsent)
             this.settings = {
               ...this.settings,
@@ -344,12 +361,15 @@ export class WorkerRuntime {
             async () => {
               const documents = await this.drainDocuments();
               if (!documents.ok) return documents;
+              if (current && !current())
+                return failure("CONFLICT", "Recording setup was superseded.");
               if (write) {
                 const written = await write();
                 if (!written.ok) return written;
               }
               const saved = await this.storage.saveSettings(candidate);
-              if (saved.ok) this.settings = candidate;
+              if (saved.ok && (!current || current()))
+                this.settings = candidate;
               return saved;
             },
           );
@@ -535,6 +555,7 @@ export class WorkerRuntime {
       if (
         [
           "preferences.update",
+          "recording.configure",
           "storage.update",
           "storage.cleanup",
           "storage.delete",
@@ -551,6 +572,7 @@ export class WorkerRuntime {
           "checkpoints.delete",
         ].includes(command.kind)
       ) {
+        this.preferenceRevision++;
         documentMutation = true;
         this.documentMutations++;
         this.denyAssistant();
@@ -560,11 +582,21 @@ export class WorkerRuntime {
         command.kind === "session" &&
         (command.action === "pause" || command.action === "end")
       ) {
+        this.preferenceRevision++;
         documentMutation = true;
         this.documentMutations++;
         this.invalidateDocuments();
       }
       switch (command.kind) {
+        case "recording.state":
+          return { ok: true, value: this.automaticState() };
+        case "recording.configure": {
+          const revision = ++this.preferenceRevision;
+          return await this.configureAutomaticRecording(
+            command.enabled,
+            () => !this.closing && revision === this.preferenceRevision,
+          );
+        }
         case "content.state":
         case "content.index":
         case "content.search":
@@ -663,6 +695,7 @@ export class WorkerRuntime {
             collectionConsent: false,
             folderCollectionConsent: false,
             browserCollectionConsent: false,
+            automaticRecording: false,
           };
           this.settings = candidate;
           let outcome: Result<StorageUsage> = failure(
@@ -700,6 +733,10 @@ export class WorkerRuntime {
           return { ok: true, value: this.snapshot().preferences };
         case "preferences.update": {
           const revision = ++this.preferenceRevision;
+          const continueRecording =
+            this.settings.automaticRecording === true &&
+            command.value.collectionConsent &&
+            this.snapshot().session?.status === "active";
           if (command.value.collectionConsent) {
             const available = await this.coordinator.read(() =>
               this.storage.cleanup(),
@@ -719,10 +756,14 @@ export class WorkerRuntime {
           const candidate: UserSettings = {
             ...this.settings,
             ...command.value,
+            excludedFolderPaths:
+              command.value.excludedFolderPaths ??
+              this.settings.excludedFolderPaths,
             ...(!command.value.collectionConsent
               ? {
                   folderCollectionConsent: false,
                   browserCollectionConsent: false,
+                  automaticRecording: false,
                 }
               : {}),
           };
@@ -732,6 +773,11 @@ export class WorkerRuntime {
             async () => {
               const documents = await this.drainDocuments();
               if (!documents.ok) return documents;
+              if (revision !== this.preferenceRevision || this.closing)
+                return failure(
+                  "CONFLICT",
+                  "A newer privacy operation superseded this change.",
+                );
               const result = await this.storage.saveSettings(candidate);
               if (result.ok) this.settings = candidate;
               return result;
@@ -745,6 +791,14 @@ export class WorkerRuntime {
               browserCollectionConsent: false,
             };
             return updated;
+          }
+          if (
+            continueRecording &&
+            revision === this.preferenceRevision &&
+            !this.closing
+          ) {
+            const resumed = await this.coordinator.execute("resume");
+            if (!resumed.ok) return resumed;
           }
           return { ok: true, value: this.snapshot().preferences };
         }
@@ -787,7 +841,9 @@ export class WorkerRuntime {
       if (
         (command.kind === "session" &&
           (command.action === "start" || command.action === "resume")) ||
-        (command.kind === "files.permission" && command.enabled)
+        (command.kind === "files.permission" && command.enabled) ||
+        command.kind === "recording.configure" ||
+        command.kind === "preferences.update"
       )
         this.content?.kick();
       this.options.onSnapshot(this.snapshot());
@@ -796,6 +852,181 @@ export class WorkerRuntime {
   private denyAssistant(): void {
     this.settings = { ...this.settings, cloudAiEnabled: false };
     this.assistant?.revoke();
+  }
+  private automaticState(): AutomaticRecordingState {
+    return {
+      enabled: this.settings.automaticRecording === true,
+      locations: (
+        (this.settings.automaticRecording &&
+          this.settings.automaticRecordingLocations) ||
+        this.options.automaticFolders ||
+        []
+      ).map((folder) => ({
+        ...folder,
+      })),
+      issue: this.automaticRecordingIssue,
+    };
+  }
+  private async applyAutomaticSettings(
+    candidate: UserSettings,
+    current: () => boolean,
+  ): Promise<Result<void>> {
+    if (!current())
+      return failure("CONFLICT", "Recording setup was superseded.");
+    if (!candidate.automaticRecording) this.settings = candidate;
+    const changed = await this.coordinator!.updateSettings(
+      candidate,
+      async () => {
+        const documents = await this.drainDocuments();
+        if (!documents.ok) return documents;
+        if (!current())
+          return failure("CONFLICT", "Recording setup was superseded.");
+        const saved = await this.storage.saveSettings(candidate);
+        if (!saved.ok) return saved;
+        if (!current())
+          return failure("CONFLICT", "Recording setup was superseded.");
+        this.settings = candidate;
+        return { ok: true, value: undefined };
+      },
+    );
+    return changed.ok ? { ok: true, value: undefined } : changed;
+  }
+  private async renewAutomaticGrant(
+    current: () => boolean,
+    start: boolean,
+  ): Promise<Result<void>> {
+    const available = await this.coordinator!.read(async () => {
+      const cleaned = await this.storage.cleanup();
+      if (!cleaned.ok) return cleaned;
+      if (cleaned.value.overQuota)
+        return failure(
+          "UNAVAILABLE",
+          "Storage is full. Adjust storage before enabling automatic recording.",
+        );
+      return this.storage.snapshots.listFolders();
+    });
+    if (!available.ok) return available;
+    const roots = available.value.filter((folder) =>
+      this.settings.protectedFolderIds.includes(folder.id),
+    );
+    if (!roots.length)
+      return failure(
+        "UNAVAILABLE",
+        "No protected folder is available. Review recording setup.",
+      );
+    const granted = await this.applyAutomaticSettings(
+      {
+        ...this.settings,
+        automaticRecording: true,
+        collectionConsent: true,
+        folderCollectionConsent: true,
+        browserCollectionConsent: false,
+        cloudAiEnabled: false,
+      },
+      current,
+    );
+    if (!granted.ok || !start) return granted;
+    if (!current())
+      return failure("CONFLICT", "Recording setup was superseded.");
+    const status = this.coordinator!.getState().session?.status;
+    const result = await this.coordinator!.execute(
+      status === "paused" ? "resume" : "start",
+    );
+    if (result.ok) this.content?.kick();
+    return result.ok ? { ok: true, value: undefined } : result;
+  }
+  private async configureAutomaticRecording(
+    enabled: boolean,
+    current: () => boolean,
+  ): Promise<Result<AutomaticRecordingState>> {
+    const renewOnly =
+      this.settings.automaticRecording === true &&
+      Boolean(this.settings.automaticRecordingLocations?.length);
+    this.automaticRecordingIssue = null;
+    const disabled = await this.applyAutomaticSettings(
+      {
+        ...this.settings,
+        automaticRecording: false,
+        collectionConsent: false,
+        folderCollectionConsent: false,
+        browserCollectionConsent: false,
+      },
+      current,
+    );
+    if (!disabled.ok) return disabled;
+    if (!enabled) return { ok: true, value: this.automaticState() };
+    const added: AutomaticFolder[] = [];
+    const unavailable: string[] = [];
+    for (const folder of renewOnly
+      ? []
+      : (this.options.automaticFolders ?? [])) {
+      if (!current())
+        return failure("CONFLICT", "Recording setup was superseded.");
+      const result = await this.files!.execute(
+        { kind: "files.add", path: folder.path },
+        current,
+      );
+      if (!current())
+        return failure("CONFLICT", "Recording setup was superseded.");
+      if (result.ok) added.push({ ...folder });
+      else unavailable.push(folder.name);
+    }
+    if (!renewOnly && !added.length) {
+      this.automaticRecordingIssue =
+        "No default folder could be verified. Check that Desktop, Documents or Downloads is available on a local NTFS drive, then try again.";
+      return failure("UNAVAILABLE", this.automaticRecordingIssue);
+    }
+    if (!renewOnly)
+      this.settings = { ...this.settings, automaticRecordingLocations: added };
+    const granted = await this.renewAutomaticGrant(current, true);
+    if (!granted.ok) {
+      this.automaticRecordingIssue = granted.error.message;
+      await this.applyAutomaticSettings(
+        {
+          ...this.settings,
+          automaticRecording: false,
+          collectionConsent: false,
+          folderCollectionConsent: false,
+        },
+        current,
+      );
+      return granted;
+    }
+    if (unavailable.length)
+      this.automaticRecordingIssue = `${unavailable.join(", ")} could not be protected. Available folders are listed in Files.`;
+    return { ok: true, value: this.automaticState() };
+  }
+  /** Called only after the default-off ready handshake, once per desktop launch. */
+  async restoreAutomaticRecording(): Promise<void> {
+    if (
+      !this.settings.automaticRecording ||
+      !this.ready ||
+      this.closing ||
+      !this.coordinator
+    )
+      return;
+    const revision = ++this.preferenceRevision;
+    const current = () => !this.closing && revision === this.preferenceRevision;
+    this.documentMutations++;
+    try {
+      // A crash/interrupted session remains paused; the user chooses Resume.
+      const interrupted =
+        this.coordinator.getState().session?.status === "paused";
+      const result = await this.renewAutomaticGrant(current, !interrupted);
+      if (!result.ok && current()) {
+        this.automaticRecordingIssue = result.error.message;
+        this.settings.collectionConsent = false;
+        this.settings.folderCollectionConsent = false;
+        await this.coordinator.revokeConsent();
+      } else if (interrupted && current()) {
+        this.automaticRecordingIssue =
+          "Your previous session was interrupted. Review it and press Resume when ready.";
+      }
+    } finally {
+      this.documentMutations--;
+      this.content?.kick();
+      this.options.onSnapshot(this.snapshot());
+    }
   }
   private invalidateDocuments(): void {
     this.documentRevision++;

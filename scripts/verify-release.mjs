@@ -109,7 +109,8 @@ for (const entry of browser.extension)
 const notices = JSON.parse(
   await readFile(path.join(resources, "notices/inventory.json"), "utf8"),
 );
-for (const item of notices.packages)
+for (const item of notices.packages) {
+  assert.ok(item.notices.length > 0, `Missing license material: ${item.name}`);
   for (const notice of item.notices)
     assert.equal(
       await hash(
@@ -122,6 +123,23 @@ for (const item of notices.packages)
       ),
       notice.sha256,
     );
+}
+const nativeNotices = JSON.parse(
+  await readFile(
+    path.join(resources, "notices/native/provenance.json"),
+    "utf8",
+  ),
+);
+assert.deepEqual(nativeNotices.failures, []);
+assert.ok(nativeNotices.files.length > 200);
+for (const notice of nativeNotices.files) {
+  assert.match(notice.file, /^[a-zA-Z0-9@._/-]+$/);
+  assert.ok(!notice.file.split("/").includes(".."));
+  assert.equal(
+    await hash(path.join(resources, "notices/native", notice.file)),
+    notice.sha256,
+  );
+}
 
 const make = path.resolve("apps/desktop/out/make");
 const zipDirectory = path.join(make, "zip/win32/x64");

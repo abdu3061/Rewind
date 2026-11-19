@@ -48,6 +48,43 @@ it("reports child failure and timeouts without upstream diagnostics or leaving a
   expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
 });
 it.runIf(process.platform === "win32")(
+  "treats a foreground process that exited during lookup as no observation and keeps the helper usable",
+  async () => {
+    const stub = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+public class ActiveWindow {
+  static int count = 0;
+  public static IntPtr GetForegroundWindow() { return new IntPtr(1); }
+  public static int GetWindowText(IntPtr handle, StringBuilder text, int size) { text.Append("Synthetic surviving window"); return text.Length; }
+  public static uint GetWindowThreadProcessId(IntPtr handle, out uint processId) { processId = ++count==1 ? 2147483647u : (uint)System.Diagnostics.Process.GetCurrentProcess().Id; return 1; }
+}
+'@
+`;
+    const strategy = fixture({
+      timeoutMs: 8000,
+      spawnProcess: (script) =>
+        spawn(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            Buffer.from(stub + script, "utf16le").toString("base64"),
+          ],
+          { stdio: "pipe", windowsHide: true },
+        ),
+    });
+    expect(await strategy.getActiveWindow()).toBeNull();
+    expect(await strategy.getActiveWindow()).toMatchObject({
+      application: "powershell",
+      windowTitle: "Synthetic surviving window",
+    });
+  },
+  15000,
+);
+it.runIf(process.platform === "win32")(
   "reuses one real PowerShell helper and excludes before any title read",
   async () => {
     let starts = 0;

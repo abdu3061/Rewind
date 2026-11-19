@@ -172,6 +172,9 @@ it("requires independent browser approval, leaves other sources off for browser-
   };
   expect((await context.emit([gap])).ok).toBe(true);
   expect(f.persisted).toEqual([gap]);
+  expect(f.coordinator.getStatus().error?.message).toBe(
+    "Browser recording stopped because its connection was interrupted.",
+  );
   expect((await f.coordinator.revokeConsent()).ok).toBe(true);
   expect(context.authorized?.()).toBe(false);
   expect((await context.emit([{ ...gap, id: id(778) }])).ok).toBe(false);

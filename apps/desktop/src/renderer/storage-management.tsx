@@ -66,8 +66,8 @@ export function StorageManagement({
       </p>
       <p>
         Changing storage settings, cleaning up or deleting history stops
-        recording and revokes this launch's approval. Approve and resume
-        explicitly afterward.
+        recording, revokes approval and turns off automatic recording. Approve
+        again explicitly afterward.
       </p>
       {usage && (
         <p role="status">

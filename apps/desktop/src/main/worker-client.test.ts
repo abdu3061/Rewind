@@ -133,6 +133,22 @@ const documentText: DocumentText = {
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
+it("allows remembered local startup only on the first worker boot, keeping reconnect default-off", async () => {
+  const f = fixture();
+  expect((await f.client.start()).ok).toBe(true);
+  expect(
+    f.children[0]!.messages.find((message) => message.type === "init"),
+  ).toMatchObject({ automaticStart: true });
+  f.children[0]!.emit("exit", 1);
+  expect((await f.client.retry()).ok).toBe(true);
+  expect(
+    f.children[1]!.messages.find((message) => message.type === "init"),
+  ).toMatchObject({ automaticStart: false });
+  expect(f.client.getSnapshot()).toMatchObject({
+    collection: "off",
+    filePermission: false,
+  });
+});
 function documentFixture() {
   const documents = {
     busy: false,

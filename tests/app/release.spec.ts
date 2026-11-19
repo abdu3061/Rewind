@@ -2,7 +2,11 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect } from "@playwright/test";
-import { test, launchVerificationApp } from "./fixtures";
+import {
+  test,
+  launchVerificationApp,
+  verificationExecutable,
+} from "./fixtures";
 
 test("minimum window preserves keyboard navigation and all six release screens", async ({
   profile,
@@ -104,7 +108,7 @@ test("obsolete installer invocation exits without opening history or starting th
   };
   const code = await new Promise<number | null>((resolve, reject) => {
     const child = spawn(
-      path.resolve("apps/desktop/out/Rewind-win32-x64/Rewind.exe"),
+      verificationExecutable(),
       ["--squirrel-obsolete", `--rewind-fixture-root=${profile}`],
       { env, windowsHide: true, stdio: "ignore" },
     );

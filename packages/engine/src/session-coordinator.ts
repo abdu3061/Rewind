@@ -837,11 +837,21 @@ export class SessionCoordinator {
             ),
           ),
     );
-    if (!result.ok || accepted.some((event) => event.type === "capture-gap")) {
+    const gap = accepted.find((event) => event.type === "capture-gap");
+    if (!result.ok || gap) {
       const error = result.ok
         ? {
             code: "UNAVAILABLE" as const,
-            message: "A collector reported a capture gap.",
+            message:
+              gap?.type === "capture-gap" &&
+              gap.payload.collectorId === "folders"
+                ? gap.payload.reason === "overflow"
+                  ? "File recording stopped because too many file changes arrived at once."
+                  : "File recording stopped because a protected folder could not be verified. Check file protection status."
+                : gap?.type === "capture-gap" &&
+                    gap.payload.collectorId === "windows"
+                  ? "Application recording stopped because the Windows activity service failed."
+                  : "Browser recording stopped because its connection was interrupted.",
           }
         : result.error;
       this.fail(error.code, error.message);

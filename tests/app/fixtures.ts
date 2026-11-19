@@ -28,14 +28,18 @@ export const test = base.extend<{ profile: string }>({
     }
   },
 });
+export function verificationExecutable(): string {
+  return path.resolve(
+    process.env.REWIND_TEST_EXECUTABLE ??
+      `apps/desktop/out/Rewind-${process.platform}-${process.arch}/Rewind.exe`,
+  );
+}
 export function launchVerificationApp(profile: string) {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env))
     if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE") env[key] = value;
   return electron.launch({
-    executablePath: path.resolve(
-      `apps/desktop/out/Rewind-${process.platform}-${process.arch}/Rewind.exe`,
-    ),
+    executablePath: verificationExecutable(),
     env,
     args: [`--rewind-fixture-root=${profile}`],
   });

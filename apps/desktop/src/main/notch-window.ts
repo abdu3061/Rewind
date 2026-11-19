@@ -118,6 +118,9 @@ export class NotchWindow {
     this.state = { ...this.state, notchVisible: true, expanded: false };
     this.reposition();
     this.window.showInactive();
+    // Windows can clear the topmost style during the initial inactive show.
+    // Reapply floating priority without activating the overlay.
+    this.window.setAlwaysOnTop(true, "floating");
     this.publish();
   }
 

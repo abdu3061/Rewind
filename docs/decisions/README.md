@@ -1,5 +1,13 @@
 # Architecture decisions
 
+[ADR 0041](0041-change-only-file-capture.md) removes existing-file imports and periodic body rereads, adds bounded native notifications and cross-run identical-content deduplication, and records performance/lifecycle verification.
+
+[ADR 0040](0040-file-backups-and-session-activity.md) distinguishes recovery backups from default Timeline activity, preserves explicit search/history access and accurately classifies newly observed active-run saves.
+
+[ADR 0039](0039-bounded-folder-scan-continuation.md) repairs large/default-folder scan failures with bounded native continuation, visible skipped-entry status and source-specific fatal errors; disappearing foreground processes no longer kill the activity helper.
+
+[ADR 0038](0038-one-time-local-recording-setup.md) records one-time local app/file approval, automatic default-folder enrollment, remembered normal-launch startup, exclusions and reconnect limits.
+
 [ADR 0036](0036-windows-release-candidate.md) records local integration disposition, passive Squirrel installation, preserved application data, original beta assets, release-only inspector hardening, signing/hash handling, notice inventory and code-only diagnostics. Signed/installed acceptance and owner review remain release gates.
 
 [ADR 0030](0030-public-reviewed-gemini-questions.md) records normal Settings/Search controls, sealed native key orchestration, separate launch/question approvals, generation-fenced replies, source citations and packaged offline-provider verification. Live-account and interactive native-entry acceptance remain manual gates.

@@ -13,6 +13,7 @@ export * from "./ports";
 export * from "./ipc";
 export * from "./presentation";
 export * from "./recording";
+export * from "./automatic-recording";
 export * from "./worker";
 export * from "./browser-transport";
 export * from "./browser-port";

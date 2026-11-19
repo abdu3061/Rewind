@@ -16,6 +16,7 @@ import {
   type WorkerCommand,
   type WorkerInput,
   type BrowserAssetsLocation,
+  type AutomaticFolder,
   type DocumentProcessor,
 } from "@rewind/contracts";
 
@@ -39,6 +40,7 @@ interface Pending {
 export interface WorkerClientOptions {
   root: string;
   synthetic: boolean;
+  automaticFolders?: AutomaticFolder[];
   browserAssets?: BrowserAssetsLocation;
   assistantFixture?: true;
   documents?: DocumentProcessor & { readonly busy: boolean };
@@ -71,6 +73,7 @@ export class WorkerClient {
   private documentRequest: string | null = null;
   private documentClosing = false;
   private failed = false;
+  private initialBoot = true;
   private revision = 0;
   private state: RuntimeSnapshot;
   constructor(private readonly options: WorkerClientOptions) {
@@ -208,6 +211,10 @@ export class WorkerClient {
                   root: this.options.root,
                   key,
                   synthetic: this.options.synthetic,
+                  automaticStart: this.initialBoot,
+                  ...(this.options.automaticFolders
+                    ? { automaticFolders: this.options.automaticFolders }
+                    : {}),
                   ...(this.options.assistantFixture
                     ? { assistantFixture: true as const }
                     : {}),
@@ -215,6 +222,7 @@ export class WorkerClient {
                     ? { browserAssets: this.options.browserAssets }
                     : {}),
                 });
+                this.initialBoot = false;
               } catch {
                 this.fail(unavailable().error);
               } finally {
@@ -484,6 +492,7 @@ export class WorkerClient {
     decoder: Decoder<T>,
   ): Promise<Result<T>> {
     const allowedStop =
+      (command.kind === "recording.configure" && !command.enabled) ||
       command.kind === "content.stop" ||
       command.kind === "content.clear-search" ||
       command.kind === "versions.cancel-preview" ||
@@ -508,6 +517,7 @@ export class WorkerClient {
       this.state.secureStorage &&
       [
         "content.state",
+        "recording.state",
         "content.search",
         "timeline",
         "history",
@@ -571,6 +581,7 @@ export class WorkerClient {
                     command.kind === "recovery.prepare-overwrite"
                   ? 20000
                   : [
+                        "recording.configure",
                         "browser.install",
                         "browser.remove",
                         "browser.repair",

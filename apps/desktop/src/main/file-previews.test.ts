@@ -124,6 +124,15 @@ async function fixture() {
       getFolders: () => storage.snapshots.listFolders(),
       resolveFileId: (folder, relative) =>
         storage.snapshots.resolveFileId(folder, relative),
+      getLatestVersion: async (fileId) => {
+        const result = await storage.snapshots.listVersions({
+          fileId,
+          limit: 1,
+        });
+        return result.ok
+          ? { ok: true, value: result.value[0] ?? null }
+          : result;
+      },
     }),
     root,
     synthetic: true,

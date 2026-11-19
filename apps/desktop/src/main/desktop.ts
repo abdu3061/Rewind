@@ -14,6 +14,7 @@ import {
 } from "electron";
 import {
   failure,
+  automaticFolderSchema,
   SESSION_CHANNEL,
   SESSION_CHANGED_CHANNEL,
   ACTIVITY_CHANGED_CHANNEL,
@@ -86,6 +87,23 @@ const browserAssets = {
 const sessions = createBackend({
   root: app.getPath("userData"),
   synthetic: fixtureRoot !== null,
+  automaticFolders: (["Desktop", "Documents", "Downloads"] as const).flatMap(
+    (name) => {
+      try {
+        const location = automaticFolderSchema.safeParse({
+          name,
+          path: fixtureRoot
+            ? path.join(fixtureRoot, name)
+            : app.getPath(
+                name.toLowerCase() as "desktop" | "documents" | "downloads",
+              ),
+        });
+        return location.success ? [location.data] : [];
+      } catch {
+        return [];
+      }
+    },
+  ),
   ...(assistantFixture ? { assistantFixture: true as const } : {}),
   entry: path.join(__dirname, "worker-entry.cjs"),
   documentEntry: path.join(__dirname, "document-entry.cjs"),

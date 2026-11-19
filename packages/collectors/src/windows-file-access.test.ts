@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { ProtectedFolder } from "@rewind/contracts";
 import { WindowsProtectedFileAccess } from "./windows-file-access";
 import {
@@ -44,6 +44,112 @@ async function selected(
     selectedAt: new Date().toISOString(),
   };
 }
+it.runIf(process.platform === "win32")(
+  "watches a large existing folder without importing it and coalesces actual file saves",
+  async () => {
+    const f = fixture();
+    for (let index = 0; index < 2500; index++)
+      writeFileSync(
+        join(f.root, `existing-${index}.txt`),
+        "synthetic untouched file",
+      );
+    const folder = await selected(f.root, f.access);
+    expect((await f.access.watch(folder)).ok).toBe(true);
+    expect(await f.access.changes(folder)).toEqual({
+      ok: true,
+      value: { paths: [], stamps: [], overflow: false },
+    });
+    writeFileSync(join(f.root, "active.txt"), "synthetic first save");
+    writeFileSync(join(f.root, "active.txt"), "synthetic final save");
+    await vi.waitFor(
+      async () => {
+        const changes = await f.access.changes(folder);
+        expect(changes.ok && changes.value.paths).toEqual(["active.txt"]);
+      },
+      { timeout: 5000, interval: 100 },
+    );
+    const read = await f.access.read(folder, "active.txt");
+    expect(read.ok && Buffer.from(read.value.bytes).toString()).toBe(
+      "synthetic final save",
+    );
+    expect(
+      (await f.access.changes({ ...folder, osIdentity: "synthetic:changed" }))
+        .ok,
+    ).toBe(false);
+    expect((await f.access.close()).ok).toBe(true);
+    expect((await f.access.changes(folder)).ok).toBe(false);
+  },
+  15000,
+);
+it.runIf(process.platform === "win32")(
+  "continues a large root in bounded pages and still rejects changed root authority",
+  async () => {
+    const f = fixture(),
+      folder = await selected(f.root, f.access);
+    for (let index = 0; index < 2105; index++)
+      writeFileSync(
+        join(f.root, `synthetic-${index}.txt`),
+        "synthetic page fixture",
+      );
+    const names = new Set<string>();
+    let continuing = true,
+      pages = 0;
+    while (continuing && pages++ < 100) {
+      const page = await f.access.list(folder);
+      expect(page.ok).toBe(true);
+      if (!page.ok) throw new Error("Synthetic scan failed");
+      expect(page.value.overflow).toBe(false);
+      expect(page.value.paths.length).toBeLessThanOrEqual(2000);
+      expect(page.value.stamps).toHaveLength(page.value.paths.length);
+      for (const name of page.value.paths) names.add(name);
+      continuing = page.value.continuation === true;
+      if (pages === 1) {
+        expect(continuing).toBe(true);
+        expect(
+          (await f.access.list({ ...folder, osIdentity: "synthetic:changed" }))
+            .ok,
+        ).toBe(false);
+      }
+    }
+    expect(continuing).toBe(false);
+    expect(pages).toBeGreaterThan(1);
+    expect(names.size).toBe(2105);
+    expect(
+      (await f.access.list({ ...folder, osIdentity: "synthetic:changed" })).ok,
+    ).toBe(false);
+  },
+  30000,
+);
+it.runIf(process.platform === "win32")(
+  "skips an unsupported long entry without losing its supported neighbor",
+  async () => {
+    const f = fixture(),
+      folder = await selected(f.root, f.access);
+    const directory = join(f.root, "x".repeat(190 - f.root.length));
+    mkdirSync(directory);
+    writeFileSync(
+      join(directory, "y".repeat(50) + ".txt"),
+      "synthetic overlong fixture",
+    );
+    writeFileSync(join(f.root, "supported.txt"), "synthetic supported fixture");
+    const names: string[] = [];
+    let skipped = 0,
+      continuing = true;
+    for (let index = 0; continuing && index < 100; index++) {
+      const page = await f.access.list(folder);
+      expect(page.ok).toBe(true);
+      if (!page.ok) throw new Error("Synthetic scan failed");
+      names.push(...page.value.paths);
+      skipped += page.value.skipped ?? 0;
+      continuing = page.value.continuation === true;
+      expect(page.value.overflow).toBe(false);
+    }
+    expect(continuing).toBe(false);
+    expect(names).toEqual(["supported.txt"]);
+    expect(skipped).toBe(1);
+  },
+  15000,
+);
 it.runIf(process.platform === "win32")(
   "inspects bounded immediate setup entries without recursion or skipped dot names and rechecks root identity",
   async () => {

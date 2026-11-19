@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { win32 as path } from "node:path";
 import {
   failure,
+  fileVersionSchema,
   type ActivityEvent,
   type Collector,
   type CollectorContext,
@@ -10,6 +11,7 @@ import {
   type ProtectedFolder,
   type Result,
   type SnapshotCapture,
+  type FileVersion,
   type UserSettings,
 } from "@rewind/contracts";
 import { WindowsProtectedFileAccess } from "./windows-file-access";
@@ -23,6 +25,14 @@ interface Options {
     folderId: string,
     relativePath: string,
   ) => Promise<Result<string | null>>;
+  getLatestVersion: (fileId: string) => Promise<Result<FileVersion | null>>;
+}
+interface PendingChange {
+  folder: ProtectedFolder;
+  relative: string;
+  stamp: string;
+  attempts: number;
+  nextAt: number;
 }
 const ok = (): Result<void> => ({ ok: true, value: undefined });
 const types: Record<string, string> = {
@@ -56,11 +66,18 @@ function excluded(absolute: string, settings: Readonly<UserSettings>): boolean {
     );
   });
 }
-/** Handle-verified periodic reconciliation. Signals never authorize a path or imply user attention. */
+function watchPath(value: string): string {
+  // Conservative ASCII folding avoids merging distinct Unicode folder names.
+  return value
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase())
+    .replace(/\\+$/, "");
+}
+/** Change-triggered capture. Native notifications are hints, never read authority or proof of user attention. */
 export class ProtectedFolderCollector implements Collector {
   readonly id = "folders";
   private epoch = 0;
   private context: CollectorContext | null = null;
+  private readonly pending = new Map<string, PendingChange>();
   private access: ProtectedFileAccess | null = null;
   private roots: ProtectedFolder[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -70,10 +87,7 @@ export class ProtectedFolderCollector implements Collector {
     string,
     { context: CollectorContext; capture: SnapshotCapture }
   >();
-  private readonly seen = new Map<
-    string,
-    { stamp: string; hash: string | null; readAt: number; confirmedAt: number }
-  >();
+  private readonly seen = new Map<string, { stamp: string; hash: string }>();
   private state: FolderCaptureStatus = {
     state: "off",
     captured: 0,
@@ -93,8 +107,25 @@ export class ProtectedFolderCollector implements Collector {
       /* Observers cannot authorize capture. */
     }
   }
+  private remember(
+    key: string,
+    value: {
+      stamp: string;
+      hash: string;
+    },
+  ) {
+    this.seen.delete(key);
+    this.seen.set(key, value);
+    // A long-running paged scan must not grow utility memory without a bound.
+    if (this.seen.size > 20_000)
+      this.seen.delete(this.seen.keys().next().value!);
+  }
   private current(context: CollectorContext): boolean {
-    return this.context === context && context.settings.folderCollectionConsent;
+    return (
+      this.context === context &&
+      context.settings.folderCollectionConsent &&
+      context.authorized?.() !== false
+    );
   }
   async start(context: CollectorContext): Promise<Result<void>> {
     const ticket = ++this.epoch;
@@ -107,11 +138,24 @@ export class ProtectedFolderCollector implements Collector {
     if (!folders.ok) return folders;
     if (ticket !== this.epoch)
       return failure("FORBIDDEN", "Folder startup authority expired.");
-    this.roots = folders.value.filter(
+    const eligible = folders.value.filter(
       (root) =>
         context.settings.protectedFolderIds.includes(root.id) &&
         !excluded(root.absolutePath, context.settings),
     );
+    this.roots = eligible.filter((root, index) => {
+      const current = watchPath(root.absolutePath);
+      return !eligible.some((parent, parentIndex) => {
+        if (parentIndex === index) return false;
+        const ancestor = watchPath(parent.absolutePath);
+        return (
+          current.startsWith(ancestor + "\\") ||
+          (current === ancestor &&
+            parent.osIdentity === root.osIdentity &&
+            parentIndex < index)
+        );
+      });
+    });
     if (!this.roots.length)
       return failure(
         "FORBIDDEN",
@@ -120,10 +164,21 @@ export class ProtectedFolderCollector implements Collector {
     this.access = (
       this.options.createAccess ?? (() => new WindowsProtectedFileAccess())
     )();
+    const access = this.access;
+    for (const root of this.roots) {
+      const armed = await access.watch(root);
+      if (ticket !== this.epoch)
+        return failure("FORBIDDEN", "Folder startup authority expired.");
+      if (!armed.ok) {
+        await this.release();
+        return armed;
+      }
+    }
     this.context = context;
     this.seen.clear();
+    this.pending.clear();
     this.state = {
-      state: "pending",
+      state: "watching",
       captured: 0,
       skipped: 0,
       failed: 0,
@@ -166,6 +221,7 @@ export class ProtectedFolderCollector implements Collector {
     if (!closed || closed.ok) this.access = null;
     this.staged.clear();
     this.seen.clear();
+    this.pending.clear();
     this.roots = [];
     this.state = {
       ...this.state,
@@ -175,7 +231,7 @@ export class ProtectedFolderCollector implements Collector {
     this.notify();
     return closed ?? ok();
   }
-  private schedule(delay = this.options.intervalMs ?? 2000) {
+  private schedule(delay = this.options.intervalMs ?? 1000) {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -186,6 +242,13 @@ export class ProtectedFolderCollector implements Collector {
   poll(): Promise<Result<void>> {
     if (this.work) return this.work;
     const context = this.context;
+    if (
+      context &&
+      !this.current(context) &&
+      this.context === context &&
+      context.settings.folderCollectionConsent
+    )
+      this.schedule();
     if (!context || !this.current(context))
       return Promise.resolve(
         failure("FORBIDDEN", "Folder capture is stopped."),
@@ -210,7 +273,7 @@ export class ProtectedFolderCollector implements Collector {
       state: "unavailable",
       issue:
         reason === "overflow"
-          ? "Folder enumeration exceeded the supported limit. Choose a smaller folder."
+          ? "Too many file changes arrived at once. Recording stopped; review exclusions before resuming."
           : "A protected folder is unavailable or its identity changed. Select it again before resuming.",
     };
     this.notify();
@@ -236,38 +299,51 @@ export class ProtectedFolderCollector implements Collector {
     const access = this.access;
     if (!access)
       return failure("UNAVAILABLE", "Protected-file access is unavailable.");
-    const pending: {
-      folder: ProtectedFolder;
-      relative: string;
-      stamp: string;
-    }[] = [];
     for (const folder of this.roots) {
       if (!this.current(context))
         return failure("FORBIDDEN", "Folder capture authority expired.");
-      const listed = await access.list(folder);
+      const listed = await access.changes(folder);
       if (!this.current(context))
         return failure("FORBIDDEN", "Folder capture authority expired.");
       if (!listed.ok) return this.gap(context, "unavailable");
-      if (
-        listed.value.overflow ||
-        pending.length + listed.value.paths.length > 2000
-      )
-        return this.gap(context, "overflow");
-      for (const [index, relative] of listed.value.paths.entries())
-        pending.push({ folder, relative, stamp: listed.value.stamps[index]! });
+      if (listed.value.overflow) return this.gap(context, "overflow");
+      if (listed.value.skipped) {
+        this.state.skipped += listed.value.skipped;
+        this.state.issue =
+          "Some entries were skipped because they are unavailable or exceed the supported path policy. Other supported files continue recording.";
+      }
+      for (const [index, relative] of listed.value.paths.entries()) {
+        const key = `${folder.id}\0${relative}`;
+        if (!this.pending.has(key) && this.pending.size >= 2000)
+          return this.gap(context, "overflow");
+        const existing = this.pending.get(key);
+        this.pending.set(key, {
+          folder,
+          relative,
+          stamp: listed.value.stamps[index]!,
+          attempts: existing?.attempts ?? 0,
+          nextAt: existing?.nextAt ?? 0,
+        });
+      }
     }
-    this.state = { ...this.state, state: "capturing", pending: pending.length };
-    const present = new Set(
-      pending.map((entry) => `${entry.folder.id}\0${entry.relative}`),
-    );
-    for (const key of this.seen.keys())
-      if (!present.has(key)) this.seen.delete(key);
+    const pending = [...this.pending.values()]
+      .filter((entry) => entry.nextAt <= Date.now())
+      .slice(0, 32);
+    if (!pending.length) return ok();
+    this.state = {
+      ...this.state,
+      state: "capturing",
+      pending: this.pending.size,
+    };
     this.notify();
+    let readBytes = 0;
     for (const entry of pending) {
+      if (readBytes >= 32 * 1024 ** 2) break;
       if (!this.current(context))
         return failure("FORBIDDEN", "Folder capture authority expired.");
       const absolute = path.join(entry.folder.absolutePath, entry.relative);
       const key = `${entry.folder.id}\0${entry.relative}`;
+      this.pending.delete(key);
       const previous = this.seen.get(key);
       const mediaType =
         types[path.extname(entry.relative).toLowerCase()] ??
@@ -276,22 +352,11 @@ export class ProtectedFolderCollector implements Collector {
         )
           ? "text/plain"
           : undefined);
-      this.state.pending--;
+      this.state.pending = this.pending.size;
       if (excluded(absolute, context.settings) || !mediaType) {
-        if (!previous) this.state.skipped++;
-        this.seen.set(key, {
-          stamp: entry.stamp,
-          hash: null,
-          readAt: Date.now(),
-          confirmedAt: 0,
-        });
+        this.state.skipped++;
         continue;
       }
-      if (
-        previous?.stamp === entry.stamp &&
-        Date.now() - previous.readAt < 60_000
-      )
-        continue;
       const read = await access.read(entry.folder, entry.relative);
       if (!this.current(context)) {
         if (read.ok) read.value.bytes.fill(0);
@@ -304,23 +369,20 @@ export class ProtectedFolderCollector implements Collector {
         this.state.failed++;
         this.state.issue =
           "Some files could not be captured: they may be locked, oversized or outside the supported path policy.";
-        this.notify();
+        if (entry.attempts < 2)
+          this.pending.set(key, {
+            ...entry,
+            attempts: entry.attempts + 1,
+            nextAt: Date.now() + 1000 * (entry.attempts + 1),
+          });
         continue;
       }
       const bytes = read.value.bytes;
+      readBytes += bytes.byteLength;
       try {
         const hash = createHash("sha256").update(bytes).digest("hex");
-        if (
-          previous?.hash === hash &&
-          Date.now() - previous.confirmedAt <
-            (context.settings.retentionHours * 3600_000) / 2
-        ) {
-          this.seen.set(key, {
-            ...previous,
-            stamp: entry.stamp,
-            hash,
-            readAt: Date.now(),
-          });
+        if (previous?.hash === hash) {
+          this.remember(key, { stamp: entry.stamp, hash });
           continue;
         }
         const resolved = await this.options.resolveFileId(
@@ -330,6 +392,24 @@ export class ProtectedFolderCollector implements Collector {
         if (!this.current(context))
           return failure("FORBIDDEN", "File identity authorization expired.");
         if (!resolved.ok) return this.gap(context, "unavailable");
+        if (resolved.value) {
+          const latest = await this.options.getLatestVersion(resolved.value);
+          if (!this.current(context))
+            return failure("FORBIDDEN", "File history authority expired.");
+          if (!latest.ok) return this.gap(context, "unavailable");
+          if (latest.value) {
+            const checked = fileVersionSchema.safeParse(latest.value);
+            if (!checked.success || checked.data.fileId !== resolved.value)
+              return this.gap(context, "unavailable");
+            if (
+              checked.data.contentHash === hash &&
+              checked.data.byteLength === bytes.byteLength
+            ) {
+              this.remember(key, { stamp: entry.stamp, hash });
+              continue;
+            }
+          }
+        }
         const id = resolved.value ?? randomUUID(),
           at = new Date().toISOString();
         const event: ActivityEvent = {
@@ -341,7 +421,7 @@ export class ProtectedFolderCollector implements Collector {
           payload: {
             fileId: id,
             displayName: path.basename(entry.relative),
-            change: previous && previous.hash !== hash ? "updated" : "captured",
+            change: "updated",
           },
         };
         const capture: SnapshotCapture = {
@@ -379,11 +459,9 @@ export class ProtectedFolderCollector implements Collector {
           );
         if (saved.ok) {
           this.state.captured++;
-          this.seen.set(key, {
+          this.remember(key, {
             stamp: entry.stamp,
             hash,
-            readAt: Date.now(),
-            confirmedAt: Date.now(),
           });
         } else {
           context.reportUnavailable?.();
@@ -398,13 +476,16 @@ export class ProtectedFolderCollector implements Collector {
           return saved;
         }
         this.staged.delete(event.id);
-        this.notify();
       } finally {
         bytes.fill(0);
       }
     }
     if (this.current(context)) {
-      this.state = { ...this.state, state: "watching", pending: 0 };
+      this.state = {
+        ...this.state,
+        state: this.pending.size ? "pending" : "watching",
+        pending: this.pending.size,
+      };
       this.notify();
     }
     return ok();

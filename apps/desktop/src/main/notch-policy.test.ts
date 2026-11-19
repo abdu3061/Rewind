@@ -31,6 +31,8 @@ describe("notch geometry and capability boundary", () => {
       expect(notchAllowsRecording({ kind })).toBe(true);
     for (const kind of [
       "privacy.update",
+      "recording.configure",
+      "recording.state",
       "files.permission",
       "browser.permission",
       "assistant.ask",

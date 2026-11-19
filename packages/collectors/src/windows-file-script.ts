@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 public class RewindFolder { public string absolutePath; public string osIdentity; }
 public class RewindListing { public string[] paths; public string[] stamps; public bool overflow; }
+public class RewindScanListing : RewindListing { public bool continuation; public int skipped; }
 public class RewindBytes { public string base64; public string osIdentity; public long byteLength; }
 public static class RewindFileAccess {
   [StructLayout(LayoutKind.Sequential)] public struct Info {
@@ -83,7 +84,84 @@ public static class RewindFileAccess {
   }
   static bool Skip(string name) {
     string lower=name.ToLowerInvariant();
-    return name.StartsWith(".") || name.StartsWith("~") || lower=="node_modules" || lower=="artifacts" || lower=="dist" || lower=="out";
+    return name.StartsWith(".") || name.StartsWith("~") || lower=="node_modules" || lower=="artifacts" || lower=="dist" || lower=="out" || lower=="cache" || lower=="caches" || lower=="temp" || lower=="tmp";
+  }
+  sealed class ChangeHint { public DateTime first, last; }
+  sealed class ChangeWatch : IDisposable {
+    public string root, identity;
+    public FileSystemWatcher watcher;
+    public object gate = new object();
+    public bool overflow;
+    public Dictionary<string,ChangeHint> pending = new Dictionary<string,ChangeHint>(StringComparer.OrdinalIgnoreCase);
+    public void Add(string full) {
+      if(!full.StartsWith(root+"\\",StringComparison.OrdinalIgnoreCase) || full.Length>240) return;
+      string relative=full.Substring(root.Length+1);
+      string[] components=relative.Split('\\');
+      if(components.Length>16) return;
+      foreach(string part in components) if(Skip(part)) return;
+      string ext=Path.GetExtension(relative).ToLowerInvariant();
+      string name=Path.GetFileName(relative).ToLowerInvariant();
+      if(("|.txt|.md|.ts|.tsx|.js|.jsx|.json|.css|.html|.xml|.csv|.yaml|.yml|.sql|.py|.pdf|.docx|").IndexOf("|"+ext+"|",StringComparison.Ordinal)<0 && name!="readme" && name!="license" && name!="makefile") return;
+      lock(gate) {
+        ChangeHint hint;
+        DateTime now=DateTime.UtcNow;
+        if(pending.TryGetValue(relative,out hint)) hint.last=now;
+        else if(pending.Count<2000) pending.Add(relative,new ChangeHint { first=now,last=now });
+        else overflow=true;
+      }
+    }
+    public void Dispose() { watcher.Dispose(); }
+  }
+  static Dictionary<string,ChangeWatch> watches = new Dictionary<string,ChangeWatch>(StringComparer.OrdinalIgnoreCase);
+  public static bool Watch(string root, string identity) {
+    root=PathValue(root);
+    using(Lease selected=Root(root,identity)) {
+      ChangeWatch existing;
+      if(watches.TryGetValue(root,out existing)) {
+        if(existing.identity!=identity) throw new IOException("ROOT_CHANGED");
+        return true;
+      }
+      if(watches.Count>=100) throw new IOException("WATCH_LIMIT");
+      ChangeWatch watch=new ChangeWatch { root=root,identity=identity };
+      watch.watcher=new FileSystemWatcher(root) { IncludeSubdirectories=true, NotifyFilter=NotifyFilters.LastWrite|NotifyFilters.Size|NotifyFilters.FileName, InternalBufferSize=16384 };
+      watch.watcher.Changed+=(sender,args)=>watch.Add(args.FullPath);
+      watch.watcher.Created+=(sender,args)=>watch.Add(args.FullPath);
+      watch.watcher.Renamed+=(sender,args)=>watch.Add(args.FullPath);
+      watch.watcher.Error+=(sender,args)=> { lock(watch.gate) watch.overflow=true; };
+      try { watch.watcher.EnableRaisingEvents=true; watches.Add(root,watch); return true; }
+      catch { watch.Dispose(); throw; }
+    }
+  }
+  public static RewindListing Changes(string root, string identity) {
+    root=PathValue(root);
+    using(Lease selected=Root(root,identity)) {
+      ChangeWatch watch;
+      if(!watches.TryGetValue(root,out watch) || watch.identity!=identity) throw new IOException("WATCH_UNAVAILABLE");
+      List<string> ready=new List<string>();
+      bool overflow;
+      lock(watch.gate) {
+        overflow=watch.overflow;
+        DateTime now=DateTime.UtcNow;
+        foreach(KeyValuePair<string,ChangeHint> pair in watch.pending)
+          if((now-pair.Value.last).TotalMilliseconds>=400 || (now-pair.Value.first).TotalMilliseconds>=2000) ready.Add(pair.Key);
+        foreach(string relative in ready) watch.pending.Remove(relative);
+      }
+      List<string> paths=new List<string>(), stamps=new List<string>();
+      foreach(string relative in ready) {
+        try {
+          string full=PathValue(Path.Combine(root,relative));
+          using(Lease held=LockPath(full,true)) {
+            if((held.info.attributes & 6)!=0) continue;
+            paths.Add(relative); stamps.Add(held.info.sizeHigh.ToString()+":"+held.info.sizeLow.ToString()+":"+held.info.writtenHigh.ToString()+":"+held.info.writtenLow.ToString());
+          }
+        } catch(IOException) {
+          // Unverified hints never authorize reads. The collector retries through
+          // Read's native proof, with a bounded retry count, without following paths here.
+          paths.Add(relative); stamps.Add("pending");
+        } catch(UnauthorizedAccessException) { }
+      }
+      return new RewindListing { paths=paths.ToArray(),stamps=stamps.ToArray(),overflow=overflow };
+    }
   }
   public static RewindListing DirectoryEntries(string root, string identity) {
     root=PathValue(root);
@@ -98,35 +176,74 @@ public static class RewindFileAccess {
       return new RewindListing {paths=names.ToArray(),stamps=stamps,overflow=false};
     }
   }
-  public static RewindListing List(string root, string identity) {
+  sealed class ScanFrame : IDisposable {
+    public string path, identity;
+    public IEnumerator<FileSystemInfo> entries;
+    public void Dispose() { if(entries!=null) entries.Dispose(); }
+  }
+  sealed class Scan : IDisposable {
+    public string identity;
+    public Stack<ScanFrame> frames = new Stack<ScanFrame>();
+    public void Dispose() { while(frames.Count>0) frames.Pop().Dispose(); }
+  }
+  static Dictionary<string,Scan> scans = new Dictionary<string,Scan>(StringComparer.OrdinalIgnoreCase);
+  static ScanFrame OpenScan(string directory) {
+    using(Lease held=LockPath(directory,false)) return new ScanFrame {
+      path=directory, identity=Identity(held.info), entries=new DirectoryInfo(directory).EnumerateFileSystemInfos().GetEnumerator()
+    };
+  }
+  public static RewindScanListing List(string root, string identity) {
     root=PathValue(root);
     using(Lease selected = Root(root,identity)) {
+      Scan scan;
+      if(!scans.TryGetValue(root,out scan)) {
+        if(scans.Count>=100) throw new IOException("SCAN_LIMIT");
+        scan=new Scan { identity=identity }; scan.frames.Push(OpenScan(root)); scans.Add(root,scan);
+      }
+      if(scan.identity!=identity) { scan.Dispose(); scans.Remove(root); throw new IOException("ROOT_CHANGED"); }
       List<string> files = new List<string>();
       Dictionary<string,string> stamps = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-      Stack<string> pending = new Stack<string>(); pending.Push(root);
-      int visited=0; bool overflow=false;
-      while(pending.Count>0 && !overflow) {
-        string directory=pending.Pop();
-        using(Lease held=LockPath(directory,false)) {
-          foreach(FileSystemInfo item in new DirectoryInfo(directory).EnumerateFileSystemInfos()) {
+      int visited=0, skipped=0;
+      System.Diagnostics.Stopwatch clock=System.Diagnostics.Stopwatch.StartNew();
+      while(scan.frames.Count>0 && visited<2000 && clock.ElapsedMilliseconds<500) {
+        ScanFrame frame=scan.frames.Peek();
+        try {
+          using(Lease held=LockPath(frame.path,false)) {
+            if(Identity(held.info)!=frame.identity) throw new IOException("DIRECTORY_CHANGED");
+            if(!frame.entries.MoveNext()) { scan.frames.Pop().Dispose(); continue; }
+            FileSystemInfo item=frame.entries.Current;
             string entry=item.FullName;
-            if(++visited>2000) { overflow=true; break; }
+            visited++;
             string name=Path.GetFileName(entry);
             if(Skip(name)) continue;
-            FileAttributes attributes=item.Attributes;
-            if((attributes & (FileAttributes.ReparsePoint|FileAttributes.Hidden|FileAttributes.System))!=0) continue;
-            string relative=entry.Substring(root.Length+1);
-            if(relative.Split('\\').Length>16 || entry.Length>240) { overflow=true; continue; }
-            if((attributes & FileAttributes.Directory)!=0) pending.Push(entry); else {
-              files.Add(relative); stamps[relative]=((FileInfo)item).Length.ToString()+":"+item.LastWriteTimeUtc.Ticks.ToString();
-            }
+            try {
+              FileAttributes attributes=item.Attributes;
+              if((attributes & (FileAttributes.ReparsePoint|FileAttributes.Hidden|FileAttributes.System))!=0) continue;
+              string relative=entry.Substring(root.Length+1);
+              if(relative.Split('\\').Length>16 || entry.Length>240) { skipped++; continue; }
+              if((attributes & FileAttributes.Directory)!=0) scan.frames.Push(OpenScan(entry)); else {
+                string stamp=((FileInfo)item).Length.ToString()+":"+item.LastWriteTimeUtc.Ticks.ToString();
+                files.Add(relative); stamps[relative]=stamp;
+              }
+            } catch(UnauthorizedAccessException) { skipped++; }
+              catch(IOException) { skipped++; }
           }
+        } catch(UnauthorizedAccessException) {
+          if(frame.path==root) { scan.Dispose(); scans.Remove(root); throw; }
+          if(scan.frames.Peek()==frame) scan.frames.Pop().Dispose();
+          skipped++;
+        } catch(IOException) {
+          if(frame.path==root) { scan.Dispose(); scans.Remove(root); throw; }
+          if(scan.frames.Peek()==frame) scan.frames.Pop().Dispose();
+          skipped++;
         }
       }
       files.Sort(StringComparer.OrdinalIgnoreCase);
       string[] fingerprints=new string[files.Count];
       for(int i=0; i<files.Count; i++) fingerprints[i]=stamps[files[i]];
-      return new RewindListing { paths=files.ToArray(), stamps=fingerprints, overflow=overflow };
+      bool more=scan.frames.Count>0;
+      if(!more) { scan.Dispose(); scans.Remove(root); }
+      return new RewindScanListing { paths=files.ToArray(), stamps=fingerprints, overflow=false, continuation=more, skipped=Math.Min(skipped,2000) };
     }
   }
   public static RewindBytes Read(string root, string identity, string relative) {
@@ -160,8 +277,16 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $line | ConvertFrom-Json
     $value = switch ($request.kind) {
       'folder' { [RewindFileAccess]::Folder([string]$request.path) }
+      'watch' { [RewindFileAccess]::Watch([string]$request.path,[string]$request.identity) }
+      'changes' { [RewindFileAccess]::Changes([string]$request.path,[string]$request.identity) }
       'directory' { [RewindFileAccess]::DirectoryEntries([string]$request.path,[string]$request.identity) }
-      'list' { [RewindFileAccess]::List([string]$request.path,[string]$request.identity) }
+      'list' {
+        $page = [RewindFileAccess]::List([string]$request.path,[string]$request.identity)
+        $result = @{ paths=$page.paths; stamps=$page.stamps; overflow=$page.overflow }
+        if ($page.continuation) { $result.continuation = $true }
+        if ($page.skipped -gt 0) { $result.skipped = $page.skipped }
+        $result
+      }
       'read' { [RewindFileAccess]::Read([string]$request.path,[string]$request.identity,[string]$request.relative) }
       default { throw 'INVALID_COMMAND' }
     }

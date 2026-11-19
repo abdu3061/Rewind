@@ -22,6 +22,7 @@ import {
 } from "@phosphor-icons/react";
 import { Mascot } from "./Mascot";
 import { usePresentation } from "./presentation";
+import { RecordingSetup } from "./recording-setup";
 
 const pages = [
   "Dashboard",
@@ -279,6 +280,7 @@ export function App() {
 
         {page === "Dashboard" && (
           <>
+            <RecordingSetup runtime={runtime} />
             <section
               className="panel session-panel"
               aria-labelledby="session-heading"
@@ -302,8 +304,9 @@ export function App() {
               </div>
 
               <p>
-                Start a session, then choose what to remember. Nothing is
-                recorded without a separate source approval.
+                {runtime?.automaticRecording
+                  ? "Your approved sources record during active sessions. Pause or End stops capture."
+                  : "Use the one-time setup above to start recording automatically, or use manual source controls below."}
               </p>
 
               <div className="controls" aria-label="Session controls">
@@ -405,12 +408,15 @@ export function App() {
               </section>
             </div>
 
-            <RecordingPreferences runtime={runtime} />
+            <details className="panel" open={!runtime?.automaticRecording}>
+              <summary>Advanced recording controls and exclusions</summary>
+              <RecordingPreferences runtime={runtime} />
+            </details>
 
             <p className="footnote">
               Minimize to keep Rewind within reach in the notch. Closing the
-              window ends the session and quits. Recording approvals expire on
-              restart.
+              window ends the session and quits. Automatic recording restarts
+              when you next open Rewind if you enabled it.
             </p>
           </>
         )}
@@ -425,6 +431,7 @@ export function App() {
         {page === "Settings" && (
           <section className="panel">
             <h2>Privacy comes first</h2>
+            <RecordingSetup runtime={runtime} />
             <RecordingPreferences runtime={runtime} />
             <BrowserSettings runtime={runtime} />
             <AssistantSettings runtime={runtime} />

@@ -4,6 +4,10 @@ Rewind is a Windows desktop work-session memory and recovery project for a five-
 
 ## Scope and boundaries
 
+User-requested local recording update (19 November 2026, ADR 0038): the explicit one-time setup may remember Windows/file approval, enroll verified Desktop/Documents/Downloads and start a session on normal opening. This supersedes earlier launch-expiry/manual-selection rules below only for opted-in automatic local recording. Fresh/older profiles stay off; reconnect stays off, interrupted sessions stay paused, and browser/cloud approvals remain separate. Preserve native root/identity/exclusion/retention checks and synthetic-only testing.
+
+User-requested performance update (19 November 2026, ADR 0041): file protection captures supported files created or changed during an approved active run. Do not import existing files at startup/Resume, periodically reread unchanged bodies or refresh identical versions to extend retention. Use bounded native change hints, current native read authorization and retained-content deduplication. Existing retained history remains governed by retention/Keep/deletion.
+
 - Use npm workspaces, Electron Forge, Vite, React, and strict TypeScript. Keep code small and readable. Do not introduce Python, a remote database, auth service, cloud storage, ADK, or a dependency framework.
 - `apps/desktop/src/main` owns Electron windows, tray, IPC authorization, and composition. `preload` exposes explicit validated capabilities. `renderer` owns presentation and has no Node, database, filesystem, secrets, or collector access.
 - `contracts` has no Rewind-package dependencies. Other packages depend on contracts; engine orchestrates ports. Infrastructure must not import the renderer or Electron. Keep Electron utility-process entry points in the desktop composition layer.
@@ -16,7 +20,7 @@ Rewind is a Windows desktop work-session memory and recovery project for a five-
 
 ## Privacy and safety
 
-- Collection stays off until explicit consent, exclusions, session lifecycle, and engine authorization are enforced. Pause/end must quiesce collectors and reject stale queued events. Never automatically enable monitoring.
+- Collection stays off until explicit consent, exclusions, session lifecycle, and engine authorization are enforced. Pause/end must quiesce collectors and reject stale queued events. Automatic local startup requires the previously approved ADR 0038 setup; never opt a user in or broaden scope silently.
 - No keystrokes, clipboard capture, screenshots, hidden monitoring, or incognito/private-browser access. Article extraction needs separate site permission. Never execute captured markup.
 - Keep context isolation, sandboxing, and web security on; Node integration off. Validate IPC payloads, response shapes, sender identity, main-frame identity, and renderer location. Do not expose raw IPC or a generic filesystem API.
 - Default cloud AI to off. No API keys in renderer, `VITE_*`, Git, logs, or extension storage. Gemini uses only the official `@google/genai` SDK with minimal explicitly approved evidence, bounded read-only tools, actual source citations and current source/policy/retention verification. Stale generation/revision replies and expired reviews/answers must be rejected; pending work remains tracked until observed settlement.

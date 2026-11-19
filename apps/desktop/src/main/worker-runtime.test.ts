@@ -38,6 +38,7 @@ it("overwrites an isolated target only after retaining its current bytes and rej
     (await f.runtime.execute({ kind: "session", action: "start" })).ok,
   ).toBe(true);
   let versionId = "";
+  writeFileSync(join(source, "source.txt"), "Retained synthetic version");
   await vi.waitFor(
     async () => {
       const list = versionListResponseSchema.parse(
@@ -322,6 +323,10 @@ it("confirms native recovery copies from retained encrypted bytes and rejects de
   expect(
     (await f.runtime.execute({ kind: "session", action: "start" })).ok,
   ).toBe(true);
+  writeFileSync(
+    join(source, "source.txt"),
+    "Synthetic recovery original bytes",
+  );
   const list = async () =>
     versionListResponseSchema.parse(
       await f.runtime.execute({ kind: "versions.list", query: { limit: 10 } }),
@@ -430,6 +435,7 @@ it("captures real synthetic folder saves with file-only approval, drains pause/r
   expect(
     (await f.runtime.execute({ kind: "session", action: "start" })).ok,
   ).toBe(true);
+  writeFileSync(target, "SyntheticAlphaBytes9482");
   const list = async () => {
     const result = await f.runtime.execute({
       kind: "versions.list",
@@ -453,7 +459,12 @@ it("captures real synthetic folder saves with file-only approval, drains pause/r
   expect(
     await f.runtime.execute({
       kind: "timeline",
-      query: { limit: 10, text: "synthetic", types: ["file-change"] },
+      query: {
+        limit: 10,
+        text: "synthetic",
+        types: ["file-change"],
+        includeFileBackups: true,
+      },
     }),
   ).toMatchObject({
     ok: true,
@@ -484,6 +495,9 @@ it("captures real synthetic folder saves with file-only approval, drains pause/r
   await new Promise((resolve) => setTimeout(resolve, 2200));
   expect(await list()).toHaveLength(2);
   await f.runtime.execute({ kind: "session", action: "resume" });
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  expect(await list()).toHaveLength(2);
+  writeFileSync(target, "SyntheticGammaBytes9482");
   await vi.waitFor(async () => expect(await list()).toHaveLength(3), {
     timeout: 8000,
   });
@@ -522,6 +536,7 @@ it("captures real synthetic folder saves with file-only approval, drains pause/r
   ).toMatchObject({ ok: true, value: { text: "SyntheticAlphaBytes9482" } });
   await restarted.execute({ kind: "files.permission", enabled: true });
   await restarted.execute({ kind: "session", action: "start" });
+  writeFileSync(target, "SyntheticDeltaBytes9482");
   await vi.waitFor(
     async () => {
       const history = await restarted.execute({

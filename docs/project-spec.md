@@ -4,6 +4,8 @@ Specification baseline: 17 October 2026; product owner and technical approver: R
 
 ## Product and scope
 
+19 November 2026 product-owner update: local app/file recording offers one explicit remembered setup approval. Verified Desktop/Documents/Downloads are enrolled without manual folder selection; normal opening starts a session, with Pause/End and durable opt-out. Users can add application/file/folder exclusions. This supersedes earlier manual-only setup descriptions below; whole-drive capture is not included. Browser/cloud approvals stay separate. See ADR 0038 and the automatic-recording implementation report.
+
 Rewind provides temporary local memory for a computer work session. Users explicitly start a session, select folders to protect, inspect evidence on a timeline, search it, and recover previously captured saved files. Windows, Chrome, and Edge are the first supported platforms.
 
 Example questions include which machine-learning website was visited, work around 2 PM, which PDF preceded an editor session, and which captured Word version can be recovered. Answers cite observations and resources; missing or ambiguous evidence is disclosed.

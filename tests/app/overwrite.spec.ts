@@ -40,7 +40,12 @@ test("explicit overwrite preserves current bytes, rejects intervening changes an
     await page
       .getByRole("button", { name: "Start session", exact: true })
       .click();
+    await expect(page.getByTestId("collection-status")).toHaveText(
+      "Collection active",
+      { timeout: 15000 },
+    );
     await page.getByRole("button", { name: "Files", exact: true }).click();
+    writeFileSync(path.join(source, "original.txt"), original);
     await expect(page.getByTestId("captured-version")).toHaveCount(1, {
       timeout: 15000,
     });

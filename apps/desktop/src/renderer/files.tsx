@@ -177,17 +177,19 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
       <section className="panel" aria-labelledby="file-protection-heading">
         <h2 id="file-protection-heading">Protected folders</h2>
         <p>
-          Choose project or document folders, approve saved-file capture for
-          this launch, then start or resume a session. Windows activity
-          permission is separate. Changing protected folders pauses recording
-          and revokes file approval.
+          {runtime?.automaticRecording
+            ? "Automatic setup protects the verified folders below during active sessions. Manage file or folder exclusions in Settings. Revoke or Remove also turns off future automatic recording."
+            : "Enable automatic recording on Dashboard to protect Desktop, Documents and Downloads without selecting folders. You can also choose project folders here and approve capture for this launch."}{" "}
+          Changing protected folders pauses recording, revokes file approval and
+          turns off automatic recording until you approve the new scope.
         </p>
         <p>
           Rewind captures complete saved bytes for supported text/code,
-          Markdown, DOCX and PDF files up to 16 MiB. Folders are checked about
-          every two seconds; brief intermediate saves can be missed. Initial
-          capture must finish before a version is available. Paused or
-          uncaptured work cannot be recovered.
+          Markdown, DOCX and PDF files up to 16 MiB when they are created or
+          changed during recording. Existing files are not imported. Repeated
+          save notifications are batched; unchanged content is not copied again.
+          The first recovery copy is the saved version after a change. Earlier,
+          paused or uncaptured work cannot be recovered.
         </p>
         <p>
           During an approved active session, bounded saved text is also indexed
@@ -271,7 +273,9 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           trees, reparse points, hardlinks, application profiles and unsupported
           files are skipped or rejected. A directory replacement requires
           selecting it again. File saves do not prove that a document was read.
-          Approval expires on restart.
+          {runtime?.automaticRecording
+            ? " Automatic setup remembers approval for normal app openings."
+            : " Manual approval expires on restart."}
         </p>
         {message && <p role="status">{message}</p>}
         {error && (

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   failure,
+  automaticRecordingCommandSchema,
+  automaticRecordingResponseSchema,
   PRESENTATION_CHANNEL,
   PRESENTATION_CHANGED_CHANNEL,
   presentationCommandSchema,
@@ -128,6 +130,27 @@ function assistantArgument<T>(
   };
 }
 const api: DesktopApi = {
+  recording: {
+    state: noArgs(
+      { kind: "recording.state" },
+      automaticRecordingResponseSchema,
+    ),
+    configure: (...args: unknown[]) => {
+      const parsed = automaticRecordingCommandSchema.safeParse({
+        kind: "recording.configure",
+        enabled: args[0],
+        confirmed: args[1],
+      });
+      return args.length === 2 && parsed.success
+        ? recording(parsed.data, automaticRecordingResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Explicit recording setup approval is required.",
+            ),
+          );
+    },
+  },
   presentation: {
     send: async (...args: unknown[]) => {
       const parsed = presentationCommandSchema.safeParse(args[0]);

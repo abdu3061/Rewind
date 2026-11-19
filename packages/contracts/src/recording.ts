@@ -9,6 +9,7 @@ import {
 } from "./common";
 import { sessionSchema } from "./session";
 import { userSettingsSchema } from "./settings";
+import { automaticRecordingCommandSchema } from "./automatic-recording";
 import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
 import { fileTextCommandSchema } from "./file-text-controls";
@@ -27,6 +28,20 @@ export const collectionPreferencesSchema = userSettingsSchema
     excludedApplications: true,
   })
   .extend({
+    excludedFolderPaths: userSettingsSchema.shape.excludedFolderPaths
+      .refine(
+        (paths) =>
+          paths.every(
+            (value) =>
+              /^[a-z]:[\\/]/i.test(value) &&
+              !value
+                .split(/[\\/]/)
+                .some((part) => part === "." || part === "..") &&
+              !/[?*]/.test(value),
+          ),
+        "Use full Windows file or folder paths, without wildcards or relative components.",
+      )
+      .optional(),
     excludedApplications:
       userSettingsSchema.shape.excludedApplications.max(200),
   });
@@ -39,6 +54,7 @@ export const timelineQuerySchema = z
     from: timestampSchema.optional(),
     to: timestampSchema.optional(),
     text: z.string().trim().max(2000).optional(),
+    includeFileBackups: z.boolean().optional(),
     types: z
       .array(
         z.enum(["foreground", "capture-gap", "file-change", "browser-visit"]),
@@ -68,6 +84,8 @@ export const runtimeSnapshotSchema = z.strictObject({
   preferences: collectionPreferencesSchema,
   secureStorage: z.boolean(),
   filePermission: z.boolean(),
+  automaticRecording: z.boolean().optional(),
+  automaticRecordingIssue: z.string().max(500).nullable().optional(),
   browserPermission: z.boolean(),
   synthetic: z.boolean(),
   error: appErrorSchema.nullable(),
@@ -101,6 +119,7 @@ export const RECORDING_CHANNEL = "rewind:recording" as const;
 export const RUNTIME_CHANGED_CHANNEL = "rewind:runtime-changed" as const;
 export const ACTIVITY_CHANGED_CHANNEL = "rewind:activity-changed" as const;
 export const recordingCommandSchema = z.discriminatedUnion("kind", [
+  ...automaticRecordingCommandSchema.options,
   ...fileTextCommandSchema.options,
   ...assistantCommandSchema.options,
   z.strictObject({ kind: z.literal("browser.open-extension") }),

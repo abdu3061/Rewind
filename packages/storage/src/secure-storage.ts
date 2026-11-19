@@ -350,6 +350,10 @@ export class SecureStorage implements SessionStorage {
       const conditions = [
         "a.type IN ('foreground', 'capture-gap', 'file-change', 'browser-visit')",
       ];
+      if (!query.includeFileBackups)
+        conditions.push(
+          "NOT (a.type='file-change' AND json_extract(a.payload,'$.change')='captured')",
+        );
       const params: SqlValue[] = [];
       if (query.sessionId) {
         conditions.push("a.session_id=?");

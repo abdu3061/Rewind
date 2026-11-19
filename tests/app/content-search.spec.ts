@@ -36,6 +36,10 @@ async function selectAndStart(
   await page
     .getByRole("button", { name: "Start session", exact: true })
     .click();
+  await expect(page.getByTestId("collection-status")).toHaveText(
+    "Collection active",
+    { timeout: 15000 },
+  );
   return page;
 }
 
@@ -61,6 +65,11 @@ test("normal Search finds actual captured bodies, previews and recovers original
   const destination = path.join(profile, "recovered-searched.docx");
   try {
     let page = await selectAndStart(application, folder);
+    for (const name of ["ordinary.docx", "ordinary.pdf", "ordinary.txt"])
+      writeFileSync(
+        path.join(folder, name),
+        readFileSync(path.join(folder, name)),
+      );
     await page.getByRole("button", { name: /Search/ }).click();
     let content = page.getByRole("region", {
       name: "Captured file text",
@@ -229,6 +238,11 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
       page.getByText(/Automatic content indexing is paused for this launch/),
     ).toBeVisible();
     await selectAndStart(application, folder);
+    for (const name of ["ordinary.txt", "encrypted.pdf"])
+      writeFileSync(
+        path.join(folder, name),
+        readFileSync(path.join(folder, name)),
+      );
     await expect
       .poll(() =>
         page.evaluate(async () => {

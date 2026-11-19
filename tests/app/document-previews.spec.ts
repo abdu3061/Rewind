@@ -14,7 +14,7 @@ test.skip(process.platform !== "win32", "Windows packaged target.");
 async function capture(
   application: ElectronApplication,
   folder: string,
-  count: number,
+  names: string[],
 ) {
   const page = await application.firstWindow();
   await expect(page.getByTestId("session-status")).toHaveText("not started");
@@ -33,8 +33,13 @@ async function capture(
     ];
   });
   expect(setup.every((result) => result.ok)).toBe(true);
+  for (const name of names)
+    writeFileSync(
+      path.join(folder, name),
+      readFileSync(path.join(folder, name)),
+    );
   await page.getByRole("button", { name: /Files/ }).click();
-  await expect(page.getByTestId("captured-version")).toHaveCount(count, {
+  await expect(page.getByTestId("captured-version")).toHaveCount(names.length, {
     timeout: 15000,
   });
   expect(
@@ -63,7 +68,10 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
   writeFileSync(path.join(folder, "synthetic.pdf"), pdf);
   let application = await launchVerificationApp(profile);
   try {
-    let page = await capture(application, folder, 2);
+    let page = await capture(application, folder, [
+      "synthetic.docx",
+      "synthetic.pdf",
+    ]);
     await page
       .getByRole("button", { name: /Preview synthetic.docx captured/ })
       .click();
@@ -100,6 +108,16 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
       { timeout: 20000 },
     );
     await expect(page.getByText(/Extracted PDF selectable text/)).toBeVisible();
+    // Native parser helpers can move foreground focus. A background Electron
+    // window may throttle the animation frames used by screenshot capture.
+    await application.evaluate(({ BrowserWindow }) => {
+      const desktop = BrowserWindow.getAllWindows().find(
+        (window) => window.getTitle() === "Rewind",
+      );
+      if (!desktop) throw new Error("SYNTHETIC_DESKTOP_REQUIRED");
+      desktop.show();
+      desktop.focus();
+    });
     await page.screenshot({
       path: "test-results/document-file-preview.png",
       fullPage: true,
@@ -146,6 +164,14 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
       .click();
     await expect(page.locator(".captured-preview")).toBeVisible({
       timeout: 20000,
+    });
+    await application.evaluate(({ BrowserWindow }) => {
+      const desktop = BrowserWindow.getAllWindows().find(
+        (window) => window.getTitle() === "Rewind",
+      );
+      if (!desktop) throw new Error("SYNTHETIC_DESKTOP_REQUIRED");
+      desktop.show();
+      desktop.focus();
     });
     await page.screenshot({
       path: "test-results/document-checkpoint-preview.png",
@@ -201,7 +227,12 @@ test("malformed and encrypted previews stay explicit and recoverable; cancelling
   writeFileSync(path.join(folder, "image-only.pdf"), imageOnlyPdfFixture());
   const application = await launchVerificationApp(profile);
   try {
-    const page = await capture(application, folder, 4);
+    const page = await capture(application, folder, [
+      "synthetic.pdf",
+      "encrypted.pdf",
+      "malformed.docx",
+      "image-only.pdf",
+    ]);
     const invalid = await page.evaluate(async () => {
       const api = (window as unknown as { rewind: DesktopApi }).rewind;
       const versions = await api.versions.list({ limit: 1 });

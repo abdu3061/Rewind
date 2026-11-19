@@ -20,7 +20,7 @@ function label(event: ActivityEvent): string {
     case "foreground":
       return `${event.payload.application} · ${event.payload.windowTitle}`;
     case "file-change":
-      return `${event.payload.displayName ?? "Saved file"} · ${event.payload.change}`;
+      return `${event.payload.displayName ?? "Saved file"} · ${event.payload.change === "captured" ? "Recovery backup" : event.payload.change}`;
     case "browser-visit":
       return `${event.payload.title} · ${event.payload.url}`;
     case "capture-gap":
@@ -134,7 +134,11 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
     if (!readable || !sessionId) return;
     void Promise.all([
       window.rewind.versions.list({ limit: 100, sessionId }),
-      window.rewind.timeline.query({ limit: 100, sessionId }),
+      window.rewind.timeline.query({
+        limit: 100,
+        sessionId,
+        includeFileBackups: true,
+      }),
     ])
       .then(([files, events]) => {
         if (!live.current || ticket !== evidenceSerial.current) return;
@@ -242,6 +246,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
     const result = await window.rewind.timeline.query({
       limit: 100,
       sessionId,
+      includeFileBackups: true,
       before: { occurredAt: last.occurredAt, id: last.id },
     });
     if (live.current && ticket === evidenceSerial.current && result.ok) {

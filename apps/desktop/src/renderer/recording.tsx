@@ -47,12 +47,18 @@ export function RecordingPreferences({
 }) {
   const exclusions = runtime?.preferences.excludedApplications.join("\n") ?? "";
   const [draft, setDraft] = useState(exclusions);
+  const folderExclusions =
+    runtime?.preferences.excludedFolderPaths?.join("\n") ?? "";
+  const [fileDraft, setFileDraft] = useState(folderExclusions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     setDraft(exclusions);
   }, [exclusions]);
+  useEffect(() => {
+    setFileDraft(folderExclusions);
+  }, [folderExclusions]);
   async function update(consent: boolean, revokeOnly = false) {
     setBusy(true);
     setError(null);
@@ -60,6 +66,12 @@ export function RecordingPreferences({
     try {
       const result = await window.rewind.privacy.update({
         collectionConsent: consent,
+        excludedFolderPaths: revokeOnly
+          ? (runtime?.preferences.excludedFolderPaths ?? [])
+          : fileDraft
+              .split(/\r?\n/)
+              .map((item) => item.trim())
+              .filter(Boolean),
         excludedApplications: revokeOnly
           ? (runtime?.preferences.excludedApplications ?? [])
           : draft
@@ -88,10 +100,11 @@ export function RecordingPreferences({
         encrypted on this Windows account.
       </p>
       <p>
-        Approval expires when Rewind or its recording service restarts.
-        Preference changes pause active sessions; resume explicitly. Rewind,
-        browser windows and excluded apps are skipped. Folders (Files) and
-        browser metadata (Settings and the extension) need separate approvals.
+        {runtime?.automaticRecording
+          ? "Automatic recording remembers local app and file approval. Saving exclusions briefly pauses capture and then continues an active session."
+          : "Manual approval lasts until Rewind or its recording service restarts. Preference changes pause active sessions; resume explicitly."}{" "}
+        Rewind, browser windows and excluded apps are skipped. Browser metadata
+        needs separate setup in Settings and the extension.
       </p>
       <label htmlFor="application-exclusions">
         Excluded applications (one name per line)
@@ -112,6 +125,25 @@ export function RecordingPreferences({
         clipboard capture or screenshots. Manage retention, storage and history
         deletion in Settings. Use nonsensitive development sessions while
         independent security review is pending.
+      </p>
+      <label htmlFor="file-exclusions">
+        Excluded files or folders (one full path per line)
+      </label>
+      <textarea
+        id="file-exclusions"
+        rows={3}
+        maxLength={262144}
+        value={fileDraft}
+        onChange={(event) => {
+          setFileDraft(event.target.value);
+          setSaved(false);
+        }}
+        placeholder="C:\\Users\\YourName\\Documents\\Private"
+      />
+      <p className="footnote">
+        Exclusions stop future capture and content indexing for that file or
+        folder. Existing saved history follows your retention settings; delete
+        it explicitly in Settings if needed.
       </p>
       <div className="controls">
         <button
@@ -143,7 +175,9 @@ export function RecordingPreferences({
         {busy
           ? "Saving preferences..."
           : saved
-            ? "Preferences saved. Recording never resumes automatically."
+            ? runtime?.automaticRecording
+              ? "Exclusions saved. An active automatic session continues recording."
+              : "Preferences saved. Resume explicitly to continue recording."
             : allowed
               ? "Windows activity approved for this launch."
               : "Windows activity permission is off."}
@@ -180,7 +214,11 @@ export function RecordedHistory({
       return retained.length === ids.length ? ids : retained;
     });
   }, [events]);
-  const [query, setQuery] = useState<TimelineQuery>({ limit: 50 });
+  const [query, setQuery] = useState<TimelineQuery>({
+    limit: 50,
+    ...(search ? { includeFileBackups: true } : {}),
+  });
+  const [includeFileBackups, setIncludeFileBackups] = useState(search);
   const [text, setText] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [from, setFrom] = useState("");
@@ -311,11 +349,13 @@ export function RecordedHistory({
         {search ? "Search your recorded evidence" : "Recorded activity"}
       </h2>
       <p>
-        Recorded application observations, saved-file events and capture gaps,
-        newest first. A window title does not prove that a file was saved or
-        read. Browser metadata needs both approvals. Idle and lock detection
-        remain unavailable. Optional Gemini questions require separate cloud
-        approval and per-question sharing review.
+        Recorded application observations, saved-file changes and capture gaps,
+        newest first. Initial and refreshed recovery backups are hidden from
+        Timeline unless included below; they remain available in Files and
+        Search. A window title does not prove that a file was saved or read.
+        Browser metadata needs both approvals. Idle and lock detection remain
+        unavailable. Optional Gemini questions require separate cloud approval
+        and per-question sharing review.
       </p>
       <form
         onSubmit={(event) => {
@@ -323,6 +363,7 @@ export function RecordedHistory({
           try {
             setQuery({
               limit: 50,
+              includeFileBackups,
               ...(sessionId ? { sessionId } : {}),
               ...(from ? { from: localTimestamp(from) } : {}),
               ...(to ? { to: localTimestamp(to) } : {}),
@@ -391,6 +432,15 @@ export function RecordedHistory({
             />
           </label>
         </div>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={includeFileBackups}
+            disabled={!canRead}
+            onChange={(event) => setIncludeFileBackups(event.target.checked)}
+          />
+          Include recovery backups
+        </label>
         <label htmlFor="history-search">Search history</label>
         <div className="search-row">
           <input
@@ -476,8 +526,10 @@ export function RecordedHistory({
               <>
                 <strong>{event.payload.displayName ?? "Protected file"}</strong>
                 <p>
-                  Saved-file observation. Inspect captured versions in Files.
-                  This does not prove that the file was read.
+                  {event.payload.change === "captured"
+                    ? "Recovery backup saved. This does not mean the file was opened or changed during the session."
+                    : "Saved-file change observed. This does not identify which app or person made the change, or prove that the file was read."}{" "}
+                  Inspect captured versions in Files.
                 </p>
               </>
             ) : event.type === "browser-visit" ? (

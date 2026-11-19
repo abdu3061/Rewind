@@ -3,11 +3,16 @@ import { utilityProcess, safeStorage } from "electron";
 import { ProtectedKeyStore } from "@rewind/storage/key-store";
 import { WorkerClient } from "./worker-client";
 import { createDocumentBackend } from "./document-backend";
-import type { BrowserAssetsLocation, RuntimeSnapshot } from "@rewind/contracts";
+import type {
+  AutomaticFolder,
+  BrowserAssetsLocation,
+  RuntimeSnapshot,
+} from "@rewind/contracts";
 
 export function createBackend(options: {
   root: string;
   synthetic: boolean;
+  automaticFolders?: AutomaticFolder[];
   assistantFixture?: true;
   entry: string;
   documentEntry: string;
@@ -35,6 +40,9 @@ export function createBackend(options: {
   return new WorkerClient({
     root: path.join(options.root, "secure"),
     synthetic: options.synthetic,
+    ...(options.automaticFolders
+      ? { automaticFolders: options.automaticFolders }
+      : {}),
     documents: createDocumentBackend(
       options.documentEntry,
       options.documentGuard,

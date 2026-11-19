@@ -28,10 +28,12 @@ while ($null -ne ($line = [Console]::ReadLine())) {
       [uint32]$foregroundProcessId = 0
       [ActiveWindow]::GetWindowThreadProcessId($handle, [ref]$foregroundProcessId) | Out-Null
       if ($foregroundProcessId -gt 0) {
-        $proc = Get-Process -Id $foregroundProcessId -ErrorAction Stop
-        $appName = $proc.ProcessName
+        # A window can close between GetForegroundWindow and this lookup.
+        # Missing processes have no observation; they are not a broken helper.
+        $proc = Get-Process -Id $foregroundProcessId -ErrorAction SilentlyContinue
+        $appName = if ($null -ne $proc) { $proc.ProcessName } else { $null }
         # Deny before GetWindowText: even a transient title must not cross this boundary.
-        if ($appName.ToLowerInvariant() -notin $denied) {
+        if ($appName -and $appName.ToLowerInvariant() -notin $denied) {
           $text = New-Object System.Text.StringBuilder 2048
           [ActiveWindow]::GetWindowText($handle, $text, 2048) | Out-Null
           $observation = @{ application=$appName; windowTitle=$text.ToString() }

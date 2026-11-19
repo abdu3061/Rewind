@@ -197,9 +197,29 @@ test("minimize, hover, keyboard, restore and single-instance activation preserve
     await expect(
       notch.getByRole("button", { name: /Expand Rewind/ }),
     ).toBeVisible();
+    // DOM visibility can precede loadURL settlement and native showInactive.
+    // Assert the actual HWND is shown before inspecting its topmost state.
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((window) => window.getTitle() === "Rewind notch")
+            ?.isVisible(),
+        ),
+      )
+      .toBe(true);
     await notch.screenshot({
       path: "test-results/premium-notch-collapsed.png",
     });
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((window) => window.getTitle() === "Rewind notch")
+            ?.isAlwaysOnTop(),
+        ),
+      )
+      .toBe(true);
     const initial = await application.evaluate(({ app, BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(
         (item) => item.getTitle() === "Rewind notch",

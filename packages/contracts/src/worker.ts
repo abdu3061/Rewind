@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  automaticRecordingCommandSchema,
+  automaticFoldersSchema,
+} from "./automatic-recording";
 import { appErrorSchema, idSchema, resultSchema } from "./common";
 import { sessionCommandSchema } from "./session";
 import { storageCommandSchema } from "./storage-management";
@@ -20,6 +24,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...automaticRecordingCommandSchema.options,
   ...fileTextCommandSchema.options,
   z.strictObject({ kind: z.literal("versions.source"), id: idSchema }),
   ...assistantWorkerCommandSchema.options,
@@ -78,6 +83,8 @@ export const workerInputSchema = z.discriminatedUnion("type", [
     root: z.string().min(1).max(32767),
     key: z.instanceof(Uint8Array).refine((value) => value.length === 32),
     synthetic: z.boolean(),
+    automaticFolders: automaticFoldersSchema.optional(),
+    automaticStart: z.boolean().optional(),
     assistantFixture: z.literal(true).optional(),
     browserAssets: browserAssetsLocationSchema.optional(),
   }),
@@ -149,6 +156,8 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
       "session",
       "snapshot",
       "preferences.get",
+      "recording.state",
+      "recording.configure",
       "preferences.update",
       "timeline",
       "history",

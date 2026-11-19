@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import {
   failure,
   nativeFileBytesSchema,
@@ -9,6 +10,17 @@ import {
   type Result,
 } from "@rewind/contracts";
 import { windowsFileScript } from "./windows-file-script";
+
+// Constant helper code only. Compress before encoding to stay below CreateProcess's
+// command-line limit; requests and file bytes still travel exclusively on stdin.
+const helperCommand = `
+$bytes=[Convert]::FromBase64String('${gzipSync(Buffer.from(windowsFileScript, "utf8")).toString("base64")}')
+$memory=New-Object IO.MemoryStream(,$bytes)
+$gzip=New-Object IO.Compression.GZipStream($memory,[IO.Compression.CompressionMode]::Decompress)
+$reader=New-Object IO.StreamReader($gzip,[Text.Encoding]::UTF8)
+try { $source=$reader.ReadToEnd() } finally { $reader.Dispose(); $gzip.Dispose(); $memory.Dispose() }
+& ([ScriptBlock]::Create($source))
+`.trim();
 
 const unavailable = () =>
   failure(
@@ -47,7 +59,7 @@ export class WindowsProtectedFileAccess implements ProtectedFileAccess {
         "-NoProfile",
         "-NonInteractive",
         "-EncodedCommand",
-        Buffer.from(windowsFileScript, "utf16le").toString("base64"),
+        Buffer.from(helperCommand, "utf16le").toString("base64"),
       ],
       { windowsHide: true, stdio: "pipe" },
     );
@@ -148,6 +160,28 @@ export class WindowsProtectedFileAccess implements ProtectedFileAccess {
   async list(folder: ProtectedFolder): ReturnType<ProtectedFileAccess["list"]> {
     const result = await this.request({
       kind: "list",
+      path: folder.absolutePath,
+      identity: folder.osIdentity,
+    });
+    if (!result.ok) return result;
+    const parsed = nativeFileListingSchema.safeParse(result.value);
+    return parsed.success ? { ok: true, value: parsed.data } : unavailable();
+  }
+  async watch(folder: ProtectedFolder): Promise<Result<void>> {
+    const result = await this.request({
+      kind: "watch",
+      path: folder.absolutePath,
+      identity: folder.osIdentity,
+    });
+    return result.ok && result.value === true
+      ? { ok: true, value: undefined }
+      : unavailable();
+  }
+  async changes(
+    folder: ProtectedFolder,
+  ): ReturnType<ProtectedFileAccess["changes"]> {
+    const result = await this.request({
+      kind: "changes",
       path: folder.absolutePath,
       identity: folder.osIdentity,
     });

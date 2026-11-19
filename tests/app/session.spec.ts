@@ -77,6 +77,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         node: typeof Reflect.get(window, "require"),
         process: typeof Reflect.get(window, "process"),
         keys: Object.keys(api),
+        recordingKeys: Object.keys(api.recording),
         contentKeys: Object.keys(api.content).sort(),
         invalid: await Reflect.apply(api.sessions.start, api.sessions, [
           "unexpected",
@@ -118,6 +119,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       node: "undefined",
       process: "undefined",
       keys: [
+        "recording",
         "presentation",
         "content",
         "assistant",
@@ -134,6 +136,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         "sessions",
       ],
       invalid: { ok: false, error: { code: "INVALID_INPUT" } },
+      recordingKeys: ["state", "configure"],
       contentKeys: ["clearSearch", "indexSaved", "search", "state", "stop"],
       invalidTransition: { ok: false, error: { code: "INVALID_TRANSITION" } },
       browserKeys: [
