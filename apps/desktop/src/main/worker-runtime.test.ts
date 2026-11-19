@@ -10,6 +10,7 @@ import {
   browserControlResponseSchema,
   recoveryOverwriteProposalResponseSchema,
   recoveryOverwriteResultResponseSchema,
+  type RuntimeSnapshot,
 } from "@rewind/contracts";
 import type { WindowQueryStrategy } from "@rewind/collectors";
 import {
@@ -129,17 +130,56 @@ function fixture(strategy?: WindowQueryStrategy) {
   const root = join(profile, "secure");
   const key = randomBytes(32);
   const retainedKey = Buffer.from(key);
+  const snapshots: RuntimeSnapshot[] = [];
   const runtime = new WorkerRuntime({
     root,
     key,
     synthetic: true,
     ...(strategy ? { strategy } : {}),
-    onSnapshot: vi.fn(),
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
     onActivity: vi.fn(),
   });
   runtimes.push(runtime);
-  return { runtime, root, profile, key: retainedKey };
+  return { runtime, root, profile, key: retainedKey, snapshots };
 }
+it("reports stopping collection while draining an approved active session, then closes with an ended session", async () => {
+  const f = fixture();
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "preferences.update",
+        value: { collectionConsent: true, excludedApplications: [] },
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  expect(f.runtime.snapshot().collection).toBe("active");
+  const closing = f.runtime.shutdown();
+  expect(f.runtime.snapshot()).toMatchObject({
+    service: "stopping",
+    collection: "stopping",
+    preferences: { collectionConsent: false },
+  });
+  expect((await closing).ok).toBe(true);
+  expect(f.runtime.snapshot()).toMatchObject({
+    service: "stopping",
+    collection: "off",
+    secureStorage: false,
+    session: { status: "ended" },
+  });
+  expect(f.snapshots.some((snapshot) => snapshot.service === "stopping")).toBe(
+    true,
+  );
+  expect(
+    f.snapshots.some(
+      (snapshot) =>
+        snapshot.service !== "ready" && snapshot.collection === "active",
+    ),
+  ).toBe(false);
+});
 it("keeps standard synthetic browser setup unavailable, saves real site policy and never grants browser collection", async () => {
   const f = fixture();
   expect((await f.runtime.initialize()).ok).toBe(true);

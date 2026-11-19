@@ -96,6 +96,10 @@ export class WorkerRuntime {
   }
   snapshot(): RuntimeSnapshot {
     const health = this.coordinator?.getStatus();
+    const collection =
+      this.fault || health?.unavailable
+        ? "unavailable"
+        : (health?.collection ?? "off");
     return {
       documentAuthority: {
         generation: this.documentGeneration,
@@ -116,10 +120,12 @@ export class WorkerRuntime {
           : this.ready
             ? "ready"
             : "starting",
+      // Shutdown revokes authority before asynchronous collector drain. Report
+      // that transition honestly; an active/starting source is now stopping.
       collection:
-        this.fault || health?.unavailable
-          ? "unavailable"
-          : (health?.collection ?? "off"),
+        this.closing && (collection === "active" || collection === "starting")
+          ? "stopping"
+          : collection,
       session: this.coordinator?.getState().session ?? null,
       preferences: {
         collectionConsent: this.settings.collectionConsent,
