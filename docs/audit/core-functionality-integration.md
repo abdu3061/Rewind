@@ -12,6 +12,8 @@ The requested five core milestones and the safe optional assistant foundation ha
 
 ## Final acceptance evidence
 
+Current implementation source is committed as `4785cca`, following the encrypted-index foundation `e4fc855`. The final documentation-only audit records these already verified source commits; no runtime code changes follow the passing gates.
+
 | Gate                              | Result and scope                                                                                                                                                                                                           |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`                   | Install metadata, strict TypeScript, ESLint, Prettier and **616 tests in 69 files pass**; unit execution took 194.33 seconds with one file worker.                                                                         |
@@ -25,6 +27,8 @@ The requested five core milestones and the safe optional assistant foundation ha
 | Source/change review              | No dependency/lockfile change in the content-search slices. Native parser/crypto limits are unchanged. Source branches/configuration and teammate refs are preserved.                                                      |
 
 ## Objective completion audit
+
+The manual credential boundary follows the [computer-use skill](C:/Users/Rasheed/.codex/plugins/cache/openai-bundled/computer-use/26.1103.60933/skills/computer-use/SKILL.md), which requires its [bundled guidance](C:/Users/Rasheed/.codex/plugins/cache/openai-bundled/computer-use/26.1103.60933/docs/guidance.md). The guidance explicitly says, "Do not automate user authentication dialogs." Treating Rewind's native credential prompt as covered is this run's interpretation; the skill does not name Rewind. The objective permits documenting incomplete stretch acceptance, so no key is requested in chat or entered by an automation workaround.
 
 This matrix checks the objective file's requirements against the current implementation and successful complete suites above. Prototype and older-checkpoint tests alone are not used as proof of production encryption, native access or UI integration.
 
@@ -62,6 +66,49 @@ This matrix checks the objective file's requirements against the current impleme
 The only remaining actions are owner/manual/release decisions rather than missing core implementation: review/integrate the local branch, perform native key-entry/live-account acceptance if Gemini is wanted, reconcile licensing and obtain independent security/provider/distribution approval before release. Proposed idle/lock, article extraction, OCR, richer layout and installer work belong to a separately approved next scope. Earlier automatic review also blocked cleanup of five named synthetic temporary folders with only "blocked by policy"; they remain preserved as documented below, without a second deletion mechanism.
 
 Recommended next goal: owner-reviewed integration and release-readiness work, starting with the divergence from main and the manual credential/provider acceptance checklist; keep all recording/cloud gates default-off during that work.
+
+## Source and architecture map
+
+- `packages/contracts/src/file-text.ts`, `file-text-controls.ts`, `ipc.ts`, `recording.ts` and `worker.ts`: bounded source-derived models and strict public/worker query/control capabilities; no public body write, parser command or generic filesystem API.
+- `db/migrations/010_file_text_search.sql`, `packages/storage/src/file-text-repository.ts` and `secure-storage.ts`: encrypted text/hash/FTS, atomic original-source checks, immutable successful extraction, quota admission, source-cascade lifetime and startup integrity.
+- `packages/engine/src/file-text-indexer.ts`: one-source orchestration through ports, current authorization, bounded extraction, cancellation/actual closure, progress and outside-coordinator settlement.
+- `apps/desktop/src/main/content-operations.ts`, `worker-runtime.ts`, `file-operations.ts`, `document-client.ts`, `document-process.ts` and `worker-client.ts`: normal-worker admission, current identity/policy, preview priority, owned/shared stop, source-specific invalidation and boot/request/private relay boundaries.
+- `apps/desktop/src/preload/preload.ts`, renderer `content-search.tsx`, `recording.tsx` and `files.tsx`: validated public bridge, actual source-linked Search, escaped snippets/previews, existing confirmed recovery controls, indexing status/Stop/backfill/retry and capture disclosure in the existing design.
+- Native storage/engine/worker/contract tests, `tests/app/content-search.spec.ts` and the exact/untrusted bridge assertions: actual encrypted persistence and failures, current policy/lifecycle, normal packaged parser/Search/recovery and rejection of extra/private arguments. `vitest.config.ts` and credential lifecycle fixtures bound unrelated native resource contention without altering product crypto or existing deadlines.
+- README, AGENTS, architecture/contracts, repository/audit indexes, this report, roadmap/findings and ADRs 0034–0035: current behavior, limits, acceptance evidence and owned next work. Prior ADRs 0010–0033 document the other integrated core slices.
+
+## Local implementation commits
+
+The verified branch preserves baseline `715dfbe`; the following 26 implementation commits are local descendants. Main/teammate refs and Git configuration are preserved. A documentation-only final audit commit accompanies this source history. No remote action follows from this list.
+
+| Commit    | Implemented slice                                           |
+| --------- | ----------------------------------------------------------- |
+| `9a264e6` | Retention, quota management and confirmed history deletion  |
+| `007dc9e` | Encrypted snapshots and verified Windows file access        |
+| `c353441` | Consent-gated saved-version capture and previews            |
+| `d649738` | Confirmed verified recovery copies                          |
+| `fd9401a` | Named checkpoints over actual retained evidence             |
+| `f385736` | Independent browser recording authority                     |
+| `d795d85` | Verified Windows pipe/process primitives                    |
+| `f83a6bb` | Authenticated native relay and metadata controller          |
+| `446c33e` | Engine browser leases and utility transport                 |
+| `991e89b` | Real Chrome/Edge focused provider verification              |
+| `0ed0fed` | Native sessions through encrypted browser history           |
+| `66175a9` | Explicit popup consent and restart-safe controls            |
+| `e3f4d1b` | Packaged native/browser assets and owned registration       |
+| `a7e3048` | Durable setup ownership and installation lifecycle          |
+| `e6d42ee` | Normal desktop browser setup/recording integration          |
+| `e44095d` | Confirmed overwrite with verified current-byte preservation |
+| `ac9145d` | Bounded official-SDK approved-evidence foundation           |
+| `1f507ab` | Encrypted credentials and sealed native entry               |
+| `ab06665` | Source-bound immutable reviews/disclosure leases            |
+| `3ca3637` | Utility consent, credentials and evidence requests          |
+| `5ac8695` | Normal reviewed Gemini Settings/Search controls             |
+| `275ec5e` | Bounded captured DOCX/PDF extraction                        |
+| `5f3a804` | Resource-limited Windows parser utilities                   |
+| `d2d6b24` | Normal verified previews and owned cancellation             |
+| `e4fc855` | Encrypted captured-content indexing foundation              |
+| `4785cca` | Normal captured-content indexing and desktop Search         |
 
 Captured-content indexing foundation, 19 November 2026: **606 tests / 66 files pass**, together with install metadata, strict TypeScript, lint and formatting. [ADR 0034](../decisions/0034-encrypted-captured-content-index.md) adds migration 010, cipher-backed bounded text/FTS storage, original/text hash verification, atomic source-bound publication, actual physical-quota admission and a one-source-at-a-time engine. The real engine/native-cipher test indexes synthetic UTF-8, DOCX and PDF originals and searches their bodies after encrypted restart. Deletion/expiration/quota eviction remove derived rows/tokens with their sources; transitive Keep preserves both. Missing source/schema, corrupt text/original bytes, FTS mismatch and failed writes are covered. No plaintext persistence fallback or forensic-erasure claim is introduced.
 
