@@ -1,5 +1,7 @@
 # Architecture decisions
 
+[ADR 0036](0036-windows-release-candidate.md) records local integration disposition, passive Squirrel installation, preserved application data, original beta assets, release-only inspector hardening, signing/hash handling, notice inventory and code-only diagnostics. Signed/installed acceptance and owner review remain release gates.
+
 [ADR 0030](0030-public-reviewed-gemini-questions.md) records normal Settings/Search controls, sealed native key orchestration, separate launch/question approvals, generation-fenced replies, source citations and packaged offline-provider verification. Live-account and interactive native-entry acceptance remain manual gates.
 
 [ADR 0029](0029-utility-assistant-composition.md) records actual encrypted-source/SDK utility composition, separate launch approval, private sealed credential routing, mutation invalidation and observed shutdown. Main/preload/Search integration remains in progress.

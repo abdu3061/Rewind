@@ -46,6 +46,6 @@ npm run build
 npm run test:app
 ```
 
-`npm run build` builds the extension and packages the desktop folder; `npm run make` creates a Windows ZIP, not an installer. `test:app` requires the built Windows executable. No Playwright browser download is necessary for Electron tests.
+`npm run build` builds the extension and packages a desktop verification folder with the main inspector enabled for Playwright; `test:app` requires it. Root `npm run make` rebuilds with the inspector disabled and creates Windows ZIP and Squirrel installer candidates. Run `npm run verify:release` afterward; rebuild before subsequent app tests. Installer/signing/upgrade acceptance remains a separate gate in `docs/windows-release.md`. No Playwright browser download is necessary for Electron tests.
 
 Add meaningful tests for lifecycle, security boundaries, persistence, migrations, collector shutdown, and recovery failures as those modules arrive. Test public behavior and failure paths, not private implementation details. Update contracts and docs together. Run affected checks, fix failures, and report actual results. Do not claim installer, native integration, encryption, or Chrome/Edge end-to-end verification unless tested. Preserve user work and existing Git configuration.

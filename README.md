@@ -1,6 +1,6 @@
 # Rewind
 
-Rewind is a Windows desktop work-session memory project. This local development branch provides consent-driven activity recording, encrypted history and protected-folder saved versions; it is not the complete version-one product or a release. See the [current implementation report](docs/audit/core-functionality-integration.md).
+Rewind is a Windows desktop work-session memory project. The local Windows beta candidate provides consent-driven recording, encrypted saved versions, search and reviewed recovery. It is not an approved release. See [release readiness](docs/audit/release-readiness.md), the [Windows build/install/removal procedure](docs/windows-release.md) and the [core implementation report](docs/audit/core-functionality-integration.md).
 
 ## What works today
 
@@ -53,11 +53,12 @@ Development start and packaging also generate the Windows x64 browser-host execu
 | `npm run test:app`                        | Launch/test packaged Windows executable; run build first                              |
 | `npm run test:browser`                    | Isolated native-relay tests using installed Chrome and Edge                           |
 | `npm run test:documents:packaged`         | Verify private parser utilities against built Windows ASAR/native assets; build first |
-| `npm run make`                            | Build a Windows ZIP through Forge; no signed installer                                |
+| `npm run make`                            | Rebuild hardened Windows ZIP and Squirrel installer candidates; unsigned by default   |
+| `npm run verify:release`                  | Verify final fuses, archives, resources and isolated hardened startup/shutdown        |
 | `npm run build:extension`                 | Build the browser client into `apps/browser-extension/dist`                           |
 | `npm run dev:extension`                   | Rebuild extension on changes; reload it manually in the browser                       |
 
-The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`. These outputs are ignored by Git. ARM64 is not yet verified. The Windows CI workflow runs the same checks plus packaged application tests. See [repository status](docs/repository-status.md) for the latest branch review and local verification.
+The Windows x64 executable is `apps/desktop/out/Rewind-win32-x64/Rewind.exe`. ZIPs go under `apps/desktop/out/make/zip/win32/x64/`; the Squirrel candidate is `apps/desktop/out/make/squirrel.windows/x64/Rewind-Setup.exe`. Outputs are ignored by Git. Run app tests after `build`, then `make` and `verify:release`: final artifacts disable the inspector required by Playwright. Installer events never enable monitoring, load history or silently delete app data. Real install/upgrade/removal, signing, licensing and manual Gemini acceptance remain release gates. ARM64 is not verified. See [repository status](docs/repository-status.md) and the release procedure for current scope.
 
 To test browser recording, open **Settings**, select Chrome and/or Edge and explicitly confirm **Set up browser connection**. Use **Open extension folder**, enable Developer mode at `chrome://extensions` or `edge://extensions`, choose **Load unpacked** and select that opened folder. The extension requests tabs, native messaging and storage permissions. In its popup, choose **Allow and connect**; separately choose **Allow browser activity for this launch** in Rewind, then start/resume a session. Approvals expire on app/service/extension restart. Only a random profile tag persists in browser storage. Private browsing and page text are excluded; query strings and fragments are removed. Setup/removal changes only owned per-user registrations after confirmation. Building or opening the app never registers a host automatically. Use nonsensitive test pages. See [browser integration](docs/browser-integration.md) and [ADR 0023](docs/decisions/0023-desktop-browser-composition.md) for evidence and limits.
 

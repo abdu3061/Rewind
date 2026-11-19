@@ -140,6 +140,9 @@ export function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -168,7 +171,7 @@ export function App() {
 
         <div className="sidebar-note">
           <span className="privacy-dot" />
-          <span data-testid="collection-status">
+          <span data-testid="collection-status" role="status">
             Collection {runtime?.collection ?? "off"}
           </span>
           <p>
@@ -189,7 +192,7 @@ export function App() {
         <div className="build-label">v0.1 · Development build</div>
       </aside>
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">YOUR WORK, WITH CONTEXT</p>
@@ -205,9 +208,11 @@ export function App() {
 
         <div className="notice">
           <strong>
-            {runtime?.secureStorage
-              ? "Encrypted local history"
-              : "Secure storage unavailable"}
+            {!runtime || runtime.service === "starting"
+              ? "Connecting to secure history"
+              : runtime.secureStorage
+                ? "Encrypted local history"
+                : "Secure storage unavailable"}
           </strong>
           <span>
             Windows activity, selected folders and browser metadata need
