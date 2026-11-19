@@ -2,6 +2,8 @@
 
 This is a local unsigned Windows x64 candidate, pending the gates in [release readiness](audit/release-readiness.md). Rasit approves the installer/publisher, license, final source review and distribution. There is no automatic updater or release publication in this workflow.
 
+The subsequent premium desktop/notch candidate is tracked in its [implementation and validation report](audit/premium-notch-implementation.md). Minimize now shows a restricted floating notch; Open Rewind/taskbar/tray restore the existing full window. Closing the desktop and Quit still acknowledge background shutdown. Automated geometry/focus tests do not replace physical multi-monitor/DPI, tray-shell, fullscreen application and assistive-technology acceptance on the target Windows hardware.
+
 ## Reproduce a candidate
 
 Use Windows PowerShell, Node 22.13+ within 22.x and npm 10+. Run from the repository root:

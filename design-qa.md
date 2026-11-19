@@ -2,7 +2,7 @@
 
 Source truth: user attachment `b763c9f2-ee83-4c11-a91f-77f57de7ed39/image-2.png` (1672 × 941) and `image-1.png` (1254 × 1254). The first defines a premium native overlay concept; wallpaper, annotations, unsupported microphone/shortcut claims and illustrative answers are context, not app content. The mascot sheet defines glossy blue/lavender arrow character direction. The full desktop retains its existing page structure as explicitly requested.
 
-Implementation: real packaged Electron screenshots under `docs/design/premium-notch/`. Expanded native window is 760 CSS/DIP pixels wide at device scale 1; compact native bounds 144 × 64. Desktop client is 1149 × 761 at scale 1 (1180 × 800 outer Windows window). Full-page captures extend vertically through the existing forms. No source design exists for those full-app pages; review them for consistency, readability and preserved workflows, not fictional pixel fidelity.
+Implementation: real packaged Electron screenshots under `docs/design/premium-notch/`. Expanded native window is 760 CSS/DIP pixels wide at device scale 1; compact native bounds 144 × 64. Desktop viewport capture is 1164 × 761 at scale 1 (1180 × 800 outer Windows window); its full-page Dashboard content capture is 1149 × 1414, excluding the vertical scrollbar. Full-page captures extend vertically through the existing forms. No source design exists for those full-app pages; review them for consistency, readability and preserved workflows, not fictional pixel fidelity.
 
 ## Comparison history
 

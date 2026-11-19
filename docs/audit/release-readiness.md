@@ -1,5 +1,7 @@
 # Windows release readiness
 
+The current premium UI follow-up on `feature/premium-notch-ui` is recorded in [premium desktop/notch implementation](premium-notch-implementation.md), including exact checks, screenshots, local unsigned artifacts and device limitations. It preserves this candidate's release/security gates. The source-specific release-hardening evidence below remains historical; it is not a claim that the new presentation is externally reviewed, signed or accepted for distribution.
+
 19 November 2026. This report governs the local release-hardening candidate after core acceptance at `395fa03`; earlier audit checkpoints remain historical. Candidate branch: `feature/windows-release-candidate`. No push, remote merge/PR, release publication, production browser registration, personal-data collection or live Gemini request is authorized/performed by this work.
 
 ## Integration disposition
