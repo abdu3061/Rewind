@@ -145,6 +145,8 @@ const api: DesktopApi = {
       }
     },
     onChanged: (listener) => {
+      if (typeof listener !== "function")
+        throw new TypeError("A window listener is required.");
       const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
         const parsed = presentationStateSchema.safeParse(value);
         if (parsed.success) listener(parsed.data);

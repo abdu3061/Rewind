@@ -17,6 +17,8 @@ Revised combined evidence: [comparison-final.png](docs/design/premium-notch/comp
 
 A subsequent search capture revealed a transient clipped frame before native bounds caught up with ResizeObserver. Capture now waits for measured panel height to fit the actual window viewport. The revised [search response](docs/design/premium-notch/notch-search.png) includes all five actual matches, the bounded scroll region and persistent footer. This was capture timing, not a fixed-height panel or hidden final controls.
 
+Final failure-state review found that a worker fault disabled controls without showing its existing error message. The notch now shows truthful unavailable status, the actual sanitized error and a Reconnect in Rewind route. The [settled unavailable capture](docs/design/premium-notch/notch-unavailable.png) verifies the readable failure state. Capture also waits for the finite panel reveal to finish so it does not deliver a transformed/soft intermediate frame. A packaged crash/reconnect test proves approval remains off afterward.
+
 ## Required surfaces
 
 - Typography: local Segoe UI Variable/Segoe UI system family, matching the reference's modern rounded system-UI direction without a remote font. Input is 14px, functional utility text 11px, actions 12px; headings/body use the established desktop hierarchy. Rechecked focus rings, weight, small text and wrapping in the revised captures. The concept is art direction rather than a font specification; its source typeface is not identified.

@@ -93,13 +93,18 @@ export function Notch() {
   const state = runtime?.session?.status ?? "not started";
   const available = runtime?.service === "ready";
   const recording = runtime?.collection === "active";
-  const status = recording
-    ? "Recording"
-    : state === "paused"
-      ? "Session paused"
-      : state === "active"
-        ? "Session active · Recording off"
-        : "Recording off";
+  const unavailable =
+    runtime?.service === "unavailable" || runtime?.collection === "unavailable";
+  const issue = runtimeError || runtime?.error?.message || error;
+  const status = unavailable
+    ? "Recording unavailable"
+    : recording
+      ? "Recording"
+      : state === "paused"
+        ? "Session paused"
+        : state === "active"
+          ? "Session active · Recording off"
+          : "Recording off";
 
   useEffect(() => {
     document.documentElement.classList.add("notch-document");
@@ -491,10 +496,24 @@ export function Notch() {
             )}
           </div>
           <div className="notch-response" aria-busy={busy}>
-            {(runtimeError || error) && (
+            {issue && (
               <p className="notch-error" role="alert">
-                {runtimeError || error}
+                {issue}
               </p>
+            )}
+            {unavailable && (
+              <button
+                className="notch-link"
+                onClick={() =>
+                  void window.rewind.presentation.send({
+                    action: "open",
+                    page: "Dashboard",
+                  })
+                }
+              >
+                Reconnect in Rewind{" "}
+                <ArrowUpRightIcon size={13} aria-hidden="true" />
+              </button>
             )}
             {busy && <p role="status">Working on it…</p>}
             {message && <p role="status">{message}</p>}

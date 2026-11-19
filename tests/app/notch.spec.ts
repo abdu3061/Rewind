@@ -5,6 +5,17 @@ import type { DesktopApi } from "@rewind/contracts";
 import { test, launchVerificationApp } from "./fixtures";
 
 async function captureExpandedNotch(page: Page, name: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page
+        .locator(".notch-panel")
+        .evaluate((panel) =>
+          panel
+            .getAnimations()
+            .every((animation) => animation.playState !== "running"),
+        ),
+    )
+    .toBe(true);
   // ResizeObserver -> validated main command -> HWND bounds is asynchronous.
   // Wait for real native fit rather than capturing a transient clipped frame.
   await expect
@@ -20,6 +31,82 @@ async function captureExpandedNotch(page: Page, name: string): Promise<void> {
     .toBeLessThanOrEqual(0);
   await page.screenshot({ path: `test-results/premium-${name}.png` });
 }
+
+test("notch shows worker failure and reconnecting through the desktop never restores approval", async ({
+  profile,
+}) => {
+  const application = await launchVerificationApp(profile);
+  try {
+    const desktop = await application.firstWindow();
+    await desktop
+      .getByRole("button", { name: "Allow Windows activity for this launch" })
+      .click();
+    await desktop
+      .getByRole("button", { name: "Start session", exact: true })
+      .click();
+    await expect(desktop.getByTestId("collection-status")).toHaveText(
+      "Collection active",
+    );
+    const created = application.waitForEvent("window");
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.getTitle() === "Rewind")
+        ?.minimize(),
+    );
+    const notch = await created;
+    await notch.getByRole("button", { name: /Expand Rewind/ }).hover();
+    await application.evaluate(({ app }) => {
+      const workers = app
+        .getAppMetrics()
+        .filter(
+          (metric) =>
+            metric.type === "Utility" &&
+            (metric.name === "Rewind recording engine" ||
+              metric.serviceName === "Rewind recording engine"),
+        );
+      if (workers.length !== 1 || !workers[0])
+        throw new Error("SYNTHETIC_WORKER_IDENTITY_REQUIRED");
+      process.kill(workers[0].pid);
+    });
+    await expect(notch.getByTestId("notch-recording-status")).toHaveText(
+      "Recording unavailable",
+    );
+    await expect(notch.getByRole("alert")).toContainText(
+      "stopped unexpectedly",
+    );
+    await expect(
+      notch.getByRole("button", { name: "Pause session", exact: true }),
+    ).toBeDisabled();
+    await captureExpandedNotch(notch, "notch-unavailable");
+    await notch
+      .getByRole("button", { name: "Reconnect in Rewind", exact: true })
+      .click();
+    await desktop
+      .getByRole("button", { name: "Reconnect recording service" })
+      .click();
+    await expect(desktop.getByTestId("session-status")).toHaveText("paused");
+    await expect(desktop.getByTestId("collection-status")).toHaveText(
+      "Collection off",
+    );
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.getTitle() === "Rewind")
+        ?.minimize(),
+    );
+    await notch.getByRole("button", { name: /Expand Rewind/ }).hover();
+    await expect(notch.getByTestId("notch-recording-status")).toHaveText(
+      "Session paused",
+    );
+    await notch
+      .getByRole("button", { name: "Resume session", exact: true })
+      .click();
+    await expect(notch.getByTestId("notch-recording-status")).toHaveText(
+      "Session active · Recording off",
+    );
+  } finally {
+    await application.close();
+  }
+});
 
 test.skip(
   process.platform !== "win32",
@@ -141,7 +228,16 @@ test("minimize, hover, keyboard, restore and single-instance activation preserve
     });
     const bridge = await notch.evaluate(async () => {
       const api = (window as unknown as { rewind: DesktopApi }).rewind;
+      let invalidListenerRejected = false;
+      try {
+        Reflect.apply(api.presentation.onChanged, api.presentation, [
+          "untrusted",
+        ]);
+      } catch {
+        invalidListenerRejected = true;
+      }
       return {
+        invalidListenerRejected,
         keys: Object.keys(api),
         runtime: Object.keys(api.runtime),
         versions: Object.keys(api.versions),
@@ -155,6 +251,7 @@ test("minimize, hover, keyboard, restore and single-instance activation preserve
       };
     });
     expect(bridge).toEqual({
+      invalidListenerRejected: true,
       keys: [
         "presentation",
         "sessions",
