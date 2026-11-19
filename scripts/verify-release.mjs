@@ -166,7 +166,17 @@ const expected = new Map(
       "resources/app.asar",
       "resources/browser/assets.json",
       "resources/notices/inventory.json",
+      "resources/notices/native/provenance.json",
       "resources/release/build.json",
+      ...notices.packages.flatMap((item) =>
+        item.notices.map(
+          (notice) =>
+            `resources/notices/packages/${`${item.name}@${item.version}`.replaceAll("/", "__")}/${notice.file}`,
+        ),
+      ),
+      ...nativeNotices.files.map(
+        (notice) => `resources/notices/native/${notice.file}`,
+      ),
     ].map(async (name) => [
       name,
       {
