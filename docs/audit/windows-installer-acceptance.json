@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "synthetic": true,
+  "tag": "v0.1.0-beta.1",
+  "target": "win32-x64",
+  "steps": [
+    "DOWNLOADED_PUBLISHED_BYTES_VERIFIED",
+    "CLEAN_INSTALL_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED",
+    "UNINSTALL_SHORTCUT_REMOVAL_AND_HISTORY_RETENTION_PASSED",
+    "REINSTALL_RETAINED_ENCRYPTED_PROFILE_AND_CLOSE_PASSED"
+  ],
+  "success": true,
+  "source": "84b87a8f098acd0af4efb725d3d0ffe21397446b",
+  "installerSha256": "3a8aa5854e19813eceb20af4c8537589e7eb56b8d6b494eb0e366bd39f9380e3"
+}
