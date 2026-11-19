@@ -85,6 +85,21 @@ afterEach(() => vi.useRealTimers());
 const tick = () => vi.advanceTimersByTimeAsync(0);
 
 describe("document process supervision", () => {
+  it("an unrelated or completed owner cannot stop the currently admitted child", async () => {
+    const s = setup(),
+      old = new AbortController(),
+      current = new AbortController();
+    const result = s.service.extract("docx", Uint8Array.of(1), current.signal);
+    s.child.emit("spawn");
+    await tick();
+    expect(await s.service.stop(old.signal)).toBe(true);
+    expect(s.child.kill).not.toHaveBeenCalled();
+    expect(s.service.busy).toBe(true);
+    const stopped = s.service.stop(current.signal);
+    await tick();
+    expect(await stopped).toBe(true);
+    expect(await result).toMatchObject({ reason: "cancelled" });
+  });
   it("sends owned bytes only after native admission and publishes only after both observed exits", async () => {
     const s = setup(),
       source = Uint8Array.of(1, 2, 3),

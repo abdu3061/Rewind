@@ -61,5 +61,6 @@ export interface DocumentProcessor {
     bytes: Uint8Array,
     signal?: AbortSignal,
   ): Promise<DocumentText>;
-  stop(): Promise<boolean>;
+  /** With an owner, stop only that extract call; an old owner cannot stop a replacement. */
+  stop(owner?: AbortSignal): Promise<boolean>;
 }

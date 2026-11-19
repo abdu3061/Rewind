@@ -29,6 +29,52 @@ function setup() {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 describe("recording utility document relay", () => {
+  it("an old owner cannot stop a replacement parser request", async () => {
+    const s = setup(),
+      old = new AbortController(),
+      current = new AbortController();
+    const first = s.client.extract("pdf", Uint8Array.of(1), old.signal);
+    s.reply();
+    expect(await first).toEqual(text);
+    const second = s.client.extract("pdf", Uint8Array.of(2), current.signal);
+    const count = s.sent.length;
+    old.abort();
+    expect(await s.client.stop(old.signal)).toBe(true);
+    expect(s.sent).toHaveLength(count);
+    expect(s.client.busy).toBe(true);
+    s.reply(text, true, s.sent.at(-1)!.id);
+    expect(await second).toEqual(text);
+  });
+  it("retains owner authority for an unconfirmed parser after its result settles", async () => {
+    const s = setup(),
+      owner = new AbortController(),
+      unrelated = new AbortController();
+    const result = s.client.extract("pdf", Uint8Array.of(1), owner.signal);
+    s.reply(text, false);
+    expect(await result).toMatchObject({ state: "unavailable" });
+    expect(await s.client.stop(unrelated.signal)).toBe(true);
+    expect(s.sent).toHaveLength(1);
+    const first = s.client.stop(owner.signal);
+    expect(s.client.stop(owner.signal)).toBe(first);
+    s.stopped(false);
+    expect(await first).toBe(false);
+    expect(s.client.busy).toBe(true);
+    const retry = s.client.stop(owner.signal);
+    s.stopped();
+    expect(await retry).toBe(true);
+    expect(s.client.busy).toBe(false);
+  });
+  it("can stop the owning request after a lost reply", async () => {
+    const s = setup(),
+      owner = new AbortController();
+    const result = s.client.extract("pdf", Uint8Array.of(1), owner.signal);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await result).toMatchObject({ reason: "timeout" });
+    const stopped = s.client.stop(owner.signal);
+    s.stopped();
+    expect(await stopped).toBe(true);
+    expect(s.client.busy).toBe(false);
+  });
   it("relays bounded original bytes and accepts only the matching format/identity", async () => {
     const s = setup(),
       bytes = Uint8Array.of(1, 2);

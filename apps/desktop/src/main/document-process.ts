@@ -22,6 +22,7 @@ export interface DocumentGuard {
   close(): void;
 }
 interface Job {
+  owner: AbortSignal | undefined;
   cancel: (reason: DocumentPreviewIssue) => void;
   done: Promise<void>;
 }
@@ -105,6 +106,7 @@ export class DocumentProcess {
       sent = false;
     let denied: DocumentPreviewIssue | null = null;
     const job: Job = {
+      owner: signal,
       cancel: (reason) => {
         denied = reason;
         finish(unavailable(format, reason));
@@ -212,8 +214,9 @@ export class DocumentProcess {
           : result
       : unavailable(format, "unavailable");
   }
-  async stop(): Promise<boolean> {
+  async stop(owner?: AbortSignal): Promise<boolean> {
     const job = this.job;
+    if (owner && job?.owner !== owner) return true;
     if (!job) return true;
     job.cancel("cancelled");
     return wait(job.done, this.options.exitTimeoutMs ?? 2000);

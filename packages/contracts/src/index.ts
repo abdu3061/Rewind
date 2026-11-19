@@ -22,3 +22,4 @@ export * from "./snapshots";
 export * from "./file-controls";
 export * from "./checkpoint-controls";
 export * from "./document-worker";
+export * from "./file-text";

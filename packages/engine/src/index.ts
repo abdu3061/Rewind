@@ -1,5 +1,9 @@
 export { SessionService, type SessionEnvironment } from "./session-service";
 export {
+  FileTextIndexer,
+  type FileTextIndexerOptions,
+} from "./file-text-indexer";
+export {
   AssistantReviewService,
   type AssistantDisclosureLease,
   type AssistantReviewOptions,

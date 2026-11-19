@@ -36,6 +36,10 @@ import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteActivityRepository } from "./activity-repository";
 import { applySecureMigrations } from "./migrations";
 import {
+  FileTextRepository,
+  verifyFileTextSchema,
+} from "./file-text-repository";
+import {
   BrowserSetupRepository,
   verifyBrowserSetupJournal,
 } from "./browser-setup-repository";
@@ -115,6 +119,16 @@ export class SecureStorage implements SessionStorage {
         new StorageMaintenance(db, this.file).usage(settings).totalBytes,
     );
   }
+  get fileText(): FileTextRepository {
+    if (!this.repositorySet || !this.db)
+      throw new Error("SECURE_STORAGE_UNAVAILABLE");
+    const db = this.db;
+    return new FileTextRepository(
+      connection(db),
+      (settings) =>
+        new StorageMaintenance(db, this.file).usage(settings).totalBytes,
+    );
+  }
   async open(): Promise<Result<void>> {
     if (this.repositorySet) return ok();
     if (this.terminal)
@@ -184,6 +198,7 @@ export class SecureStorage implements SessionStorage {
       verifySnapshotSchema(connection(db));
       verifyBrowserSetupJournal(connection(db));
       verifyAssistantCredential(connection(db));
+      verifyFileTextSchema(connection(db));
       db.prepare("SELECT id, payload FROM runtime_settings LIMIT 0").all();
       db.prepare("SELECT rowid, text FROM activity_fts LIMIT 0").all();
       const triggers = db
@@ -209,6 +224,9 @@ export class SecureStorage implements SessionStorage {
         "INSERT INTO activity_fts(activity_fts, rank) VALUES ('integrity-check', 1)",
       );
       this.repositorySet = createRepositories(connection(db));
+      db.exec(
+        "INSERT INTO file_text_fts(file_text_fts, rank) VALUES ('integrity-check', 1)",
+      );
       stage = "settings";
       const defaults = userSettingsSchema.parse(createDefaultSettings());
       db.prepare(
