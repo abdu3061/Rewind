@@ -1,4 +1,21 @@
-import type { DesktopPage, SessionAction } from "@rewind/contracts";
+import type {
+  DesktopPage,
+  SessionAction,
+  RuntimeSnapshot,
+} from "@rewind/contracts";
+
+export function notchEvidenceStamp(runtime: RuntimeSnapshot | null): string {
+  if (!runtime) return "";
+  // The existing metadata authority advances synchronously before observation
+  // expiry/deletion, even with cloud off. Document authority alone only fences
+  // affected retained file sources. Reading these receipts grants no AI access.
+  return [
+    runtime.documentAuthority.generation,
+    runtime.documentAuthority.revision,
+    runtime.assistant.generation,
+    runtime.assistant.revision,
+  ].join(":");
+}
 
 export type NotchIntent =
   | { kind: "session"; action: Exclude<SessionAction, "get"> }

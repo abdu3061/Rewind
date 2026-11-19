@@ -18,7 +18,7 @@ import type {
 } from "@rewind/contracts";
 import { useRecordingRuntime } from "./recording";
 import { usePresentation } from "./presentation";
-import { parseNotchCommand } from "./notch-command";
+import { parseNotchCommand, notchEvidenceStamp } from "./notch-command";
 import { Mascot } from "./Mascot";
 import "./notch.css";
 
@@ -59,7 +59,7 @@ export function Notch() {
     files: CapturedVersionSummary[];
     activities: ActivityEvent[];
   } | null>(null);
-  const evidenceStamp = `${runtime?.documentAuthority.generation ?? ""}:${runtime?.documentAuthority.revision ?? -1}`;
+  const evidenceStamp = notchEvidenceStamp(runtime);
   const evidenceVisible =
     expanded &&
     presentation?.notchVisible &&
@@ -128,6 +128,8 @@ export function Notch() {
     runtime?.session?.id,
     runtime?.documentAuthority.generation,
     runtime?.documentAuthority.revision,
+    runtime?.assistant.generation,
+    runtime?.assistant.revision,
     runtime?.service,
   ]);
   useEffect(

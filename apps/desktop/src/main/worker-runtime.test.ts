@@ -4,6 +4,7 @@ import NativeDatabase from "better-sqlite3-multiple-ciphers";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { WorkerRuntime } from "./worker-runtime";
+import { notchEvidenceStamp } from "../renderer/notch-command";
 import {
   versionListResponseSchema,
   recoveryCopyProposalResponseSchema,
@@ -142,6 +143,54 @@ function fixture(strategy?: WindowQueryStrategy) {
   runtimes.push(runtime);
   return { runtime, root, profile, key: retainedKey, snapshots };
 }
+it("fences notch metadata when automatic cleanup expires activity without invalidating file previews", async () => {
+  const f = fixture();
+  expect((await f.runtime.initialize()).ok).toBe(true);
+  expect(
+    (
+      await f.runtime.execute({
+        kind: "preferences.update",
+        value: { collectionConsent: true, excludedApplications: [] },
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "start" })).ok,
+  ).toBe(true);
+  await vi.waitFor(async () => {
+    const result = await f.runtime.execute({
+      kind: "timeline",
+      query: { limit: 1 },
+    });
+    expect(
+      result.ok && Array.isArray(result.value) && result.value.length,
+    ).toBe(1);
+  });
+  expect(
+    (await f.runtime.execute({ kind: "session", action: "pause" })).ok,
+  ).toBe(true);
+  const before = f.runtime.snapshot();
+  const db = new NativeDatabase(join(f.root, "history.sqlite"));
+  db.pragma("cipher=sqlcipher");
+  db.pragma("legacy=4");
+  db.key(f.key);
+  try {
+    db.prepare("UPDATE activities SET occurred_at=?").run(
+      "2000-01-01T00:00:00.000Z",
+    );
+  } finally {
+    db.close();
+  }
+  // Retained-history reads run the same automatic cleanup used by the timer.
+  expect(
+    await f.runtime.execute({ kind: "timeline", query: { limit: 10 } }),
+  ).toEqual({ ok: true, value: [] });
+  const after = f.runtime.snapshot();
+  expect(after.documentAuthority).toEqual(before.documentAuthority);
+  expect(after.assistant.permission).toBe(false);
+  expect(after.assistant.revision).toBeGreaterThan(before.assistant.revision);
+  expect(notchEvidenceStamp(after)).not.toBe(notchEvidenceStamp(before));
+});
 it("reports stopping collection while draining an approved active session, then closes with an ended session", async () => {
   const f = fixture();
   expect((await f.runtime.initialize()).ok).toBe(true);
