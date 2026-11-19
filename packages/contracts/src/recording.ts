@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { documentAuthoritySchema } from "./document-preview";
 import { activityCursorSchema, activityEventSchema } from "./activity";
 import {
   appErrorSchema,
@@ -58,6 +59,7 @@ export const historyQuerySchema = z.strictObject({
 });
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 export const runtimeSnapshotSchema = z.strictObject({
+  documentAuthority: documentAuthoritySchema,
   assistant: assistantControlStateSchema,
   service: z.enum(["starting", "ready", "unavailable", "stopping"]),
   collection: z.enum(["off", "starting", "active", "stopping", "unavailable"]),

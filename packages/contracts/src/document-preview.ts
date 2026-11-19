@@ -1,4 +1,11 @@
 import { z } from "zod";
+import { idSchema } from "./common";
+
+export const documentAuthoritySchema = z.strictObject({
+  generation: idSchema,
+  revision: z.number().int().nonnegative().safe(),
+});
+export type DocumentAuthority = z.infer<typeof documentAuthoritySchema>;
 
 export const documentPreviewLimits = {
   inputBytes: 16 * 1024 * 1024,

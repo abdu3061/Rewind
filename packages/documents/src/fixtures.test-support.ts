@@ -112,6 +112,25 @@ export function pdfFixture(
     objects.push(
       `<< /Filter /Standard /V 2 /Length 128 /R 3 /O <${"00".repeat(32)}> /U <${"00".repeat(32)}> /P -4 >>`,
     );
+  return writePdf(
+    objects,
+    encrypted
+      ? ` /Encrypt ${encryptionId} 0 R /ID [<${"01".repeat(16)}><${"01".repeat(16)}>]`
+      : "",
+  );
+}
+export function imageOnlyPdfFixture(): Buffer {
+  const stream = "q 10 0 0 10 72 720 cm /Im0 Do Q";
+  return writePdf([
+    "",
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length 3 >>\nstream\nrgb\nendstream",
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+  ]);
+}
+function writePdf(objects: string[], extraTrailer = ""): Buffer {
   let value = "%PDF-1.7\n";
   const offsets = [0];
   for (let id = 1; id < objects.length; id++) {
@@ -124,6 +143,6 @@ export function pdfFixture(
     .slice(1)
     .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
     .join("");
-  value += `trailer\n<< /Size ${objects.length} /Root 1 0 R${encrypted ? ` /Encrypt ${encryptionId} 0 R /ID [<${"01".repeat(16)}><${"01".repeat(16)}>]` : ""} >>\nstartxref\n${xref}\n%%EOF\n`;
+  value += `trailer\n<< /Size ${objects.length} /Root 1 0 R${extraTrailer} >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(value);
 }

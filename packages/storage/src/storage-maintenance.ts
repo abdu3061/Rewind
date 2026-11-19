@@ -16,12 +16,17 @@ const unlinkedVersion =
 const unlinkedActivity =
   "id NOT IN (SELECT browser_visit_id FROM checkpoint_browser_visits) AND id NOT IN (SELECT activity_id FROM checkpoint_activities)";
 
+export interface EvidenceMutation {
+  /** Only callable synchronously inside the current pre-commit callback. */
+  retainsVersion(id: string): boolean;
+}
+
 /** Runs only on the worker's serialized storage queue, never against caller-owned transactions. */
 export class StorageMaintenance {
   constructor(
     private readonly db: Native,
     private readonly file: string,
-    private readonly evidenceChanged?: () => void,
+    private readonly evidenceChanged?: (mutation: EvidenceMutation) => void,
   ) {}
 
   usage(settings: UserSettings): StorageUsage {
@@ -69,7 +74,22 @@ export class StorageMaintenance {
         const before = changes();
         operation();
         // Synchronous invalidation runs before commit; no later transmission may use removed evidence.
-        if (changes() !== before) this.evidenceChanged?.();
+        if (changes() !== before && this.evidenceChanged) {
+          const retained = this.db.prepare(
+            "SELECT 1 FROM file_versions v JOIN snapshot_blobs b ON b.content_hash=v.blob_hash WHERE v.id=?",
+          );
+          let current = true;
+          try {
+            this.evidenceChanged({
+              retainsVersion: (id) => {
+                if (!current) throw new Error("EVIDENCE_MUTATION_EXPIRED");
+                return Boolean(retained.get(id));
+              },
+            });
+          } finally {
+            current = false;
+          }
+        }
       })
       .immediate();
   }

@@ -11,6 +11,22 @@ import {
 } from "@rewind/contracts";
 import { dispatchRecordingRequest } from "./recording-ipc";
 import type { WorkerClient } from "./worker-client";
+it("keeps document binaries and recovery source metadata private while validating preview/cancel request IDs", async () => {
+  const id = "00000000-0000-4000-8000-000000000001",
+    request = vi.fn(),
+    backend = { request } as unknown as WorkerClient;
+  for (const command of [
+    { kind: "versions.source", id },
+    { type: "document-parse", id, format: "pdf", bytes: Uint8Array.of(1) },
+    { kind: "versions.preview", id, requestId: "invalid" },
+    { kind: "versions.cancel-preview", requestId: id, path: "C:\\synthetic" },
+  ])
+    expect(await dispatchRecordingRequest(backend, command)).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_INPUT" },
+    });
+  expect(request).not.toHaveBeenCalled();
+});
 it("prepares overwrite only from the native dialog and rejects renderer paths or missing confirmation", async () => {
   const id = "00000000-0000-4000-8000-000000000001",
     request = vi.fn().mockResolvedValue({ ok: true, value: null }),

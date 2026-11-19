@@ -230,7 +230,7 @@ test("a different window cannot invoke privileged session commands", async ({
             "data:text/html,<html><body>Untrusted</body></html>",
           );
           return (await untrusted.webContents.executeJavaScript(
-            "Promise.all([window.rewind.sessions.start(), window.rewind.privacy.update({collectionConsent:true,excludedApplications:[]}), window.rewind.timeline.query({limit:10}), window.rewind.runtime.retry(),window.rewind.files.selectFolder(),window.rewind.versions.list({limit:10}),window.rewind.recovery.chooseCopy('00000000-0000-4000-8000-000000000001'),window.rewind.recovery.confirmCopy('00000000-0000-4000-8000-000000000001',true)])",
+            "Promise.all([window.rewind.sessions.start(), window.rewind.privacy.update({collectionConsent:true,excludedApplications:[]}), window.rewind.timeline.query({limit:10}), window.rewind.runtime.retry(),window.rewind.files.selectFolder(),window.rewind.versions.list({limit:10}),window.rewind.recovery.chooseCopy('00000000-0000-4000-8000-000000000001'),window.rewind.recovery.confirmCopy('00000000-0000-4000-8000-000000000001',true),window.rewind.versions.preview('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'),window.rewind.versions.cancelPreview('00000000-0000-4000-8000-000000000002')])",
           )) as unknown;
         } finally {
           untrusted.destroy();
@@ -238,7 +238,7 @@ test("a different window cannot invoke privileged session commands", async ({
       },
     );
     expect(response).toEqual(
-      Array.from({ length: 8 }, () => ({
+      Array.from({ length: 10 }, () => ({
         ok: false,
         error: { code: "FORBIDDEN", message: expect.any(String) },
       })),

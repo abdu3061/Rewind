@@ -8,7 +8,7 @@ Rewind is a Windows desktop work-session memory project. This local development 
 - Persistent Start → Pause → Resume → End controls through a validated preload bridge and supervised utility process. Invalid transitions and failed writes return errors.
 - Collection starts off. Explicit Windows activity approval plus an active session records permitted application names, window titles and timestamps. Approval expires on every app/worker restart; application exclusions persist. Known browser windows and Rewind are skipped.
 - Timeline and local keyword search read encrypted SQLite/FTS history with session/date/type filters, paging and live updates. Interrupted active sessions recover paused with a capture gap. A title does not prove a saved/read file.
-- Select local NTFS folders in Files and separately approve file capture for this launch. Active sessions capture bounded initial/saved bytes into encrypted SQLite BLOBs with verified Windows identities and hashes. Versions survive restart; UTF-8 previews are escaped. DOCX/PDF original bytes are preserved, with document rendering still unavailable. Capture progress, failures and limits are visible; brief intermediate saves can be missed.
+- Select local NTFS folders in Files and separately approve file capture for this launch. Active sessions capture bounded initial/saved bytes into encrypted SQLite BLOBs with verified Windows identities and hashes. Versions survive restart. Files and Checkpoints show escaped UTF-8 text, DOCX body text and PDF selectable text through a separately guarded utility, with cancellation and current retained-source verification. Previews are limited to 64 KiB and 50 PDF pages; layout/images/headers/footers and OCR are unavailable. Parser failures leave verified original bytes recoverable. Capture progress, failures and limits are visible; brief intermediate saves can be missed.
 - Preview a captured version in Files, choose a new recovery-copy destination, review the source/hash/target and explicitly confirm. The backend rechecks retained bytes and native directory identity, writes only a new file and verifies its complete bytes. Existing destinations are rejected. Exported copies are ordinary files outside Rewind's encrypted-history retention/deletion.
 - Optionally overwrite an existing file after a separate native selection and explicit review. Rewind detects changed/locked targets and first flushes and verifies the current bytes as a new preservation file in that folder. An interrupted write can leave an incomplete target; the preservation file remains outside encrypted history and survives history deletion. See [ADR 0024](docs/decisions/0024-confirmed-overwrite-preservation.md).
 - Create a named checkpoint from actual same-session file versions and activity. Inspect its evidence, preview/recover selected versions, rename, Keep/Unkeep or confirm deletion. Keep preserves the manifest and selected versions/bytes/activity/search entries through ordinary cleanup and history deletion; it does not restore uncaptured application state.
@@ -76,12 +76,15 @@ packages/engine/      Pure session state machine and failure-aware coordinator
 packages/storage/     Encrypted SQLite, migrations, repositories and protected-key port
 packages/collectors/  Windows foreground helper, lifecycle ports and inactive browser framing
 packages/assistant/   Official Gemini SDK over approved observations; utility only
+packages/documents/   Bounded DOCX/PDF text extraction; separate guarded utility only
 tests/app/            Packaged Electron integration tests
 docs/                 Specification, architecture, ownership, backlog, ADRs
 .github/              Windows CI, PR template, CODEOWNERS
 ```
 
 UI → narrow preload API → authorized main-process handler → supervised utility process → engine/storage/Windows collector. Main owns Windows safeStorage and transfers only the protected store's unwrapped key to the worker. Private TypeScript source workspaces are bundled by Vite; the native runtime is explicitly copied and unpacked from ASAR. Automated app tests use a marked temporary profile and synthetic observation source; they never record the user's desktop.
+
+Document previews read verified original bytes in the recording worker, release its coordinator queue, and use a private bounded relay through main to a separate resource-limited utility. That utility receives no paths, keys or credentials. Files/Checkpoints publish text only after current retained-byte/hash checks and reject stale generation/revision receipts. See ADRs 0031–0033.
 
 ## Team
 

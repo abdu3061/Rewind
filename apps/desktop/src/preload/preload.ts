@@ -429,13 +429,30 @@ const api: DesktopApi = {
     },
     preview(...args: unknown[]) {
       const parsed = idSchema.safeParse(args[0]);
-      return args.length === 1 && parsed.success
+      const requestId = args.length === 2 ? idSchema.safeParse(args[1]) : null;
+      return (args.length === 1 || (args.length === 2 && requestId?.success)) &&
+        parsed.success
         ? recording(
-            { kind: "versions.preview", id: parsed.data },
+            {
+              kind: "versions.preview",
+              id: parsed.data,
+              ...(requestId?.success ? { requestId: requestId.data } : {}),
+            },
             versionPreviewResponseSchema,
           )
         : Promise.resolve(
             failure("INVALID_INPUT", "A captured version ID is required."),
+          );
+    },
+    cancelPreview(...args: unknown[]) {
+      const requestId = idSchema.safeParse(args[0]);
+      return args.length === 1 && requestId.success
+        ? recording(
+            { kind: "versions.cancel-preview", requestId: requestId.data },
+            acknowledgementResponseSchema,
+          )
+        : Promise.resolve(
+            failure("INVALID_INPUT", "A preview request ID is required."),
           );
     },
   },

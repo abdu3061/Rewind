@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { currentPreview } from "./captured-preview";
+import { usePreviewRequest } from "./use-preview-request";
 import type {
   ActivityEvent,
   CapturedVersionSummary,
@@ -31,6 +33,11 @@ function label(event: ActivityEvent): string {
   }
 }
 export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
+  const {
+    request: requestPreview,
+    cancel: cancelPreview,
+    loading: previewLoading,
+  } = usePreviewRequest();
   const [sessions, setSessions] = useState<Session[]>([]),
     [sessionId, setSessionId] = useState("");
   const [versions, setVersions] = useState<CapturedVersionSummary[]>([]),
@@ -41,7 +48,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
     [kept, setKept] = useState(true);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]),
     [view, setView] = useState<CheckpointView | null>(null);
-  const [preview, setPreview] = useState<VersionPreview | null>(null),
+  const [storedPreview, setPreview] = useState<VersionPreview | null>(null),
     [editName, setEditName] = useState(""),
     [editKept, setEditKept] = useState(true);
   const [deleting, setDeleting] = useState(false),
@@ -56,6 +63,20 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
   const live = useRef(true),
     evidenceSerial = useRef(0),
     previewSerial = useRef(0);
+  const preview = currentPreview(storedPreview, runtime?.documentAuthority)
+    ? storedPreview
+    : null;
+  const authority = useRef(runtime?.documentAuthority);
+  authority.current = runtime?.documentAuthority;
+  useEffect(() => {
+    previewSerial.current++;
+    setPreview(null);
+    void cancelPreview();
+  }, [
+    runtime?.documentAuthority.generation,
+    runtime?.documentAuthority.revision,
+    cancelPreview,
+  ]);
   const readable = Boolean(
     runtime?.secureStorage && window.rewind?.checkpoints,
   );
@@ -541,13 +562,12 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                   onClick={() =>
                     void run(async () => {
                       const ticket = ++previewSerial.current,
-                        result = await window.rewind.versions.preview(
-                          item.version.id,
-                        );
+                        result = await requestPreview(item.version.id);
                       if (
                         live.current &&
                         ticket === previewSerial.current &&
-                        result.ok
+                        result.ok &&
+                        currentPreview(result.value, authority.current)
                       )
                         setPreview(result.value);
                       return result;
@@ -567,13 +587,29 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
               </li>
             ))}
           </ul>
+          {previewLoading && (
+            <div>
+              <p role="status">Preparing captured preview…</p>
+              <button
+                onClick={() => {
+                  previewSerial.current++;
+                  setPreview(null);
+                  void cancelPreview().then((result) => {
+                    if (!result.ok && live.current)
+                      setError(result.error.message);
+                  });
+                }}
+              >
+                Cancel preview
+              </button>
+            </div>
+          )}
           {preview && (
             <div>
               <h3>Captured preview: {preview.displayName}</h3>
-              {preview.text !== null ? (
+              {preview.warning && <p>{preview.warning}</p>}
+              {preview.text !== null && (
                 <pre className="captured-preview">{preview.text}</pre>
-              ) : (
-                <p>{preview.warning}</p>
               )}
               {preview.truncated && (
                 <p>

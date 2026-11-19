@@ -10,6 +10,7 @@ import {
   folderSelectionResponseSchema,
   versionListResponseSchema,
   versionPreviewResponseSchema,
+  versionSourceResponseSchema,
   versionInfoResponseSchema,
   protectedFolderSchema,
   recoveryCopyProposalResponseSchema,
@@ -95,8 +96,8 @@ export async function dispatchRecordingRequest(
           "The recovery destination dialog is unavailable.",
         );
       const source = await backend.request(
-        { kind: "versions.preview", id: command.versionId },
-        versionPreviewResponseSchema,
+        { kind: "versions.source", id: command.versionId },
+        versionSourceResponseSchema,
       );
       if (!source.ok) return source;
       const selected = overwrite
@@ -159,6 +160,8 @@ export async function dispatchRecordingRequest(
       return backend.request(command, versionListResponseSchema);
     case "versions.preview":
       return backend.request(command, versionPreviewResponseSchema);
+    case "versions.cancel-preview":
+      return backend.request(command, acknowledgementResponseSchema);
     case "versions.info":
       return backend.request(command, versionInfoResponseSchema);
     case "storage.usage":

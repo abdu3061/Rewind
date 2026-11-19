@@ -9,6 +9,13 @@ import {
   type UserSettings,
   type VersionPreview,
   type WorkerCommand,
+  type DocumentProcessor,
+  type DocumentFormat,
+  type DocumentText,
+  type FileVersion,
+  type FileReference,
+  type DocumentAuthority,
+  documentTextSchema,
 } from "@rewind/contracts";
 import type { SessionCoordinator } from "@rewind/engine";
 import {
@@ -23,6 +30,8 @@ interface Options {
   coordinator: SessionCoordinator;
   root: string;
   synthetic: boolean;
+  documents?: DocumentProcessor;
+  authority: () => DocumentAuthority;
   getSettings: () => UserSettings;
   changeSettings: (
     settings: UserSettings,
@@ -43,7 +52,262 @@ const inside = (root: string, selected: string) => {
 };
 /** Desktop utility composition for selected-folder policy and read models. No renderer paths are accepted. */
 export class FileOperations {
+  private retainedPreview: { versionId: string; requestId: string } | null =
+    null;
+  private unconfirmedPreview: string | null = null;
+  private preview: {
+    controller: AbortController;
+    versionId: string;
+    requestId: string;
+    done: Promise<void>;
+  } | null = null;
   constructor(private readonly options: Options) {}
+  invalidatePreviews(): void {
+    this.preview?.controller.abort();
+    this.retainedPreview = null;
+  }
+  referencesRemoved(retainsVersion: (id: string) => boolean): boolean {
+    return Boolean(
+      (this.preview &&
+        !this.preview.controller.signal.aborted &&
+        !retainsVersion(this.preview.versionId)) ||
+      (this.retainedPreview && !retainsVersion(this.retainedPreview.versionId)),
+    );
+  }
+  async stopPreviews(): Promise<boolean> {
+    this.invalidatePreviews();
+    const stopped = (await this.options.documents?.stop()) ?? true;
+    if (stopped) this.unconfirmedPreview = null;
+    return stopped;
+  }
+  private async cancelPreview(requestId: string): Promise<Result<true>> {
+    if (this.retainedPreview?.requestId === requestId)
+      this.retainedPreview = null;
+    const preview = this.preview?.requestId === requestId ? this.preview : null;
+    if (!preview && this.unconfirmedPreview !== requestId)
+      return { ok: true, value: true };
+    preview?.controller.abort();
+    if ((await this.options.documents?.stop()) === false)
+      return failure(
+        "CONFLICT",
+        "The preview process did not confirm cancellation. Try again.",
+      );
+    if (this.unconfirmedPreview === requestId) this.unconfirmedPreview = null;
+    if (!preview) return { ok: true, value: true };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const closed = await Promise.race([
+        preview.done.then(() => true),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 2000);
+        }),
+      ]);
+      return closed
+        ? { ok: true, value: true }
+        : failure(
+            "CONFLICT",
+            "The preview request is still closing. Try again.",
+          );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+  private readSource(
+    id: string,
+  ): Promise<
+    Result<{ version: FileVersion; file: FileReference; bytes: Uint8Array }>
+  > {
+    return this.options.coordinator.read(async () => {
+      const cleaned = await this.options.storage.cleanup();
+      if (!cleaned.ok) return cleaned;
+      const source = await this.options.storage.snapshots.read(id);
+      if (!source.ok) return source;
+      let owned = true;
+      try {
+        const file = await this.options.storage.repositories.files.getReference(
+          source.value.version.fileId,
+        );
+        if (!file.ok) return file;
+        if (!file.value)
+          return failure(
+            "INTEGRITY_FAILURE",
+            "Captured version identity is unavailable.",
+          );
+        owned = false;
+        return { ok: true, value: { ...source.value, file: file.value } };
+      } finally {
+        if (owned) source.value.bytes.fill(0);
+      }
+    });
+  }
+  private async previewVersion(
+    id: string,
+    requestId: string = randomUUID(),
+  ): Promise<Result<VersionPreview>> {
+    if (this.preview) {
+      if (this.preview.requestId === requestId)
+        return failure("CONFLICT", "This preview request is already running.");
+      const stopped = await this.cancelPreview(this.preview.requestId);
+      if (!stopped.ok) return stopped;
+      if (this.preview)
+        return failure(
+          "CONFLICT",
+          "Another captured preview is still closing. Try again after it finishes.",
+        );
+    }
+    const controller = new AbortController();
+    this.retainedPreview = null;
+    const authority = this.options.authority();
+    let resolveDone!: () => void;
+    const active = {
+      controller,
+      versionId: id,
+      requestId,
+      done: new Promise<void>((resolve) => {
+        resolveDone = resolve;
+      }),
+    };
+    this.preview = active;
+    const current = () => {
+      const now = this.options.authority();
+      return (
+        this.preview === active &&
+        !controller.signal.aborted &&
+        now.generation === authority.generation &&
+        now.revision === authority.revision
+      );
+    };
+    let bytes: Uint8Array | null = null;
+    try {
+      const source = await this.readSource(id);
+      if (!source.ok) return source;
+      bytes = source.value.bytes;
+      if (!current())
+        return failure(
+          "CONFLICT",
+          "The captured preview was cancelled or its history changed.",
+        );
+      const { version } = source.value;
+      const format: DocumentFormat | null =
+        version.mediaType === "application/pdf"
+          ? "pdf"
+          : version.mediaType ===
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ? "docx"
+            : null;
+      let text: string | null = null,
+        truncated = false,
+        warning: string | null =
+          "Original bytes are captured and verified. Document rendering is not available for this format.";
+      if (format) {
+        let document: DocumentText = {
+          state: "unavailable",
+          format,
+          reason: "unavailable",
+        };
+        if (this.options.documents) {
+          const closed = await this.options.documents.stop();
+          if (closed) this.unconfirmedPreview = null;
+          else this.unconfirmedPreview ??= requestId;
+          if (closed && current()) {
+            try {
+              const result = documentTextSchema.safeParse(
+                await this.options.documents.extract(
+                  format,
+                  bytes,
+                  controller.signal,
+                ),
+              );
+              if (result.success && result.data.format === format)
+                document = result.data;
+            } catch {
+              /* A parser failure does not make original captured bytes corrupt. */
+            }
+            if (this.options.documents.busy)
+              this.unconfirmedPreview = requestId;
+          }
+        }
+        if (document.state === "available") {
+          text = document.text;
+          truncated = document.truncated;
+          warning =
+            format === "docx"
+              ? "Extracted DOCX body text. Formatting, headers, footers and images are omitted."
+              : `Extracted PDF selectable text (${document.pagesRead} of ${document.totalPages} pages). Layout and reading order may differ; images and scanned text are omitted.`;
+          if (!text)
+            warning += " No selectable text was found; OCR is unavailable.";
+        } else {
+          const issues = {
+            unsupported: "This document structure is unsupported.",
+            malformed: "The captured document could not be parsed.",
+            encrypted: "Password-protected documents are not previewed.",
+            limit: "This document exceeds the preview limits.",
+            cancelled: "Document preview was cancelled.",
+            timeout: "Document preview timed out.",
+            unavailable: "The document preview service is unavailable.",
+          };
+          warning = `${issues[document.reason]} Original bytes remain captured and verified.`;
+        }
+      } else if (
+        version.mediaType.startsWith("text/") ||
+        version.mediaType === "application/json"
+      ) {
+        try {
+          text = new TextDecoder("utf-8", { fatal: true }).decode(
+            bytes.subarray(0, 65532),
+            { stream: bytes.byteLength > 65532 },
+          );
+          truncated = bytes.byteLength > 65532;
+          warning = null;
+        } catch {
+          /* No fabricated text for invalid UTF-8; original bytes remain recoverable. */
+        }
+      }
+      if (!current())
+        return failure(
+          "CONFLICT",
+          "The captured preview was cancelled or its history changed.",
+        );
+      // Parsing runs outside the coordinator. Re-enter its queue and reverify actual retained bytes.
+      const fresh = await this.readSource(id);
+      if (!fresh.ok) return fresh;
+      try {
+        if (!current())
+          return failure(
+            "CONFLICT",
+            "The captured preview is no longer current.",
+          );
+        if (JSON.stringify(fresh.value.version) !== JSON.stringify(version))
+          return failure(
+            "INTEGRITY_FAILURE",
+            "Captured version metadata changed during preview.",
+          );
+        const file = fresh.value.file;
+        this.retainedPreview = { versionId: id, requestId };
+        return {
+          ok: true,
+          value: {
+            authority,
+            version,
+            displayName: file.displayName,
+            sourceLabel:
+              file.identity.kind === "verified-path"
+                ? file.identity.absolutePath
+                : file.displayName,
+            text,
+            truncated,
+            warning,
+          },
+        };
+      } finally {
+        fresh.value.bytes.fill(0);
+      }
+    } finally {
+      bytes?.fill(0);
+      if (this.preview === active) this.preview = null;
+      resolveDone();
+    }
+  }
   async state(): Promise<Result<FileProtectionState>> {
     return this.options.coordinator.read(async () => {
       const folders = await this.options.storage.snapshots.listFolders();
@@ -241,57 +505,42 @@ export class FileOperations {
           const cleaned = await storage.cleanup();
           return cleaned.ok ? storage.snapshots.info(command.id) : cleaned;
         });
-      case "versions.preview":
-        return coordinator.read(async (): Promise<Result<VersionPreview>> => {
+      case "versions.source":
+        return coordinator.read(async () => {
           const cleaned = await storage.cleanup();
           if (!cleaned.ok) return cleaned;
-          const read = await storage.snapshots.read(command.id);
-          if (!read.ok) return read;
-          try {
-            const file = await storage.repositories.files.getReference(
-              read.value.version.fileId,
+          const version = await storage.snapshots.info(command.id);
+          if (!version.ok) return version;
+          if (!version.value)
+            return failure(
+              "NOT_FOUND",
+              "The captured version is no longer retained.",
             );
-            if (!file.ok || !file.value)
-              return failure(
-                "INTEGRITY_FAILURE",
-                "Captured version identity is unavailable.",
-              );
-            const { version, bytes } = read.value;
-            const textType =
-              version.mediaType.startsWith("text/") ||
-              version.mediaType === "application/json";
-            let text: string | null = null;
-            if (textType) {
-              try {
-                text = new TextDecoder("utf-8", { fatal: true }).decode(
-                  bytes.subarray(0, 65532),
-                  { stream: bytes.byteLength > 65532 },
-                );
-              } catch {
-                /* Original bytes remain recoverable; no fabricated extraction. */
-              }
-            }
-            return {
-              ok: true,
-              value: {
-                version,
-                displayName: file.value.displayName,
-                sourceLabel:
-                  file.value.identity.kind === "verified-path"
-                    ? file.value.identity.absolutePath
-                    : file.value.displayName,
-                text,
-                truncated: text !== null && bytes.byteLength > 65532,
-                warning:
-                  text === null
-                    ? "Original bytes are captured and verified. Document rendering is not available for this format."
-                    : null,
-              },
-            };
-          } finally {
-            read.value.bytes.fill(0);
-          }
+          const file = await storage.repositories.files.getReference(
+            version.value.fileId,
+          );
+          if (!file.ok) return file;
+          if (!file.value)
+            return failure(
+              "INTEGRITY_FAILURE",
+              "Captured version identity is unavailable.",
+            );
+          return {
+            ok: true,
+            value: {
+              version: version.value,
+              displayName: file.value.displayName,
+              sourceLabel:
+                file.value.identity.kind === "verified-path"
+                  ? file.value.identity.absolutePath
+                  : file.value.displayName,
+            },
+          };
         });
+      case "versions.preview":
+        return this.previewVersion(command.id, command.requestId);
+      case "versions.cancel-preview":
+        return this.cancelPreview(command.requestId);
       default:
         return failure(
           "INVALID_INPUT",

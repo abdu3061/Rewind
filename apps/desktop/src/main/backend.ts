@@ -2,6 +2,7 @@ import path from "node:path";
 import { utilityProcess, safeStorage } from "electron";
 import { ProtectedKeyStore } from "@rewind/storage/key-store";
 import { WorkerClient } from "./worker-client";
+import { createDocumentBackend } from "./document-backend";
 import type { BrowserAssetsLocation, RuntimeSnapshot } from "@rewind/contracts";
 
 export function createBackend(options: {
@@ -9,6 +10,8 @@ export function createBackend(options: {
   synthetic: boolean;
   assistantFixture?: true;
   entry: string;
+  documentEntry: string;
+  documentGuard: string;
   browserAssets?: BrowserAssetsLocation;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
@@ -32,6 +35,10 @@ export function createBackend(options: {
   return new WorkerClient({
     root: path.join(options.root, "secure"),
     synthetic: options.synthetic,
+    documents: createDocumentBackend(
+      options.documentEntry,
+      options.documentGuard,
+    ),
     ...(options.assistantFixture ? { assistantFixture: true as const } : {}),
     ...(options.browserAssets ? { browserAssets: options.browserAssets } : {}),
     loadKey: () => keys.load(),

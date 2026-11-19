@@ -6,6 +6,8 @@ import {
   failure,
   sessionResponseSchema,
   workerOutputSchema,
+  workerDocumentOutputSchema,
+  workerInputSchema,
   type AppError,
   type Result,
   type RuntimeSnapshot,
@@ -14,6 +16,7 @@ import {
   type WorkerCommand,
   type WorkerInput,
   type BrowserAssetsLocation,
+  type DocumentProcessor,
 } from "@rewind/contracts";
 
 export interface WorkerTransport {
@@ -38,6 +41,7 @@ export interface WorkerClientOptions {
   synthetic: boolean;
   browserAssets?: BrowserAssetsLocation;
   assistantFixture?: true;
+  documents?: DocumentProcessor & { readonly busy: boolean };
   loadKey: () => Promise<Result<Uint8Array>>;
   spawn: () => WorkerTransport;
   onSnapshot: (state: RuntimeSnapshot) => void;
@@ -64,11 +68,14 @@ export class WorkerClient {
   private exitWaiter: (() => void) | null = null;
   private exitPromise: Promise<void> = Promise.resolve();
   private shutdownAcknowledged = false;
+  private documentRequest: string | null = null;
+  private documentClosing = false;
   private failed = false;
   private revision = 0;
   private state: RuntimeSnapshot;
   constructor(private readonly options: WorkerClientOptions) {
     this.state = {
+      documentAuthority: { generation: this.bootId, revision: 0 },
       assistant: {
         generation: this.bootId,
         configured: false,
@@ -117,10 +124,12 @@ export class WorkerClient {
     this.bootId = randomUUID();
     const boot = this.bootId;
     this.shutdownAcknowledged = false;
+    this.documentClosing = false;
     this.failed = false;
     this.publish({
       ...this.state,
       service: "starting",
+      documentAuthority: { generation: this.bootId, revision: 0 },
       assistant: {
         generation: this.bootId,
         configured: false,
@@ -244,6 +253,7 @@ export class WorkerClient {
   }
   private fail(error: AppError): void {
     this.failed = true;
+    void this.options.documents?.stop().catch(() => false);
     this.clearHeartbeat();
     if (this.startupTimer) clearTimeout(this.startupTimer);
     this.startupTimer = null;
@@ -252,6 +262,10 @@ export class WorkerClient {
     this.publish({
       ...this.state,
       service: "unavailable",
+      documentAuthority: {
+        generation: this.bootId,
+        revision: this.state.documentAuthority.revision + 1,
+      },
       assistant: {
         ...this.state.assistant,
         permission: false,
@@ -282,6 +296,106 @@ export class WorkerClient {
   }
   private receive(value: unknown): void {
     if (this.failed) return;
+    if (
+      value &&
+      typeof value === "object" &&
+      "type" in value &&
+      (value.type === "document-parse" || value.type === "document-stop")
+    ) {
+      const parsed = workerDocumentOutputSchema.safeParse(value);
+      if (!parsed.success) {
+        this.fail({
+          code: "INTEGRITY_FAILURE",
+          message: "The worker returned an invalid private document request.",
+        });
+        return;
+      }
+      const message = parsed.data;
+      if (message.bootId !== this.bootId) {
+        if (message.type === "document-parse") message.bytes.fill(0);
+        return;
+      }
+      const child = this.child;
+      const send = (reply: WorkerInput) => {
+        if (
+          child !== this.child ||
+          message.bootId !== this.bootId ||
+          this.failed
+        )
+          return;
+        if (!workerInputSchema.safeParse(reply).success) {
+          this.fail({
+            code: "INTEGRITY_FAILURE",
+            message: "The document service returned an invalid private reply.",
+          });
+          return;
+        }
+        try {
+          child?.postMessage(reply);
+        } catch {
+          this.fail(unavailable().error);
+        }
+      };
+      if (message.type === "document-stop") {
+        void (this.options.documents?.stop() ?? Promise.resolve(true))
+          .catch(() => false)
+          .then((closed) =>
+            send({
+              version: 1,
+              type: "document-stopped",
+              bootId: message.bootId,
+              id: message.id,
+              closed,
+            }),
+          );
+        return;
+      }
+      if (
+        this.documentClosing ||
+        this.documentRequest ||
+        this.state.service !== "ready" ||
+        !this.state.secureStorage ||
+        !this.options.documents
+      ) {
+        message.bytes.fill(0);
+        send({
+          version: 1,
+          type: "document-result",
+          bootId: message.bootId,
+          id: message.id,
+          result: {
+            state: "unavailable",
+            format: message.format,
+            reason: "unavailable",
+          },
+          closed: !this.documentRequest && !this.options.documents?.busy,
+        });
+        return;
+      }
+      this.documentRequest = message.id;
+      void this.options.documents
+        .extract(message.format, message.bytes)
+        .catch(() => ({
+          state: "unavailable" as const,
+          format: message.format,
+          reason: "unavailable" as const,
+        }))
+        .then((result) =>
+          send({
+            version: 1,
+            type: "document-result",
+            bootId: message.bootId,
+            id: message.id,
+            result,
+            closed: !this.options.documents!.busy,
+          }),
+        )
+        .finally(() => {
+          message.bytes.fill(0);
+          if (this.documentRequest === message.id) this.documentRequest = null;
+        });
+      return;
+    }
     if (!boundedWorkerMessage(value)) {
       this.fail({
         code: "INTEGRITY_FAILURE",
@@ -357,7 +471,7 @@ export class WorkerClient {
       } catch {
         /* Notifications carry no authority. */
       }
-    } else {
+    } else if (message.type === "reply") {
       const pending = this.pending.get(message.id);
       if (!pending || pending.kind !== message.kind) return;
       clearTimeout(pending.timer);
@@ -370,6 +484,7 @@ export class WorkerClient {
     decoder: Decoder<T>,
   ): Promise<Result<T>> {
     const allowedStop =
+      command.kind === "versions.cancel-preview" ||
       command.kind === "assistant.stop" ||
       command.kind === "assistant.forget" ||
       command.kind === "assistant.cancel" ||
@@ -400,6 +515,7 @@ export class WorkerClient {
         "assistant.state",
         "versions.list",
         "versions.preview",
+        "versions.source",
         "versions.info",
         "recovery.prepare-copy",
         "recovery.confirm-copy",
@@ -439,19 +555,21 @@ export class WorkerClient {
         this.options.requestTimeoutMs ??
           (command.kind === "assistant.ask"
             ? 40000
-            : command.kind === "assistant.credential.prepare"
+            : command.kind === "versions.preview" || command.kind === "shutdown"
               ? 20000
-              : command.kind === "recovery.confirm-copy" ||
-                  command.kind === "recovery.confirm-overwrite" ||
-                  command.kind === "recovery.prepare-overwrite"
+              : command.kind === "assistant.credential.prepare"
                 ? 20000
-                : [
-                      "browser.install",
-                      "browser.remove",
-                      "browser.repair",
-                    ].includes(command.kind)
-                  ? 60000
-                  : 7000),
+                : command.kind === "recovery.confirm-copy" ||
+                    command.kind === "recovery.confirm-overwrite" ||
+                    command.kind === "recovery.prepare-overwrite"
+                  ? 20000
+                  : [
+                        "browser.install",
+                        "browser.remove",
+                        "browser.repair",
+                      ].includes(command.kind)
+                    ? 60000
+                    : 7000),
       );
       this.pending.set(id, { kind: command.kind, resolve, timer });
       try {
@@ -480,18 +598,22 @@ export class WorkerClient {
     return this.request({ kind: "session", action }, sessionResponseSchema);
   }
   async shutdown(): Promise<Result<void>> {
+    this.documentClosing = true;
     if (!this.child) {
       if (this.startAttempt) {
         this.fail(unavailable().error);
         await this.startAttempt;
       }
-      return { ok: true, value: undefined };
+      const closed = await this.options.documents?.stop();
+      return closed === false ? unavailable() : { ok: true, value: undefined };
     }
     const response = await this.request(
       { kind: "shutdown" },
       acknowledgementResponseSchema,
     );
+    const documentsClosed = await this.options.documents?.stop();
     if (!response.ok) return response;
+    if (documentsClosed === false) return unavailable();
     this.shutdownAcknowledged = true;
     this.clearHeartbeat();
     try {
@@ -541,6 +663,7 @@ export class WorkerClient {
         clearTimeout(timer);
       }
     }
+    if ((await this.options.documents?.stop()) === false) return unavailable();
     return this.start();
   }
 }

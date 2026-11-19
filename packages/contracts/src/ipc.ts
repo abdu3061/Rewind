@@ -111,7 +111,8 @@ export interface DesktopApi {
   versions: {
     info(id: string): Promise<Result<FileVersion | null>>;
     list(query: VersionListQuery): Promise<Result<CapturedVersionSummary[]>>;
-    preview(id: string): Promise<Result<VersionPreview>>;
+    preview(id: string, requestId?: string): Promise<Result<VersionPreview>>;
+    cancelPreview(requestId: string): Promise<Result<true>>;
   };
   storage: {
     usage(): Promise<Result<StorageUsage>>;

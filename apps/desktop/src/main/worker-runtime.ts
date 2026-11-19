@@ -14,6 +14,7 @@ import {
   type WorkerCommand,
   type StorageUsage,
   type BrowserAssetsLocation,
+  type DocumentProcessor,
 } from "@rewind/contracts";
 import {
   BrowserCollector,
@@ -45,6 +46,7 @@ export interface WorkerRuntimeOptions {
   synthetic: boolean;
   assistantFixture?: true;
   browserAssets?: BrowserAssetsLocation;
+  documentProcessor?: DocumentProcessor;
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
   onActivity: (sessionId: string) => void;
   strategy?: WindowQueryStrategy;
@@ -70,17 +72,29 @@ export class WorkerRuntime {
   private browser: BrowserOperations | null = null;
   private assistant: AssistantOperations | null = null;
   private readonly assistantGeneration = randomUUID();
+  private readonly documentGeneration = randomUUID();
+  private documentRevision = 0;
   constructor(private readonly options: WorkerRuntimeOptions) {
     this.storage = new SecureStorage(
       path.join(options.root, secureDatabaseName),
       options.key,
-      { evidenceChanged: () => this.assistant?.invalidate() },
+      {
+        evidenceChanged: (mutation) => {
+          this.assistant?.invalidate();
+          if (this.files?.referencesRemoved(mutation.retainsVersion))
+            this.invalidateDocuments();
+        },
+      },
     );
     options.key.fill(0);
   }
   snapshot(): RuntimeSnapshot {
     const health = this.coordinator?.getStatus();
     return {
+      documentAuthority: {
+        generation: this.documentGeneration,
+        revision: this.documentRevision,
+      },
       assistant: this.assistant?.state() ?? {
         generation: this.assistantGeneration,
         configured: false,
@@ -286,11 +300,20 @@ export class WorkerRuntime {
               cloudAiEnabled: false,
             };
             this.assistant?.revoke();
+            this.invalidateDocuments();
+            void this.options.documentProcessor?.stop();
           }
           if (this.ready) this.options.onSnapshot(this.snapshot());
         },
       });
       this.files = new FileOperations({
+        authority: () => ({
+          generation: this.documentGeneration,
+          revision: this.documentRevision,
+        }),
+        ...(this.options.documentProcessor
+          ? { documents: this.options.documentProcessor }
+          : {}),
         storage: this.storage,
         folders,
         coordinator: this.coordinator,
@@ -306,6 +329,8 @@ export class WorkerRuntime {
           const updated = await this.coordinator!.updateSettings(
             candidate,
             async () => {
+              const documents = await this.drainDocuments();
+              if (!documents.ok) return documents;
               if (write) {
                 const written = await write();
                 if (!written.ok) return written;
@@ -389,6 +414,8 @@ export class WorkerRuntime {
           const changed = await this.coordinator!.updateSettings(
             candidate,
             async () => {
+              const documents = await this.drainDocuments();
+              if (!documents.ok) return documents;
               if (!current() || this.closing)
                 return failure(
                   "CONFLICT",
@@ -480,8 +507,15 @@ export class WorkerRuntime {
           "checkpoints.update",
           "checkpoints.delete",
         ].includes(command.kind)
-      )
+      ) {
         this.denyAssistant();
+        this.invalidateDocuments();
+      }
+      if (
+        command.kind === "session" &&
+        (command.action === "pause" || command.action === "end")
+      )
+        this.invalidateDocuments();
       switch (command.kind) {
         case "assistant.state":
         case "assistant.permission":
@@ -518,6 +552,14 @@ export class WorkerRuntime {
         case "checkpoints.list":
         case "checkpoints.update":
         case "checkpoints.delete": {
+          if (
+            command.kind === "checkpoints.create" ||
+            command.kind === "checkpoints.update" ||
+            command.kind === "checkpoints.delete"
+          ) {
+            const documents = await this.drainDocuments();
+            if (!documents.ok) return documents;
+          }
           const result = await this.checkpoints!.execute(command);
           return this.readResult(result);
         }
@@ -536,7 +578,9 @@ export class WorkerRuntime {
         case "files.remove":
         case "versions.list":
         case "versions.info":
-        case "versions.preview": {
+        case "versions.source":
+        case "versions.preview":
+        case "versions.cancel-preview": {
           const mutation =
             command.kind === "files.add" ||
             command.kind === "files.permission" ||
@@ -548,7 +592,8 @@ export class WorkerRuntime {
             command,
             () => !mutation || revision === this.preferenceRevision,
           );
-          return command.kind.startsWith("versions.")
+          return command.kind.startsWith("versions.") &&
+            command.kind !== "versions.cancel-preview"
             ? this.readResult(result)
             : result;
         }
@@ -573,6 +618,8 @@ export class WorkerRuntime {
           const stopped = await this.coordinator.updateSettings(
             candidate,
             async () => {
+              const documents = await this.drainDocuments();
+              if (!documents.ok) return documents;
               const saved = await this.storage.saveSettings(candidate);
               if (!saved.ok) return saved;
               outcome =
@@ -587,8 +634,14 @@ export class WorkerRuntime {
             this.options.onActivity(this.snapshot().session!.id);
           return outcome;
         }
-        case "session":
-          return await this.coordinator.execute(command.action);
+        case "session": {
+          const result = await this.coordinator.execute(command.action);
+          if (command.action === "pause" || command.action === "end") {
+            const documents = await this.drainDocuments();
+            if (!documents.ok) return documents;
+          }
+          return result;
+        }
         case "preferences.get":
           return { ok: true, value: this.snapshot().preferences };
         case "preferences.update": {
@@ -623,6 +676,8 @@ export class WorkerRuntime {
           const updated = await this.coordinator.updateSettings(
             candidate,
             async () => {
+              const documents = await this.drainDocuments();
+              if (!documents.ok) return documents;
               const result = await this.storage.saveSettings(candidate);
               if (result.ok) this.settings = candidate;
               return result;
@@ -661,6 +716,8 @@ export class WorkerRuntime {
       this.settings.folderCollectionConsent = false;
       this.settings.browserCollectionConsent = false;
       this.denyAssistant();
+      this.invalidateDocuments();
+      void this.options.documentProcessor?.stop();
       void this.coordinator.revokeConsent();
       return { ok: false, error: this.fault };
     } finally {
@@ -671,10 +728,26 @@ export class WorkerRuntime {
     this.settings = { ...this.settings, cloudAiEnabled: false };
     this.assistant?.revoke();
   }
+  private invalidateDocuments(): void {
+    this.documentRevision++;
+    this.files?.invalidatePreviews();
+  }
+  private async drainDocuments(): Promise<Result<void>> {
+    const stopped = this.files
+      ? await this.files.stopPreviews()
+      : await this.options.documentProcessor?.stop();
+    return stopped === false
+      ? failure(
+          "UNAVAILABLE",
+          "The document preview process did not confirm shutdown. Try the operation again.",
+        )
+      : { ok: true, value: undefined };
+  }
   private async changeCloudPermission(
     enabled: boolean,
     current: () => boolean,
   ): Promise<Result<void>> {
+    this.invalidateDocuments();
     const revision = ++this.preferenceRevision;
     if (!enabled) this.settings = { ...this.settings, cloudAiEnabled: false };
     const candidate = { ...this.settings, cloudAiEnabled: enabled };
@@ -688,6 +761,8 @@ export class WorkerRuntime {
     const changed = await this.coordinator!.updateSettings(
       candidate,
       async () => {
+        const documents = await this.drainDocuments();
+        if (!documents.ok) return documents;
         if (!authorized())
           return failure(
             "CONFLICT",
@@ -754,6 +829,8 @@ export class WorkerRuntime {
       )
     ) {
       this.fault = result.error;
+      this.invalidateDocuments();
+      void this.options.documentProcessor?.stop();
       this.denyAssistant();
       this.ready = false;
       this.settings.collectionConsent = false;
@@ -768,6 +845,7 @@ export class WorkerRuntime {
     if (this.maintenanceTimer) clearInterval(this.maintenanceTimer);
     this.maintenanceTimer = null;
     this.closing = true;
+    this.invalidateDocuments();
     this.denyAssistant();
     this.preferenceRevision++;
     this.settings.collectionConsent = false;
@@ -775,6 +853,11 @@ export class WorkerRuntime {
     this.settings.browserCollectionConsent = false;
     const revoked = await this.coordinator?.revokeConsent();
     if (revoked && !revoked.ok) return revoked;
+    if ((await this.options.documentProcessor?.stop()) === false)
+      return failure(
+        "UNAVAILABLE",
+        "The document preview process did not confirm shutdown.",
+      );
     const browserStopped = await this.browser?.close();
     if (browserStopped && !browserStopped.ok) return browserStopped;
     const recoveryStopped = await this.recovery?.close();

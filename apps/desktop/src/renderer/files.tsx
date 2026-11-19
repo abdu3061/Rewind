@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { RecoveryCopy } from "./recovery-copy";
 import { RecoveryOverwrite } from "./recovery-overwrite";
+import { currentPreview } from "./captured-preview";
+import { usePreviewRequest } from "./use-preview-request";
 import type {
   CapturedVersionSummary,
   FileProtectionState,
@@ -10,11 +12,21 @@ import type {
 } from "@rewind/contracts";
 
 export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
+  const {
+    request: requestPreview,
+    cancel: cancelPreview,
+    loading: previewLoading,
+  } = usePreviewRequest();
   const [protection, setProtection] = useState<FileProtectionState | null>(
     null,
   );
   const [versions, setVersions] = useState<CapturedVersionSummary[]>([]);
-  const [preview, setPreview] = useState<VersionPreview | null>(null);
+  const [storedPreview, setPreview] = useState<VersionPreview | null>(null);
+  const preview = currentPreview(storedPreview, runtime?.documentAuthority)
+    ? storedPreview
+    : null;
+  const authority = useRef(runtime?.documentAuthority);
+  authority.current = runtime?.documentAuthority;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
@@ -26,6 +38,15 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
   const readable = Boolean(
     runtime?.secureStorage && window.rewind?.files && window.rewind?.versions,
   );
+  useEffect(() => {
+    previewSerial.current++;
+    setPreview(null);
+    void cancelPreview();
+  }, [
+    runtime?.documentAuthority.generation,
+    runtime?.documentAuthority.revision,
+    cancelPreview,
+  ]);
   async function refresh(reset = false) {
     const ticket = ++serial.current;
     const [state, history] = await Promise.all([
@@ -87,9 +108,14 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
     setError("");
     setPreview(null);
     try {
-      const result = await window.rewind.versions.preview(id);
+      const result = await requestPreview(id);
       if (!live.current || ticket !== previewSerial.current) return;
-      if (result.ok) setPreview(result.value);
+      if (result.ok && currentPreview(result.value, authority.current))
+        setPreview(result.value);
+      else if (result.ok)
+        setError(
+          "History changed while preparing the preview. Select the version again.",
+        );
       else setError(result.error.message);
     } catch {
       if (live.current) setError("The captured preview could not be verified.");
@@ -295,6 +321,22 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           </button>
         )}
       </section>
+      {previewLoading && (
+        <section className="panel">
+          <p role="status">Preparing captured preview…</p>
+          <button
+            onClick={() => {
+              previewSerial.current++;
+              setPreview(null);
+              void cancelPreview().then((result) => {
+                if (!result.ok && live.current) setError(result.error.message);
+              });
+            }}
+          >
+            Cancel preview
+          </button>
+        </section>
+      )}
       {preview && readable && (
         <section className="panel" aria-labelledby="preview-heading">
           <h2 id="preview-heading">Captured preview: {preview.displayName}</h2>
@@ -305,10 +347,9 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             bytes
           </p>
           <p className="content-hash">SHA-256: {preview.version.contentHash}</p>
-          {preview.text !== null ? (
+          {preview.warning && <p>{preview.warning}</p>}
+          {preview.text !== null && (
             <pre className="captured-preview">{preview.text}</pre>
-          ) : (
-            <p>{preview.warning}</p>
           )}
           {preview.truncated && (
             <p>
@@ -320,6 +361,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             onClick={() => {
               previewSerial.current++;
               setPreview(null);
+              void cancelPreview();
             }}
           >
             Close preview

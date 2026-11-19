@@ -22,7 +22,10 @@ import {
   type DeleteHistory,
   type StorageUsage,
 } from "@rewind/contracts";
-import { StorageMaintenance } from "./storage-maintenance";
+import {
+  StorageMaintenance,
+  type EvidenceMutation,
+} from "./storage-maintenance";
 import {
   SnapshotRepository,
   verifySnapshotSchema,
@@ -72,7 +75,9 @@ export class SecureStorage implements SessionStorage {
   constructor(
     private readonly file: string,
     key: Uint8Array,
-    private readonly options: { evidenceChanged?: () => void } = {},
+    private readonly options: {
+      evidenceChanged?: (mutation: EvidenceMutation) => void;
+    } = {},
   ) {
     this.key = Buffer.from(key);
   }

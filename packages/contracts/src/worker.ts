@@ -8,6 +8,10 @@ import { checkpointCommandSchema } from "./checkpoint-controls";
 import { browserCommandSchema } from "./browser-controls";
 import { assistantWorkerCommandSchema } from "./assistant-controls";
 import {
+  documentRelayReplySchema,
+  documentRelayRequestSchema,
+} from "./document-worker";
+import {
   collectionPreferencesSchema,
   historyQuerySchema,
   runtimeSnapshotSchema,
@@ -15,6 +19,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("versions.source"), id: idSchema }),
   ...assistantWorkerCommandSchema.options,
   z.strictObject({ kind: z.literal("browser.verify-assets") }),
   ...browserCommandSchema.options,
@@ -63,6 +68,8 @@ export const browserAssetsLocationSchema = z.strictObject({
 });
 export type BrowserAssetsLocation = z.infer<typeof browserAssetsLocationSchema>;
 export const workerInputSchema = z.discriminatedUnion("type", [
+  documentRelayReplySchema.options[0].extend({ bootId: idSchema }),
+  documentRelayReplySchema.options[1].extend({ bootId: idSchema }),
   z.strictObject({
     ...base,
     type: z.literal("init"),
@@ -81,7 +88,12 @@ export const workerInputSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...base, type: z.literal("heartbeat") }),
 ]);
 export type WorkerInput = z.infer<typeof workerInputSchema>;
+export const workerDocumentOutputSchema = z.discriminatedUnion("type", [
+  documentRelayRequestSchema.options[0].extend({ bootId: idSchema }),
+  documentRelayRequestSchema.options[1].extend({ bootId: idSchema }),
+]);
 export const workerOutputSchema = z.discriminatedUnion("type", [
+  ...workerDocumentOutputSchema.options,
   z.strictObject({
     ...base,
     type: z.literal("ready"),
@@ -145,6 +157,8 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
       "files.remove",
       "versions.list",
       "versions.preview",
+      "versions.cancel-preview",
+      "versions.source",
       "versions.info",
     ]),
     result: resultSchema(z.unknown()),
@@ -154,6 +168,15 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
 export type WorkerOutput = z.infer<typeof workerOutputSchema>;
 export function boundedWorkerMessage(value: unknown): boolean {
   try {
+    // Binary document requests are admitted only on the private worker relay.
+    // Never stringify their potentially large byte arrays on public IPC paths.
+    if (
+      value &&
+      typeof value === "object" &&
+      "type" in value &&
+      (value.type === "document-parse" || value.type === "document-stop")
+    )
+      return false;
     // Key material is never serialized into a diagnostic/bounds-check string.
     if (
       value &&

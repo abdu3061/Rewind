@@ -9,9 +9,20 @@ import {
   browserControlResponseSchema,
   assistantControlResponseSchema,
   assistantAnswerResponseSchema,
+  boundedWorkerMessage,
+  recordingCommandSchema,
+  type DocumentText,
 } from "@rewind/contracts";
-import { WorkerClient, type WorkerTransport } from "./worker-client";
+import {
+  WorkerClient,
+  type WorkerClientOptions,
+  type WorkerTransport,
+} from "./worker-client";
 const ready = (): RuntimeSnapshot => ({
+  documentAuthority: {
+    generation: "00000000-0000-4000-8000-000000000001",
+    revision: 0,
+  },
   assistant: {
     generation: "00000000-0000-4000-8000-000000000001",
     configured: false,
@@ -86,6 +97,7 @@ afterEach(async () => {
 function fixture(
   browserAssets?: BrowserAssetsLocation,
   requestTimeoutMs: number | null = 30,
+  documents?: WorkerClientOptions["documents"],
 ) {
   const children: SyntheticTransport[] = [];
   const spawn = vi.fn(() => {
@@ -97,6 +109,7 @@ function fixture(
   const client = new WorkerClient({
     root: "C:\\synthetic-fixture",
     synthetic: true,
+    ...(documents ? { documents } : {}),
     ...(browserAssets ? { browserAssets } : {}),
     loadKey: async () => ({ ok: true, value: randomBytes(32) }),
     spawn,
@@ -108,6 +121,182 @@ function fixture(
   clients.push(client);
   return { client, children, spawn };
 }
+
+const documentText: DocumentText = {
+  state: "available",
+  format: "pdf",
+  text: "synthetic document relay",
+  truncated: false,
+  pagesRead: 1,
+  totalPages: 1,
+};
+const flush = async () => {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+};
+function documentFixture() {
+  const documents = {
+    busy: false,
+    extract: vi.fn(async () => documentText),
+    stop: vi.fn(async () => true),
+  };
+  return { ...fixture(undefined, 30, documents), documents };
+}
+it("mediates private bounded binary bytes without JSON serialization or a public capability", async () => {
+  const f = documentFixture();
+  await f.client.start();
+  const child = f.children[0]!;
+  const bytes = new Uint8Array(4 * 1024 * 1024).fill(53),
+    id = randomUUID();
+  const request = {
+    version: 1,
+    type: "document-parse",
+    id,
+    bootId: child.messages[0]!.bootId,
+    format: "pdf",
+    bytes,
+  };
+  const json = vi.spyOn(JSON, "stringify");
+  expect(boundedWorkerMessage(request)).toBe(false);
+  expect(recordingCommandSchema.safeParse(request).success).toBe(false);
+  child.emit("message", request);
+  await flush();
+  // Zod may stringify small discriminator/key names; document bytes/envelopes must never enter it.
+  expect(
+    json.mock.calls.filter(
+      ([value]) =>
+        value instanceof Uint8Array ||
+        (value !== null && typeof value === "object" && "bytes" in value),
+    ).length,
+  ).toBe(0);
+  json.mockRestore();
+  expect(f.documents.extract).toHaveBeenCalledTimes(1);
+  expect(child.messages.at(-1)).toMatchObject({
+    type: "document-result",
+    id,
+    result: documentText,
+    closed: true,
+  });
+  expect(bytes.every((value) => value === 0)).toBe(true);
+});
+it("keeps closure unconfirmed when a document process survives a result", async () => {
+  const f = documentFixture();
+  await f.client.start();
+  const child = f.children[0]!;
+  f.documents.busy = true;
+  f.documents.stop.mockResolvedValue(false);
+  child.emit("message", {
+    version: 1,
+    type: "document-parse",
+    id: randomUUID(),
+    bootId: child.messages[0]!.bootId,
+    format: "pdf",
+    bytes: Uint8Array.of(1),
+  });
+  await flush();
+  expect(child.messages.at(-1)).toMatchObject({
+    type: "document-result",
+    closed: false,
+  });
+  const id = randomUUID();
+  child.emit("message", {
+    version: 1,
+    type: "document-stop",
+    id,
+    bootId: child.messages[0]!.bootId,
+  });
+  await flush();
+  expect(child.messages.at(-1)).toMatchObject({
+    type: "document-stopped",
+    id,
+    closed: false,
+  });
+  f.documents.busy = false;
+  f.documents.stop.mockResolvedValue(true);
+});
+it("refuses overlapping private parse requests and wipes refused bytes", async () => {
+  const f = documentFixture();
+  let resolve!: (text: DocumentText) => void;
+  f.documents.extract.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  await f.client.start();
+  const child = f.children[0]!,
+    bootId = child.messages[0]!.bootId;
+  child.emit("message", {
+    version: 1,
+    type: "document-parse",
+    id: randomUUID(),
+    bootId,
+    format: "pdf",
+    bytes: Uint8Array.of(1),
+  });
+  const bytes = Uint8Array.of(2),
+    id = randomUUID();
+  child.emit("message", {
+    version: 1,
+    type: "document-parse",
+    id,
+    bootId,
+    format: "pdf",
+    bytes,
+  });
+  expect(child.messages.at(-1)).toMatchObject({
+    type: "document-result",
+    id,
+    closed: false,
+  });
+  expect(bytes[0]).toBe(0);
+  expect(f.documents.extract).toHaveBeenCalledTimes(1);
+  resolve(documentText);
+  await flush();
+});
+it("rejects stale binary boot messages before invoking the parser", async () => {
+  const f = documentFixture();
+  await f.client.start();
+  const bytes = Uint8Array.of(1);
+  f.children[0]!.emit("message", {
+    version: 1,
+    type: "document-parse",
+    id: randomUUID(),
+    bootId: randomUUID(),
+    format: "pdf",
+    bytes,
+  });
+  expect(bytes[0]).toBe(0);
+  expect(f.documents.extract).not.toHaveBeenCalled();
+});
+it("fails closed on an oversized private document message without stringifying bytes", async () => {
+  const f = documentFixture();
+  await f.client.start();
+  const json = vi.spyOn(JSON, "stringify");
+  f.children[0]!.emit("message", {
+    version: 1,
+    type: "document-parse",
+    id: randomUUID(),
+    bootId: f.children[0]!.messages[0]!.bootId,
+    format: "pdf",
+    bytes: new Uint8Array(16 * 1024 * 1024 + 1),
+  });
+  expect(json).not.toHaveBeenCalled();
+  json.mockRestore();
+  expect(f.client.getSnapshot().service).toBe("unavailable");
+  expect(f.documents.extract).not.toHaveBeenCalled();
+});
+it("does not acknowledge shutdown or reconnect while document stop remains unconfirmed", async () => {
+  const f = documentFixture();
+  await f.client.start();
+  f.documents.stop.mockResolvedValue(false);
+  expect((await f.client.shutdown()).ok).toBe(false);
+  f.children[0]!.emit("message", { invalid: true });
+  expect((await f.client.retry()).ok).toBe(false);
+  expect(f.spawn).toHaveBeenCalledTimes(1);
+  f.documents.stop.mockResolvedValue(true);
+  expect((await f.client.retry()).ok).toBe(true);
+  expect(f.spawn).toHaveBeenCalledTimes(2);
+});
 it("starts with verified storage and no grant and acknowledges shutdown before exit", async () => {
   const f = fixture();
   expect((await f.client.start()).ok).toBe(true);

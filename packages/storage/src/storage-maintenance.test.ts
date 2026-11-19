@@ -9,6 +9,7 @@ import {
   type Checkpoint,
 } from "@rewind/contracts";
 import { SecureStorage } from "./secure-storage";
+import type { EvidenceMutation } from "./storage-maintenance";
 import {
   newSecureFixture,
   removeSecureFixture,
@@ -20,7 +21,7 @@ afterEach(async () => {
   for (const store of stores.splice(0)) await store.close();
   for (const root of roots.splice(0)) removeSecureFixture(root);
 });
-async function fixture(evidenceChanged?: () => void) {
+async function fixture(evidenceChanged?: (mutation: EvidenceMutation) => void) {
   const root = newSecureFixture();
   roots.push(root);
   const file = join(root, "history.sqlite");
@@ -59,6 +60,24 @@ async function fixture(evidenceChanged?: () => void) {
   return { store, root, file, key, sessionId, event, inspect };
 }
 const now = new Date("2026-11-17T10:00:00.000Z");
+
+it("limits retained-version inspection to the synchronous pre-commit callback", async () => {
+  let mutation: EvidenceMutation | null = null;
+  const f = await fixture((value) => {
+    mutation = value;
+    expect(value.retainsVersion(randomUUID())).toBe(false);
+  });
+  const event = f.event(
+    "2026-11-10T10:01:00.000Z",
+    "Synthetic expired inspection",
+  );
+  expect((await f.store.repositories.activities.append([event])).ok).toBe(true);
+  expect((await f.store.cleanup(now)).ok).toBe(true);
+  expect(mutation).not.toBeNull();
+  expect(() => mutation!.retainsVersion(randomUUID())).toThrow(
+    "EVIDENCE_MUTATION_EXPIRED",
+  );
+});
 
 it("reports actual checkpoint retention protection and expires a linked observation only after its newest unkept checkpoint", async () => {
   const changed = vi.fn(),

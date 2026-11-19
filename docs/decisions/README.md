@@ -56,6 +56,8 @@ For a new decision: state context, options, recommendation, consequences, owner/
 
 [ADR 0032](0032-supervised-document-utility.md) records the single-use parser utility, Windows Job Object admission, external deadline and actual-exit fencing. Private supervision is verified; normal retained-source and Files/Checkpoints integration remains active work.
 
+[ADR 0033](0033-retained-document-preview-integration.md) records normal retained-source/Files/Checkpoints integration, private binary mediation, current-generation previews, owned cancellation and confirmed maintenance drain. Final validation is recorded in the core implementation report.
+
 See [ADR 0009](0009-session-lifecycle-stabilization.md): locally implemented candidate/commit, checked storage lifecycle, consent/run invalidation, acknowledged drain and quit policy. It does not select an encryption binding or enable real recording.
 
 The subsequent [ADR 0010](0010-encrypted-recording-store.md) selects the locally verified encrypted SQLite/key/migration approach, and [ADR 0011](0011-recording-worker-consent.md) records utility supervision, launch-scoped consent, crash recovery and synthetic verification. These are local implementations for review, not remote merge or release approval. The [integration report](../audit/secure-storage-collection-integration.md) records current functionality and remaining gates.

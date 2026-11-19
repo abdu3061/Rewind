@@ -3,14 +3,17 @@ import {
   failure,
   workerInputSchema,
   workerOutputSchema,
+  workerDocumentOutputSchema,
   type WorkerOutput,
 } from "@rewind/contracts";
 import { WorkerRuntime } from "./worker-runtime";
+import { RecordingDocumentClient } from "./document-client";
 
 const port = process.parentPort;
 if (!port) throw new Error("WORKER_PARENT_REQUIRED");
 let bootId: string | null = null;
 let runtime: WorkerRuntime | null = null;
+let documents: RecordingDocumentClient | null = null;
 let initializing = false;
 let requests = 0;
 let lastHeartbeat = Date.now();
@@ -18,7 +21,8 @@ let ending = false;
 function send(message: WorkerOutput): void {
   if (ending) return;
   if (
-    boundedWorkerMessage(message) &&
+    (workerDocumentOutputSchema.safeParse(message).success ||
+      boundedWorkerMessage(message)) &&
     workerOutputSchema.safeParse(message).success
   ) {
     try {
@@ -43,10 +47,14 @@ port.on("message", async ({ data }: { data: unknown }) => {
     }
     bootId = message.bootId;
     initializing = true;
+    documents = new RecordingDocumentClient((request) =>
+      send({ ...request, bootId: message.bootId }),
+    );
     runtime = new WorkerRuntime({
       root: message.root,
       key: message.key,
       synthetic: message.synthetic,
+      documentProcessor: documents,
       ...(message.assistantFixture ? { assistantFixture: true as const } : {}),
       ...(message.browserAssets
         ? { browserAssets: message.browserAssets }
@@ -72,6 +80,19 @@ port.on("message", async ({ data }: { data: unknown }) => {
   if (message.bootId !== bootId) return;
   lastHeartbeat = Date.now();
   if (message.type === "heartbeat") return;
+  if (
+    message.type === "document-result" ||
+    message.type === "document-stopped"
+  ) {
+    documents?.receive({
+      version: 1,
+      type: message.type,
+      id: message.id,
+      closed: message.closed,
+      ...(message.type === "document-result" ? { result: message.result } : {}),
+    });
+    return;
+  }
   if (!runtime || initializing || ending || requests >= 64) {
     send({
       version: 1,

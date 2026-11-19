@@ -2,6 +2,8 @@
 
 Status: private utility composition implemented locally for Rasit's review. Normal Files/Checkpoints integration, retained-source lifecycle checks and packaged preview acceptance remain in progress. This does not authorize remote publication, merge or release.
 
+Subsequent progress: ADR 0033 connects and tests the normal retained-source and Files/Checkpoints flows. The private-stage scope below records this decision's original checkpoint; the core implementation report has the latest validation.
+
 ## Decision
 
 Do not invoke ADR 0031's parsing package in main, renderer or the recording/database worker. Main supervises a separate, single-use Electron Node utility. Its private protocol accepts a request UUID, an explicit PDF/DOCX format and at most 16 MiB of original bytes; it accepts no source path, URL, database key, credential or script. Replies carry bounded validated text and the same request identity/format. There is no renderer capability for this protocol.

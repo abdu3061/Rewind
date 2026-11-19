@@ -2,6 +2,7 @@ import { z } from "zod";
 import { idSchema, resultSchema, timestampSchema } from "./common";
 import { fileVersionSchema } from "./files";
 import { protectedFolderSchema } from "./snapshots";
+import { documentAuthoritySchema } from "./document-preview";
 
 export const folderCaptureStatusSchema = z.strictObject({
   state: z.enum(["off", "pending", "capturing", "watching", "unavailable"]),
@@ -36,6 +37,7 @@ export type CapturedVersionSummary = z.infer<
   typeof capturedVersionSummarySchema
 >;
 export const versionPreviewSchema = z.strictObject({
+  authority: documentAuthoritySchema,
   version: fileVersionSchema,
   displayName: z.string().min(1).max(255),
   sourceLabel: z.string().min(1).max(1024),
@@ -54,6 +56,9 @@ export const versionListResponseSchema = resultSchema(
   z.array(capturedVersionSummarySchema).max(100),
 );
 export const versionPreviewResponseSchema = resultSchema(versionPreviewSchema);
+export const versionSourceResponseSchema = resultSchema(
+  capturedVersionSummarySchema,
+);
 export const versionInfoResponseSchema = resultSchema(
   fileVersionSchema.nullable(),
 );
@@ -66,6 +71,14 @@ export const fileCommandSchema = z.discriminatedUnion("kind", [
     kind: z.literal("versions.list"),
     query: versionListQuerySchema,
   }),
-  z.strictObject({ kind: z.literal("versions.preview"), id: idSchema }),
+  z.strictObject({
+    kind: z.literal("versions.preview"),
+    id: idSchema,
+    requestId: idSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("versions.cancel-preview"),
+    requestId: idSchema,
+  }),
   z.strictObject({ kind: z.literal("versions.info"), id: idSchema }),
 ]);

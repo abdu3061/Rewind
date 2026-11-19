@@ -8,6 +8,7 @@ import { PreviewText } from "./text";
 import {
   docxEntries,
   pdfFixture,
+  imageOnlyPdfFixture,
   wordNs,
   zipFixture,
 } from "./fixtures.test-support";
@@ -212,6 +213,17 @@ describe("captured PDF text", () => {
       state: "available",
       text: "",
       pagesRead: 1,
+    });
+  });
+  it("does not invent text from an actual image-only PDF page", async () => {
+    expect(
+      await extractDocumentText("pdf", imageOnlyPdfFixture()),
+    ).toMatchObject({
+      state: "available",
+      text: "",
+      truncated: false,
+      pagesRead: 1,
+      totalPages: 1,
     });
   });
   it("refuses password-protected input and malformed data", async () => {

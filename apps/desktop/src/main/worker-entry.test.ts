@@ -9,6 +9,10 @@ const behavior = vi.hoisted(() => ({
 }));
 vi.mock("./worker-runtime", () => {
   const state: RuntimeSnapshot = {
+    documentAuthority: {
+      generation: "00000000-0000-4000-8000-000000000001",
+      revision: 0,
+    },
     assistant: {
       generation: "00000000-0000-4000-8000-000000000001",
       configured: false,

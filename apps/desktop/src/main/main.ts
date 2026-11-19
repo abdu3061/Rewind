@@ -72,6 +72,15 @@ const sessions = createBackend({
   synthetic: fixtureRoot !== null,
   ...(assistantFixture ? { assistantFixture: true as const } : {}),
   entry: path.join(__dirname, "worker-entry.cjs"),
+  documentEntry: path.join(__dirname, "document-entry.cjs"),
+  documentGuard: app.isPackaged
+    ? path.join(process.resourcesPath, "documents", "RewindDocumentGuard.exe")
+    : path.join(
+        app.getAppPath(),
+        ".generated",
+        "documents",
+        "RewindDocumentGuard.exe",
+      ),
   browserAssets,
   onSnapshot: () => publishState(),
   onActivity: (sessionId) => {
