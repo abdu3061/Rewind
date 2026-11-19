@@ -35,7 +35,11 @@ function Run-InstallerTool([string]$file, [string[]]$arguments) {
 }
 function Close-InstalledDesktop {
   $log = Join-Path $profile 'logs/operations.jsonl'
-  Wait-Condition { (Test-Path -LiteralPath $log) -and ([IO.File]::ReadAllText($log).Contains('DESKTOP_READY')) } 'INSTALLED_DESKTOP_NOT_READY'
+  Wait-Condition {
+    if (!(Test-Path -LiteralPath $log)) { return $false }
+    $codes = [IO.File]::ReadAllText($log)
+    return ([regex]::Matches($codes, '"code":"DESKTOP_READY"').Count -gt [regex]::Matches($codes, '"code":"DESKTOP_STOPPED"').Count) -and @(Get-Process Rewind -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and $_.MainWindowHandle -ne 0 }).Count -eq 1
+  } 'INSTALLED_DESKTOP_NOT_READY'
   $desktop = @(Get-Process Rewind -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and $_.MainWindowHandle -ne 0 })
   if ($desktop.Count -ne 1 -or !$desktop[0].CloseMainWindow()) { throw 'INSTALLED_DESKTOP_CLOSE_NOT_ACKNOWLEDGED' }
   Wait-Condition { !(Get-Process Rewind -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase) }) } 'INSTALLED_DESKTOP_DID_NOT_EXIT' 30
@@ -71,6 +75,8 @@ try {
   foreach ($relative in @('Rewind.exe','resources/app.asar','resources/browser/assets.json','resources/notices/inventory.json','resources/release/build.json')) {
     if ((Get-FileHash -LiteralPath (Join-Path $applicationDirectory $relative) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $portable $relative) -Algorithm SHA256).Hash) { throw 'INSTALLED_PAYLOAD_DIFFERS_FROM_VERIFIED_ARCHIVE' }
   }
+  # Squirrel's silent install deliberately skips the normal first-run launch.
+  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Hidden | Out-Null
   Close-InstalledDesktop
   $history = Join-Path $profile 'secure/history.sqlite'
   $key = Join-Path $profile 'secure/history.key'
@@ -90,6 +96,7 @@ try {
   if (!(Test-Path -LiteralPath $history) -or (Get-FileHash -LiteralPath $key -Algorithm SHA256).Hash -ne $keyHash) { throw 'UNINSTALL_DID_NOT_PRESERVE_HISTORY' }
   Record-Step 'UNINSTALL_SHORTCUT_REMOVAL_AND_HISTORY_RETENTION_PASSED'
   Run-InstallerTool $installer @('--silent')
+  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Hidden | Out-Null
   Close-InstalledDesktop
   if ((Get-FileHash -LiteralPath $key -Algorithm SHA256).Hash -ne $keyHash) { throw 'REINSTALL_REPLACED_PROTECTED_KEY' }
   Record-Step 'REINSTALL_RETAINED_ENCRYPTED_PROFILE_AND_CLOSE_PASSED'
