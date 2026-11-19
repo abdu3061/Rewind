@@ -75,8 +75,9 @@ try {
   foreach ($relative in @('Rewind.exe','resources/app.asar','resources/browser/assets.json','resources/notices/inventory.json','resources/release/build.json')) {
     if ((Get-FileHash -LiteralPath (Join-Path $applicationDirectory $relative) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $portable $relative) -Algorithm SHA256).Hash) { throw 'INSTALLED_PAYLOAD_DIFFERS_FROM_VERIFIED_ARCHIVE' }
   }
-  # Squirrel's silent install deliberately skips the normal first-run launch.
-  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Hidden | Out-Null
+  # Squirrel's silent install skips first-run launch. Show the actual GUI under
+  # test on the disposable VM so normal window-close acknowledgement is observable.
+  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Normal | Out-Null
   Close-InstalledDesktop
   $history = Join-Path $profile 'secure/history.sqlite'
   $key = Join-Path $profile 'secure/history.key'
@@ -96,7 +97,7 @@ try {
   if (!(Test-Path -LiteralPath $history) -or (Get-FileHash -LiteralPath $key -Algorithm SHA256).Hash -ne $keyHash) { throw 'UNINSTALL_DID_NOT_PRESERVE_HISTORY' }
   Record-Step 'UNINSTALL_SHORTCUT_REMOVAL_AND_HISTORY_RETENTION_PASSED'
   Run-InstallerTool $installer @('--silent')
-  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Hidden | Out-Null
+  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Normal | Out-Null
   Close-InstalledDesktop
   if ((Get-FileHash -LiteralPath $key -Algorithm SHA256).Hash -ne $keyHash) { throw 'REINSTALL_REPLACED_PROTECTED_KEY' }
   Record-Step 'REINSTALL_RETAINED_ENCRYPTED_PROFILE_AND_CLOSE_PASSED'
