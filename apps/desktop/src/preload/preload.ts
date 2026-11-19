@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   failure,
+  fileTextCommandSchema,
+  fileTextControlResponseSchema,
+  fileTextSearchResponseSchema,
   noArgumentsSchema,
   SESSION_CHANNEL,
   SESSION_CHANGED_CHANNEL,
@@ -120,6 +123,42 @@ function assistantArgument<T>(
   };
 }
 const api: DesktopApi = {
+  content: {
+    state: noArgs({ kind: "content.state" }, fileTextControlResponseSchema),
+    stop: noArgs({ kind: "content.stop" }, fileTextControlResponseSchema),
+    clearSearch: noArgs(
+      { kind: "content.clear-search" },
+      acknowledgementResponseSchema,
+    ),
+    indexSaved: (...args: unknown[]) => {
+      const parsed = fileTextCommandSchema.safeParse({
+        kind: "content.index",
+        value: args[0],
+      });
+      return args.length === 1 && parsed.success
+        ? recording(parsed.data, fileTextControlResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "Explicit saved-content indexing approval is required.",
+            ),
+          );
+    },
+    search: (...args: unknown[]) => {
+      const parsed = fileTextCommandSchema.safeParse({
+        kind: "content.search",
+        query: args[0],
+      });
+      return args.length === 1 && parsed.success
+        ? recording(parsed.data, fileTextSearchResponseSchema)
+        : Promise.resolve(
+            failure(
+              "INVALID_INPUT",
+              "A valid captured-content query is required.",
+            ),
+          );
+    },
+  },
   assistant: {
     state: noArgs({ kind: "assistant.state" }, assistantControlResponseSchema),
     configure: assistantArgument(

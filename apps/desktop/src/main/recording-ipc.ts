@@ -1,5 +1,7 @@
 import {
   failure,
+  fileTextControlResponseSchema,
+  fileTextSearchResponseSchema,
   historyResponseSchema,
   preferencesResponseSchema,
   recordingCommandSchema,
@@ -44,6 +46,14 @@ export async function dispatchRecordingRequest(
     return failure("INVALID_INPUT", "A valid recording command is required.");
   const command = parsed.data;
   switch (command.kind) {
+    case "content.state":
+    case "content.index":
+    case "content.stop":
+      return backend.request(command, fileTextControlResponseSchema);
+    case "content.search":
+      return backend.request(command, fileTextSearchResponseSchema);
+    case "content.clear-search":
+      return backend.request(command, acknowledgementResponseSchema);
     case "assistant.configure":
       return configureAssistant
         ? configureAssistant()

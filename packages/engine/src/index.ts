@@ -3,6 +3,7 @@ export {
   FileTextIndexer,
   type FileTextIndexerOptions,
 } from "./file-text-indexer";
+export { isExcludedPath } from "./event-exclusions";
 export {
   AssistantReviewService,
   type AssistantDisclosureLease,

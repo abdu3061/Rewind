@@ -355,6 +355,31 @@ export class FileTextRepository {
       );
     }
   }
+  async candidate(id: string): Promise<Result<FileTextCandidate | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "A captured version ID is required.");
+    try {
+      const row = this.db
+        .prepare(
+          "SELECT v.*,f.display_name,f.identity_kind,f.absolute_path,fb.folder_id FROM file_versions v JOIN snapshot_blobs b ON b.content_hash=v.blob_hash JOIN files f ON f.id=v.file_id LEFT JOIN file_bindings fb ON fb.file_id=v.file_id WHERE v.id=?",
+        )
+        .get(id);
+      return {
+        ok: true,
+        value: row
+          ? fileTextCandidateSchema.parse({
+              ...summary(row),
+              folderId: row.folder_id ?? null,
+            })
+          : null,
+      };
+    } catch {
+      return failure(
+        "INTEGRITY_FAILURE",
+        "The captured text source identity could not be verified.",
+      );
+    }
+  }
   async counts(): Promise<Result<FileTextCounts>> {
     try {
       const row = this.db
@@ -370,7 +395,10 @@ export class FileTextRepository {
       );
     }
   }
-  async search(input: FileTextQuery): Promise<Result<FileTextSearchPage>> {
+  async search(
+    input: FileTextQuery,
+    allowed: (source: CapturedVersionSummary) => boolean = () => true,
+  ): Promise<Result<FileTextSearchPage>> {
     const parsed = fileTextQuerySchema.safeParse(input);
     if (!parsed.success)
       return failure("INVALID_INPUT", "The captured-content query is invalid.");
@@ -421,6 +449,8 @@ export class FileTextRepository {
         .all(...args) as Record<string, unknown>[];
       const hits = [];
       for (const row of rows.slice(0, query.limit)) {
+        const source = summary(row);
+        if (!allowed(source)) continue;
         const read = await this.get(String(row.id));
         if (!read.ok) return read;
         if (
@@ -433,14 +463,30 @@ export class FileTextRepository {
           );
         hits.push(
           fileTextHitSchema.parse({
-            ...summary(row),
+            ...source,
             snippet: clip(row.excerpt, start, end),
             format: read.value.extraction.format,
             truncated: read.value.extraction.truncated,
           }),
         );
       }
-      return { ok: true, value: { hits, hasMore: rows.length > query.limit } };
+      const hasMore = rows.length > query.limit,
+        last = rows[query.limit - 1];
+      return {
+        ok: true,
+        value: {
+          hits,
+          hasMore,
+          ...(hasMore && last
+            ? {
+                nextBefore: {
+                  capturedAt: String(last.captured_at),
+                  id: String(last.id),
+                },
+              }
+            : {}),
+        },
+      };
     } catch {
       return failure(
         "INTEGRITY_FAILURE",

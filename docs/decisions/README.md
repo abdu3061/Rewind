@@ -60,6 +60,8 @@ For a new decision: state context, options, recommendation, consequences, owner/
 
 [ADR 0034](0034-encrypted-captured-content-index.md) records the encrypted derived-text/FTS schema, source/hash/quota verification, retained-byte indexing engine and owner-scoped parser cancellation. Automatic worker composition and public content-search UI remain active work; this private foundation does not enable ordinary session indexing.
 
+[ADR 0035](0035-captured-content-search-integration.md) records the subsequent normal-worker/Search composition, current policy/source receipts, explicit backfill/Stop/retry, preview priority, bounded policy-filtered paging and source-specific invalidation. Its final validation is tracked in the core implementation report.
+
 See [ADR 0009](0009-session-lifecycle-stabilization.md): locally implemented candidate/commit, checked storage lifecycle, consent/run invalidation, acknowledged drain and quit policy. It does not select an encryption binding or enable real recording.
 
 The subsequent [ADR 0010](0010-encrypted-recording-store.md) selects the locally verified encrypted SQLite/key/migration approach, and [ADR 0011](0011-recording-worker-consent.md) records utility supervision, launch-scoped consent, crash recovery and synthetic verification. These are local implementations for review, not remote merge or release approval. The [integration report](../audit/secure-storage-collection-integration.md) records current functionality and remaining gates.

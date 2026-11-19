@@ -35,12 +35,14 @@ export interface FileTextIndexerOptions {
   publish(
     write: FileTextWrite,
     authorized: () => boolean,
+    candidate: FileTextCandidate,
   ): Promise<Result<{ stored: boolean }>>;
   /** Current engine policy, including session/launch approval for automatic work. Never latch a grant. */
   authorized(scope: FileTextRunScope, candidate?: FileTextCandidate): boolean;
   onChanged?(state: FileTextIndexState): void;
 }
 interface Run {
+  versionId: string | null;
   scope: FileTextRunScope;
   controller: AbortController;
   denied: boolean;
@@ -95,6 +97,7 @@ export class FileTextIndexer {
         "Content indexing is not currently authorized.",
       );
     const run: Run = {
+      versionId: null,
       scope: parsed.data,
       controller: new AbortController(),
       denied: false,
@@ -123,6 +126,11 @@ export class FileTextIndexer {
     if (!this.active) return;
     this.active.denied = true;
     this.active.controller.abort();
+  }
+  referencesRemoved(retainsVersion: (id: string) => boolean): boolean {
+    return Boolean(
+      this.active?.versionId && !retainsVersion(this.active.versionId),
+    );
   }
   private current(run: Run, candidate?: FileTextCandidate): boolean {
     return (
@@ -221,8 +229,13 @@ export class FileTextIndexer {
         );
       after = { capturedAt: version.capturedAt, id: version.id };
       if (this.current(run, candidate)) {
-        const continued = await this.index(run, candidate);
-        if (!continued) return;
+        run.versionId = candidate.version.id;
+        try {
+          const continued = await this.index(run, candidate);
+          if (!continued) return;
+        } finally {
+          run.versionId = null;
+        }
       }
       // Even skipped or expired sources must yield to consent changes and queued session work.
       await yieldTurn();
@@ -347,6 +360,7 @@ export class FileTextIndexer {
           indexedAt: stamp.data,
         },
         () => this.current(run, candidate),
+        candidate,
       );
       if (!saved.ok) {
         if (saved.error.code === "NOT_FOUND") return true;

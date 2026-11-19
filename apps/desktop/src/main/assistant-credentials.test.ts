@@ -5,7 +5,7 @@ import {
   publicEncrypt,
   randomUUID,
 } from "node:crypto";
-import { expect, it, vi } from "vitest";
+import { beforeAll, expect, it, vi } from "vitest";
 import {
   failure,
   type AssistantCredential,
@@ -16,6 +16,20 @@ import { AssistantCredentials } from "./assistant-credentials";
 
 const secret = "Synthetic_Private_Credential_9201",
   at = "2026-11-18T10:00:00.000Z";
+// Lifecycle/clock cases still encrypt and decrypt with real, distinct 4096-bit keys.
+// Generate their synthetic recipients once; random prime generation is not their subject.
+// The first acceptance case below deliberately keeps the production generator.
+const recipients: ReturnType<typeof generateKeyPairSync>[] = [];
+let recipient = 0;
+beforeAll(() => {
+  for (let i = 0; i < 2; i++)
+    recipients.push(
+      generateKeyPairSync("rsa", {
+        modulusLength: 4096,
+        publicExponent: 65537,
+      }),
+    );
+}, 30000);
 function seal(
   challenge: AssistantCredentialChallenge,
   value: unknown = { id: challenge.id, apiKey: secret },
@@ -37,9 +51,9 @@ function seal(
   };
 }
 function fixture(
-  createPair?: ConstructorParameters<
-    typeof AssistantCredentials
-  >[0]["createPair"],
+  createPair:
+    | ConstructorParameters<typeof AssistantCredentials>[0]["createPair"]
+    | null = async () => recipients[recipient++ % recipients.length]!,
 ) {
   let clock = at,
     ticks = 0,
@@ -100,7 +114,7 @@ function fixture(
   };
 }
 it("issues only a public RSA challenge, accepts one sealed native secret and never grants cloud use", async () => {
-  const f = fixture(),
+  const f = fixture(null),
     challenge = await f.prepare(),
     packet = seal(challenge);
   expect(challenge).toMatchObject({ exponent: "AQAB" });
@@ -229,10 +243,7 @@ it("forgets only after explicit confirmation and revocation without re-enabling 
   await f.service.close();
 }, 10000);
 it("fences delayed recipient creation and retains unobserved shutdown for retry", async () => {
-  const pair = generateKeyPairSync("rsa", {
-    modulusLength: 4096,
-    publicExponent: 65537,
-  });
+  const pair = recipients[0]!;
   let finish: (value: typeof pair) => void = () => {};
   const createPair = vi.fn(
       () =>

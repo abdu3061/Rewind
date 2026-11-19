@@ -27,6 +27,7 @@ import {
   type WindowQueryStrategy,
 } from "@rewind/collectors";
 import { FileOperations } from "./file-operations";
+import { ContentOperations } from "./content-operations";
 import { RecoveryOperations } from "./recovery-operations";
 import { CheckpointOperations } from "./checkpoint-operations";
 import { BrowserOperations } from "./browser-operations";
@@ -67,6 +68,8 @@ export class WorkerRuntime {
   private maintenancePending = false;
   private preferenceRevision = 0;
   private files: FileOperations | null = null;
+  private content: ContentOperations | null = null;
+  private documentMutations = 0;
   private recovery: RecoveryOperations | null = null;
   private checkpoints: CheckpointOperations | null = null;
   private browser: BrowserOperations | null = null;
@@ -81,7 +84,10 @@ export class WorkerRuntime {
       {
         evidenceChanged: (mutation) => {
           this.assistant?.invalidate();
-          if (this.files?.referencesRemoved(mutation.retainsVersion))
+          if (
+            this.files?.referencesRemoved(mutation.retainsVersion) ||
+            this.content?.referencesRemoved(mutation.retainsVersion)
+          )
             this.invalidateDocuments();
         },
       },
@@ -274,6 +280,7 @@ export class WorkerRuntime {
               authorized,
             );
             if (saved.ok) {
+              this.content?.kick();
               try {
                 this.options.onActivity(event.sessionId);
               } catch {
@@ -350,6 +357,34 @@ export class WorkerRuntime {
             return updated;
           }
           return { ok: true, value: undefined };
+        },
+      });
+      this.content = new ContentOperations({
+        storage: this.storage,
+        coordinator: this.coordinator,
+        ...(this.options.documentProcessor
+          ? { documents: this.options.documentProcessor }
+          : {}),
+        authority: () => ({
+          generation: this.documentGeneration,
+          revision: this.documentRevision,
+        }),
+        settings: () => this.settings,
+        session: () => this.coordinator?.getState().session ?? null,
+        available: () =>
+          this.ready &&
+          !this.closing &&
+          !this.fault &&
+          !this.coordinator?.getStatus().unavailable,
+        indexingAllowed: () => this.documentMutations === 0,
+        automaticAllowed: () =>
+          this.coordinator?.getStatus().collection === "active",
+        previewActive: () => this.files?.previewActive ?? false,
+        changed: () => {
+          if (this.ready) this.options.onSnapshot(this.snapshot());
+        },
+        fault: (error) => {
+          this.readResult({ ok: false, error });
         },
       });
       this.recovery = new RecoveryOperations({
@@ -469,6 +504,7 @@ export class WorkerRuntime {
   }
   private async initializationFailure(error: AppError): Promise<Result<never>> {
     this.fault = error;
+    await this.content?.close();
     await this.assistant?.close();
     await this.browser?.close();
     if (this.coordinator) await this.coordinator.shutdown();
@@ -488,6 +524,7 @@ export class WorkerRuntime {
         "UNAVAILABLE",
         "The secure recording service is unavailable.",
       );
+    let documentMutation = false;
     try {
       if (
         [
@@ -508,15 +545,26 @@ export class WorkerRuntime {
           "checkpoints.delete",
         ].includes(command.kind)
       ) {
+        documentMutation = true;
+        this.documentMutations++;
         this.denyAssistant();
         this.invalidateDocuments();
       }
       if (
         command.kind === "session" &&
         (command.action === "pause" || command.action === "end")
-      )
+      ) {
+        documentMutation = true;
+        this.documentMutations++;
         this.invalidateDocuments();
+      }
       switch (command.kind) {
+        case "content.state":
+        case "content.index":
+        case "content.search":
+        case "content.stop":
+        case "content.clear-search":
+          return this.readResult(await this.content!.execute(command));
         case "assistant.state":
         case "assistant.permission":
         case "assistant.forget":
@@ -706,6 +754,14 @@ export class WorkerRuntime {
               this.storage.history(command.query),
             ),
           );
+        default: {
+          const unhandled: never = command;
+          void unhandled;
+          return failure(
+            "INVALID_INPUT",
+            "This worker operation is unavailable.",
+          );
+        }
       }
     } catch {
       this.fault = {
@@ -721,6 +777,13 @@ export class WorkerRuntime {
       void this.coordinator.revokeConsent();
       return { ok: false, error: this.fault };
     } finally {
+      if (documentMutation) this.documentMutations--;
+      if (
+        (command.kind === "session" &&
+          (command.action === "start" || command.action === "resume")) ||
+        (command.kind === "files.permission" && command.enabled)
+      )
+        this.content?.kick();
       this.options.onSnapshot(this.snapshot());
     }
   }
@@ -731,8 +794,14 @@ export class WorkerRuntime {
   private invalidateDocuments(): void {
     this.documentRevision++;
     this.files?.invalidatePreviews();
+    this.content?.invalidate();
   }
   private async drainDocuments(): Promise<Result<void>> {
+    if ((await this.content?.drain()) === false)
+      return failure(
+        "UNAVAILABLE",
+        "The content indexing process did not confirm shutdown. Try the operation again.",
+      );
     const stopped = this.files
       ? await this.files.stopPreviews()
       : await this.options.documentProcessor?.stop();
@@ -853,6 +922,11 @@ export class WorkerRuntime {
     this.settings.browserCollectionConsent = false;
     const revoked = await this.coordinator?.revokeConsent();
     if (revoked && !revoked.ok) return revoked;
+    if ((await this.content?.close()) === false)
+      return failure(
+        "UNAVAILABLE",
+        "Content indexing did not confirm shutdown.",
+      );
     if ((await this.options.documentProcessor?.stop()) === false)
       return failure(
         "UNAVAILABLE",

@@ -484,6 +484,8 @@ export class WorkerClient {
     decoder: Decoder<T>,
   ): Promise<Result<T>> {
     const allowedStop =
+      command.kind === "content.stop" ||
+      command.kind === "content.clear-search" ||
       command.kind === "versions.cancel-preview" ||
       command.kind === "assistant.stop" ||
       command.kind === "assistant.forget" ||
@@ -505,6 +507,8 @@ export class WorkerClient {
     const allowedRead =
       this.state.secureStorage &&
       [
+        "content.state",
+        "content.search",
         "timeline",
         "history",
         "preferences.get",
@@ -555,7 +559,10 @@ export class WorkerClient {
         this.options.requestTimeoutMs ??
           (command.kind === "assistant.ask"
             ? 40000
-            : command.kind === "versions.preview" || command.kind === "shutdown"
+            : command.kind === "versions.preview" ||
+                command.kind === "shutdown" ||
+                command.kind === "content.index" ||
+                command.kind === "content.search"
               ? 20000
               : command.kind === "assistant.credential.prepare"
                 ? 20000

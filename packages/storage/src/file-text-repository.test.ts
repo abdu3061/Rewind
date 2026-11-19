@@ -527,6 +527,86 @@ it("keeps candidate scans scoped and resumes equal-time work without duplicate I
   ).toEqual({ ok: true, value: null });
 });
 
+it("withholds denied body hits before source reads and advances a bounded page cursor past them", async () => {
+  const f = await fixture(),
+    stamp = at();
+  const sources = [
+    await f.capture(
+      Buffer.from("SyntheticPolicyBody42791 one"),
+      "text/plain",
+      stamp,
+    ),
+    await f.capture(
+      Buffer.from("SyntheticPolicyBody42791 two"),
+      "text/plain",
+      stamp,
+    ),
+  ];
+  sources.sort((a, b) => b.version.id.localeCompare(a.version.id));
+  for (const source of sources)
+    await f.store.fileText.save(f.input(source), () => true);
+  const repository = f.store.fileText,
+    read = vi.spyOn(repository, "get");
+  const first = await repository.search(
+    { text: "SyntheticPolicyBody42791", limit: 1 },
+    (source) => source.version.id !== sources[0]!.version.id,
+  );
+  expect(first).toEqual({
+    ok: true,
+    value: {
+      hits: [],
+      hasMore: true,
+      nextBefore: { capturedAt: stamp, id: sources[0]!.version.id },
+    },
+  });
+  expect(read).not.toHaveBeenCalled();
+  if (!first.ok) throw new Error("SYNTHETIC_PAGE_MISSING");
+  expect(
+    await repository.search(
+      {
+        text: "SyntheticPolicyBody42791",
+        limit: 1,
+        before: first.value.nextBefore!,
+      },
+      (source) => source.version.id !== sources[0]!.version.id,
+    ),
+  ).toMatchObject({
+    ok: true,
+    value: {
+      hits: [{ version: { id: sources[1]!.version.id } }],
+      hasMore: false,
+    },
+  });
+});
+
+it("provides current bounded source identities and reports removal without returning original bytes", async () => {
+  const f = await fixture(),
+    source = await f.capture();
+  expect(await f.store.fileText.candidate(source.version.id)).toEqual({
+    ok: true,
+    value: {
+      version: source.version,
+      displayName: source.file.displayName,
+      sourceLabel:
+        source.file.identity.kind === "verified-path"
+          ? source.file.identity.absolutePath
+          : source.file.displayName,
+      folderId: f.folderId,
+    },
+  });
+  expect(await f.store.fileText.candidate("invalid")).toMatchObject({
+    ok: false,
+    error: { code: "INVALID_INPUT" },
+  });
+  expect(
+    (await f.store.deleteHistory({ confirmed: true, includeKept: false })).ok,
+  ).toBe(true);
+  expect(await f.store.fileText.candidate(source.version.id)).toEqual({
+    ok: true,
+    value: null,
+  });
+});
+
 it("refuses an index write under actual physical quota pressure and preserves original evidence", async () => {
   const f = await fixture(),
     source = await f.capture(Buffer.alloc(9 * 1024 * 1024, 71));

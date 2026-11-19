@@ -189,6 +189,12 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           capture must finish before a version is available. Paused or
           uncaptured work cannot be recovered.
         </p>
+        <p>
+          During an approved active session, bounded saved text is also indexed
+          in encrypted local history. Search shows progress, limits, Stop and
+          retained-history indexing controls. Document bodies are excluded from
+          Gemini sharing.
+        </p>
         <div className="controls">
           <button
             disabled={busy || !readable}

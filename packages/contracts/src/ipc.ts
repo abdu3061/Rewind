@@ -3,6 +3,12 @@ import { resultSchema, type Result } from "./common";
 import { sessionStateSchema, type SessionState } from "./session";
 import type { ActivityEvent } from "./activity";
 import type { Session } from "./session";
+import type { FileTextQuery } from "./file-text";
+import type {
+  FileTextControlState,
+  FileTextIndexRequest,
+  FileTextSearchReceipt,
+} from "./file-text-controls";
 import type { BrowserControlState } from "./browser-controls";
 import type {
   AssistantControlState,
@@ -50,6 +56,15 @@ export const noArgumentsSchema = z.tuple([]);
 
 // Only implemented capabilities are public. Paths are selected by native dialogs in main.
 export interface DesktopApi {
+  content: {
+    state(): Promise<Result<FileTextControlState>>;
+    indexSaved(
+      value: FileTextIndexRequest,
+    ): Promise<Result<FileTextControlState>>;
+    stop(): Promise<Result<FileTextControlState>>;
+    search(query: FileTextQuery): Promise<Result<FileTextSearchReceipt>>;
+    clearSearch(): Promise<Result<true>>;
+  };
   assistant: {
     state(): Promise<Result<AssistantControlState>>;
     configure(confirmed: true): Promise<Result<AssistantControlState | null>>;

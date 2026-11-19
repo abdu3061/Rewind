@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AssistantSearch } from "./assistant";
+import { ContentSearch } from "./content-search";
 import type {
   ActivityEvent,
   RuntimeSnapshot,
@@ -400,7 +401,7 @@ export function RecordedHistory({
             disabled={!canRead}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Search applications, window titles and captured file names"
+            placeholder="Search saved activity and captured file text"
           />
           <button type="submit" disabled={!canRead || loading}>
             {search ? "Search" : "Apply filters"}
@@ -433,6 +434,7 @@ export function RecordedHistory({
           and start or resume a session to collect permitted observations.
         </p>
       )}
+      {search && <ContentSearch runtime={runtime} query={query} />}
       {search && (
         <AssistantSearch
           runtime={runtime}

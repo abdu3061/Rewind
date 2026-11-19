@@ -9,6 +9,7 @@ import {
   type DocumentFormat,
   type DocumentText,
   type SnapshotCapture,
+  type DocumentProcessor,
 } from "@rewind/contracts";
 import { SessionCoordinator, SessionService } from "@rewind/engine";
 import { SecureStorage } from "@rewind/storage";
@@ -105,10 +106,11 @@ async function fixture() {
   ).toBe(true);
   const documents = {
     busy: false,
-    extract: vi.fn(async (format: DocumentFormat, bytes: Uint8Array) =>
-      extractDocumentText(format, bytes),
+    extract: vi.fn<DocumentProcessor["extract"]>(
+      async (format: DocumentFormat, bytes: Uint8Array) =>
+        extractDocumentText(format, bytes),
     ),
-    stop: vi.fn(async () => {
+    stop: vi.fn<DocumentProcessor["stop"]>(async () => {
       documents.busy = false;
       return true;
     }),
@@ -388,12 +390,18 @@ it("retains failed-close ownership after a reply and retries its stop without to
     return { state: "unavailable", format: "pdf", reason: "unavailable" };
   });
   await f.preview(source.version.id, requestId);
+  const owner = f.documents.extract.mock.calls.at(-1)![2];
+  expect(owner).toBeInstanceOf(AbortSignal);
   f.documents.stop.mockResolvedValueOnce(false);
   expect(await f.cancel(requestId)).toMatchObject({
     ok: false,
     error: { code: "CONFLICT" },
   });
   expect(await f.cancel(requestId)).toEqual({ ok: true, value: true });
+  expect(f.documents.stop.mock.calls.at(-1)![0]).toBe(owner);
+  const calls = f.documents.stop.mock.calls.length;
+  expect(await f.cancel(randomUUID())).toEqual({ ok: true, value: true });
+  expect(f.documents.stop).toHaveBeenCalledTimes(calls);
 });
 it("uses metadata for recovery selection without invoking a document parser", async () => {
   const f = await fixture(),

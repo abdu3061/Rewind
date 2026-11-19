@@ -265,6 +265,8 @@ it("stop confirms its owner without waiting on the coordinator read it could oth
   s.read.mockReturnValueOnce(read.promise);
   s.indexer.start(s.scope);
   await tick();
+  expect(s.indexer.referencesRemoved(() => false)).toBe(true);
+  expect(s.indexer.referencesRemoved(() => true)).toBe(false);
   expect(await s.indexer.stop()).toBe(true);
   expect(s.stop.mock.calls[0]![0]?.aborted).toBe(true);
   expect(s.indexer.state().busy).toBe(true);

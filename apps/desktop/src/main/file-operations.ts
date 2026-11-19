@@ -54,7 +54,8 @@ const inside = (root: string, selected: string) => {
 export class FileOperations {
   private retainedPreview: { versionId: string; requestId: string } | null =
     null;
-  private unconfirmedPreview: string | null = null;
+  private unconfirmedPreview: { requestId: string; owner: AbortSignal } | null =
+    null;
   private preview: {
     controller: AbortController;
     versionId: string;
@@ -62,6 +63,9 @@ export class FileOperations {
     done: Promise<void>;
   } | null = null;
   constructor(private readonly options: Options) {}
+  get previewActive(): boolean {
+    return this.preview !== null;
+  }
   invalidatePreviews(): void {
     this.preview?.controller.abort();
     this.retainedPreview = null;
@@ -84,15 +88,23 @@ export class FileOperations {
     if (this.retainedPreview?.requestId === requestId)
       this.retainedPreview = null;
     const preview = this.preview?.requestId === requestId ? this.preview : null;
-    if (!preview && this.unconfirmedPreview !== requestId)
-      return { ok: true, value: true };
+    const unconfirmed =
+      this.unconfirmedPreview?.requestId === requestId
+        ? this.unconfirmedPreview
+        : null;
+    if (!preview && !unconfirmed) return { ok: true, value: true };
     preview?.controller.abort();
-    if ((await this.options.documents?.stop()) === false)
+    if (
+      (await this.options.documents?.stop(
+        preview?.controller.signal ?? unconfirmed!.owner,
+      )) === false
+    )
       return failure(
         "CONFLICT",
         "The preview process did not confirm cancellation. Try again.",
       );
-    if (this.unconfirmedPreview === requestId) this.unconfirmedPreview = null;
+    if (this.unconfirmedPreview?.requestId === requestId)
+      this.unconfirmedPreview = null;
     if (!preview) return { ok: true, value: true };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -208,7 +220,6 @@ export class FileOperations {
         if (this.options.documents) {
           const closed = await this.options.documents.stop();
           if (closed) this.unconfirmedPreview = null;
-          else this.unconfirmedPreview ??= requestId;
           if (closed && current()) {
             try {
               const result = documentTextSchema.safeParse(
@@ -224,7 +235,7 @@ export class FileOperations {
               /* A parser failure does not make original captured bytes corrupt. */
             }
             if (this.options.documents.busy)
-              this.unconfirmedPreview = requestId;
+              this.unconfirmedPreview = { requestId, owner: controller.signal };
           }
         }
         if (document.state === "available") {

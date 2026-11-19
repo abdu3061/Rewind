@@ -134,6 +134,7 @@ export type FileTextHit = z.infer<typeof fileTextHitSchema>;
 export const fileTextSearchPageSchema = z.strictObject({
   hits: z.array(fileTextHitSchema).max(25),
   hasMore: z.boolean(),
+  nextBefore: fileTextCursorSchema.optional(),
 });
 export type FileTextSearchPage = z.infer<typeof fileTextSearchPageSchema>;
 export const MAX_FILE_TEXT_BYTES = documentPreviewLimits.textBytes;

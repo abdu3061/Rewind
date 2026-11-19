@@ -3,6 +3,7 @@ import { appErrorSchema, idSchema, resultSchema } from "./common";
 import { sessionCommandSchema } from "./session";
 import { storageCommandSchema } from "./storage-management";
 import { fileCommandSchema } from "./file-controls";
+import { fileTextCommandSchema } from "./file-text-controls";
 import { recoveryCommandSchema } from "./recovery";
 import { checkpointCommandSchema } from "./checkpoint-controls";
 import { browserCommandSchema } from "./browser-controls";
@@ -19,6 +20,7 @@ import {
 } from "./recording";
 
 export const workerCommandSchema = z.discriminatedUnion("kind", [
+  ...fileTextCommandSchema.options,
   z.strictObject({ kind: z.literal("versions.source"), id: idSchema }),
   ...assistantWorkerCommandSchema.options,
   z.strictObject({ kind: z.literal("browser.verify-assets") }),
@@ -110,6 +112,11 @@ export const workerOutputSchema = z.discriminatedUnion("type", [
     type: z.literal("reply"),
     id: idSchema,
     kind: z.enum([
+      "content.state",
+      "content.index",
+      "content.search",
+      "content.stop",
+      "content.clear-search",
       "assistant.state",
       "assistant.permission",
       "assistant.forget",
