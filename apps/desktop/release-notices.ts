@@ -181,8 +181,10 @@ export async function generateReleaseNotices(
   await cp(nativeSource, path.join(output, "native"), { recursive: true });
   for (const entry of nativeProvenance.files) {
     if (
-      !/^[a-zA-Z0-9@._/-]+$/.test(entry.file) ||
-      entry.file.split("/").includes("..")
+      !/^[a-zA-Z0-9@._+/-]+$/.test(entry.file) ||
+      entry.file
+        .split("/")
+        .some((part) => part === "" || part === "." || part === "..")
     )
       throw new Error("Invalid native notice path");
     const bytes = await readFile(path.join(output, "native", entry.file));

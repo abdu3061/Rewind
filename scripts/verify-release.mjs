@@ -133,8 +133,12 @@ const nativeNotices = JSON.parse(
 assert.deepEqual(nativeNotices.failures, []);
 assert.ok(nativeNotices.files.length > 200);
 for (const notice of nativeNotices.files) {
-  assert.match(notice.file, /^[a-zA-Z0-9@._/-]+$/);
-  assert.ok(!notice.file.split("/").includes(".."));
+  assert.match(notice.file, /^[a-zA-Z0-9@._+/-]+$/);
+  assert.ok(
+    !notice.file
+      .split("/")
+      .some((part) => part === "" || part === "." || part === ".."),
+  );
   assert.equal(
     await hash(path.join(resources, "notices/native", notice.file)),
     notice.sha256,
