@@ -5,6 +5,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      beta_installer_only:
+        description: Test an uploaded beta installer on this disposable Windows runner
+        type: boolean
+        default: false
+      beta_tag:
+        description: Existing beta release tag to verify
+        type: string
+        default: v0.1.0-beta.1
 
 permissions:
   contents: read
@@ -15,6 +24,7 @@ concurrency:
 
 jobs:
   windows-checks:
+    if: ${{ !inputs.beta_installer_only }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -41,3 +51,28 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+  beta-installer:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.beta_installer_only }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      # Draft release assets require collaborator-level content access.
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Accept the uploaded installer in an isolated synthetic Windows account
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REWIND_BETA_TAG: ${{ inputs.beta_tag }}
+        run: ./scripts/test-windows-installer.ps1
+      - name: Upload fixed-code installer acceptance receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-installer-acceptance
+          path: artifacts/windows-installer-acceptance.json
+          if-no-files-found: ignore
+          retention-days: 14
