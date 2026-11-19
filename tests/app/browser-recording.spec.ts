@@ -540,6 +540,14 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      // Headless installed browsers can leave Electron occluded and throttle its
+      // animation frames. Focus the actual window before screenshot stability checks.
+      await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        window.show();
+        window.focus();
+      });
+      await appPage.bringToFront();
       await appPage
         .locator("section[aria-labelledby='browser-heading']")
         .screenshot({ path: `test-results/browser-settings-${browser}.png` });
