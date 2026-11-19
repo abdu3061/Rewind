@@ -19,6 +19,8 @@ Additional notices are committed under `apps/desktop/assets/third-party-notices`
 ## Verification
 
 - Initial current-source `npm run check`: native lock, types, lint, formatting and 662 tests / 76 files passed (233.33 seconds).
+- An initial full desktop run passed 32/33; the recording/filter/restart case timed out with a busy Chromium temporary-profile file during cleanup. Its unchanged focused trace run passed in 9.1 seconds. The complete beta-package suite is rerun before publication; no production deadline or assertion was weakened.
+- Beta verification package built successfully from committed runtime source `c71743b`. Subsequent commits affect release verification only. Types, lint, formatting, native-lock metadata and all 256 committed original notice/source hashes pass.
 - Full packaged app, installed-browser, document-runtime, final production packaging and hardened release checks are being completed before publication; final observed results and artifact hashes will be recorded here.
 
 ## Deferred acceptance
