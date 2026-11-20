@@ -117,7 +117,11 @@ try {
   if (!$installedIcon -or !(Test-Path -LiteralPath $installedIcon)) { throw 'INSTALLED_BRAND_ICON_MISSING' }
   $expectedIcon = Join-Path (Get-Location) 'apps/desktop/assets/rewind.ico'
   if ((Get-FileHash -LiteralPath $installedIcon -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $expectedIcon -Algorithm SHA256).Hash) { throw 'INSTALLED_BRAND_ICON_DIFFERS' }
-  Record-Step 'CLEAN_INSTALL_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED'
+  if ($previousKeyHash) {
+    Record-Step 'UPGRADE_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED'
+  } else {
+    Record-Step 'CLEAN_INSTALL_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED'
+  }
   $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcuts[0].FullName)
   if ($shortcut.Arguments -notmatch '--processStart\s+"?Rewind\.exe"?' -or $shortcut.Arguments -match '--install') { throw 'INSTALLED_SHORTCUT_RESTARTS_SETUP' }
   Start-Process -FilePath $shortcuts[0].FullName -WindowStyle Normal | Out-Null
