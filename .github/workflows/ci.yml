@@ -39,6 +39,17 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      # Hosted runners expose TEMP as an 8.3 short path (C:\Users\RUNNER~1\...).
+      # Rewind's native path checks correctly refuse non-canonical folders, so
+      # synthetic fixtures need the long-form path on the same NTFS drive.
+      - name: Use the canonical temporary directory
+        shell: pwsh
+        run: |
+          $temp = node -p "require('fs').realpathSync.native(require('os').tmpdir())"
+          if (-not $temp) { throw "Could not resolve the temporary directory." }
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "Temporary directory: $temp"
       - run: npm ci
       - run: npm run check
       - run: npm run build
