@@ -4,3 +4,5 @@
 *.md text eol=lf
 *.yml text eol=lf
 * text=auto eol=lf
+# Preserve upstream notice/source archive bytes: provenance hashes cover originals.
+apps/desktop/assets/third-party-notices/** -text

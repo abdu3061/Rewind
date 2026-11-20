@@ -1,18 +1,20 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   activityEventSchema,
+  activityBatchSchema,
+  activityCursorSchema,
   failure,
   idSchema,
   timestampSchema,
   type ActivityEvent,
+  type ActivityCursor,
   type ActivityRepository,
-  type ActivityType,
   type Id,
   type Result,
-  type TimelineQueryOptions,
-  type TimelineSummary,
   type Timestamp,
+  type AssistantEvidenceSource,
 } from "@rewind/contracts";
+import { writeFileReference } from "./file-reference";
 
 interface ActivityRow {
   id: string;
@@ -24,82 +26,131 @@ interface ActivityRow {
 }
 
 function rowToActivityEvent(row: ActivityRow): Result<ActivityEvent> {
-  let parsedPayload: unknown;
   try {
-    parsedPayload = JSON.parse(row.payload);
-  } catch (error) {
-    return failure(
-      "INTEGRITY_FAILURE",
-      `Malformed activity payload JSON in record ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const parsed = activityEventSchema.safeParse({
+      id: row.id,
+      sessionId: row.session_id,
+      type: row.type,
+      source: row.source,
+      occurredAt: row.occurred_at,
+      payload: JSON.parse(row.payload),
+    });
+    if (parsed.success) return { ok: true, value: parsed.data };
+  } catch {
+    /* Malformed JSON is a stored integrity error; never echo payload text. */
   }
-
-  const candidate = {
-    id: row.id,
-    sessionId: row.session_id,
-    type: row.type,
-    source: row.source,
-    occurredAt: row.occurred_at,
-    payload: parsedPayload,
-  };
-
-  const parsed = activityEventSchema.safeParse(candidate);
-  if (!parsed.success) {
-    return failure(
-      "INTEGRITY_FAILURE",
-      `Corrupted activity event ${row.id}: ${parsed.error.issues[0]?.message ?? "Schema mismatch"}`,
-    );
-  }
-
-  return { ok: true, value: parsed.data };
+  return failure("INTEGRITY_FAILURE", "Stored activity is invalid.");
 }
 
 export class SqliteActivityRepository implements ActivityRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
+  /** Read after cleanup on the utility queue. Checkpoint protection matches maintenance, including legacy links. */
+  async getRetained(id: Id): Promise<Result<AssistantEvidenceSource | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "An activity ID is required.");
+    try {
+      const links = `SELECT checkpoint_id FROM checkpoint_activities WHERE activity_id=a.id
+        UNION SELECT checkpoint_id FROM checkpoint_browser_visits WHERE browser_visit_id=a.id`;
+      const row = this.db
+        .prepare(
+          `SELECT a.id,a.session_id,a.type,a.source,a.occurred_at,
+        CASE WHEN length(CAST(a.payload AS BLOB))<=262144 THEN a.payload ELSE NULL END AS payload,
+        EXISTS(SELECT 1 FROM checkpoints WHERE kept=1 AND id IN (${links})) AS kept,
+        max(a.occurred_at,coalesce((SELECT max(created_at) FROM checkpoints WHERE id IN (${links})),a.occurred_at)) AS retention_anchor
+        FROM activities a WHERE a.id=?`,
+        )
+        .get(id) as unknown as
+        (ActivityRow & { kept: number; retention_anchor: string }) | undefined;
+      if (!row) return { ok: true, value: null };
+      const event = rowToActivityEvent(row);
+      if (!event.ok) return event;
+      if (
+        ![0, 1].includes(row.kept) ||
+        !timestampSchema.safeParse(row.retention_anchor).success
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "Retained activity protection could not be verified.",
+        );
+      return {
+        ok: true,
+        value: {
+          event: event.value,
+          kept: row.kept === 1,
+          retentionAnchor: row.retention_anchor,
+        },
+      };
+    } catch {
+      return failure("INTEGRITY_FAILURE", "Retained activity is unavailable.");
+    }
+  }
+  async get(id: Id): Promise<Result<ActivityEvent | null>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "An activity ID is required.");
+    try {
+      const row = this.db
+        .prepare(
+          "SELECT id,session_id,type,source,occurred_at,payload FROM activities WHERE id=?",
+        )
+        .get(id) as unknown as ActivityRow | undefined;
+      return row ? rowToActivityEvent(row) : { ok: true, value: null };
+    } catch {
+      return failure("INTEGRITY_FAILURE", "Stored activity is unavailable.");
+    }
+  }
 
   async append(events: readonly ActivityEvent[]): Promise<Result<void>> {
+    const parsed = activityBatchSchema.safeParse(events);
+    if (!parsed.success)
+      return failure("INVALID_INPUT", "Activity batch is invalid.");
+    events = parsed.data;
     if (events.length === 0) {
       return { ok: true, value: undefined };
     }
 
-    // 1. Validate all events before touching the database
-    for (const event of events) {
-      const parsed = activityEventSchema.safeParse(event);
-      if (!parsed.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid activity event (${event.id ?? "unknown"}): ${parsed.error.issues[0]?.message ?? "Validation failed"}`,
-        );
-      }
-    }
-
+    let transactionStarted = false;
     try {
-      this.db.exec("BEGIN IMMEDIATE");
+      this.db.exec("BEGIN");
+      transactionStarted = true;
 
-      const checkSessionStmt = this.db.prepare(
-        "SELECT id FROM sessions WHERE id = ?",
+      const sessionQuery = this.db.prepare(
+        "SELECT status, started_at FROM sessions WHERE id = ?",
       );
-
-      // Verify session exists for foreign key integrity
-      const checkedSessions = new Set<string>();
       for (const event of events) {
-        if (!checkedSessions.has(event.sessionId)) {
-          const sessionRow = checkSessionStmt.get(event.sessionId);
-          if (!sessionRow) {
-            this.db.exec("ROLLBACK");
-            return failure(
-              "NOT_FOUND",
-              `Referenced session ${event.sessionId} does not exist.`,
-            );
-          }
-          checkedSessions.add(event.sessionId);
+        const session = sessionQuery.get(event.sessionId);
+        if (
+          !session ||
+          session.status !== "active" ||
+          typeof session.started_at !== "string" ||
+          event.occurredAt < session.started_at
+        ) {
+          this.db.exec("ROLLBACK");
+          transactionStarted = false;
+          return failure(
+            "FORBIDDEN",
+            "Activity requires an active matching session.",
+          );
+        }
+        if (event.type === "file-opened")
+          writeFileReference(this.db, event.payload);
+        if (
+          event.type === "file-change" &&
+          !this.db
+            .prepare("SELECT id FROM files WHERE id = ?")
+            .get(event.payload.fileId)
+        ) {
+          this.db.exec("ROLLBACK");
+          transactionStarted = false;
+          return failure(
+            "NOT_FOUND",
+            "Activity file reference is unavailable.",
+          );
         }
       }
 
       const stmt = this.db.prepare(`
         INSERT INTO activities (id, session_id, type, source, occurred_at, payload)
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING
       `);
 
       for (const event of events) {
@@ -115,210 +166,82 @@ export class SqliteActivityRepository implements ActivityRepository {
 
       this.db.exec("COMMIT");
       return { ok: true, value: undefined };
-    } catch (error) {
-      try {
-        this.db.exec("ROLLBACK");
-      } catch {
-        // Safe rollback ignore if transaction already rolled back
+    } catch {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure if rollback is no longer possible.
+        }
       }
-      return failure(
-        "INTERNAL",
-        `Failed to append activities: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return failure("INTERNAL", "Failed to append activities.");
     }
   }
 
   async list(
     sessionId: Id,
     limit: number,
-    before?: Timestamp,
+    before?: Timestamp | ActivityCursor,
   ): Promise<Result<ActivityEvent[]>> {
-    const validSessionId = idSchema.safeParse(sessionId);
-    if (!validSessionId.success) {
-      return failure("INVALID_INPUT", `Invalid session id: ${sessionId}`);
-    }
-
-    if (limit <= 0) {
-      return failure("INVALID_INPUT", "Limit must be a positive number.");
-    }
-
-    if (before) {
-      const validBefore = timestampSchema.safeParse(before);
-      if (!validBefore.success) {
-        return failure("INVALID_INPUT", `Invalid before timestamp: ${before}`);
-      }
-    }
-
-    return this.queryTimeline({
-      sessionId,
-      limit,
-      ...(before !== undefined ? { before } : {}),
-      order: "desc",
-    });
-  }
-
-  async queryTimeline(
-    options: TimelineQueryOptions,
-  ): Promise<Result<ActivityEvent[]>> {
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
-
-    if (options.sessionId) {
-      const validId = idSchema.safeParse(options.sessionId);
-      if (!validId.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid session id: ${options.sessionId}`,
-        );
-      }
-      conditions.push("session_id = ?");
-      params.push(options.sessionId);
-    }
-
-    if (options.types && options.types.length > 0) {
-      const placeholders = options.types.map(() => "?").join(", ");
-      conditions.push(`type IN (${placeholders})`);
-      params.push(...options.types);
-    }
-
-    if (options.source) {
-      conditions.push("source = ?");
-      params.push(options.source);
-    }
-
-    if (options.after) {
-      const validAfter = timestampSchema.safeParse(options.after);
-      if (!validAfter.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid after timestamp: ${options.after}`,
-        );
-      }
-      conditions.push("occurred_at > ?");
-      params.push(options.after);
-    }
-
-    if (options.before) {
-      const validBefore = timestampSchema.safeParse(options.before);
-      if (!validBefore.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid before timestamp: ${options.before}`,
-        );
-      }
-      conditions.push("occurred_at < ?");
-      params.push(options.before);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const orderDirection =
-      options.order?.toLowerCase() === "asc" ? "ASC" : "DESC";
-    const limitCount = Math.min(Math.max(options.limit ?? 50, 1), 500);
-
-    const sql = `
-      SELECT id, session_id, type, source, occurred_at, payload
-      FROM activities
-      ${whereClause}
-      ORDER BY occurred_at ${orderDirection}
-      LIMIT ?
-    `;
-    params.push(limitCount);
-
+    if (
+      !idSchema.safeParse(sessionId).success ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 1000 ||
+      (before !== undefined &&
+        !(
+          typeof before === "string" ? timestampSchema : activityCursorSchema
+        ).safeParse(before).success)
+    )
+      return failure("INVALID_INPUT", "Activity query is invalid.");
     try {
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...params) as unknown as ActivityRow[];
+      let rows: ActivityRow[];
 
-      const events: ActivityEvent[] = [];
+      if (typeof before === "object") {
+        rows = this.db
+          .prepare(
+            `
+          SELECT id, session_id, type, source, occurred_at, payload FROM activities
+          WHERE session_id = ? AND (occurred_at < ? OR (occurred_at = ? AND id < ?))
+          ORDER BY occurred_at DESC, id DESC LIMIT ?
+        `,
+          )
+          .all(
+            sessionId,
+            before.occurredAt,
+            before.occurredAt,
+            before.id,
+            limit,
+          ) as unknown as ActivityRow[];
+      } else if (before) {
+        const stmt = this.db.prepare(`
+          SELECT id, session_id, type, source, occurred_at, payload
+          FROM activities
+          WHERE session_id = ? AND occurred_at < ?
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT ?
+        `);
+        rows = stmt.all(sessionId, before, limit) as unknown as ActivityRow[];
+      } else {
+        const stmt = this.db.prepare(`
+          SELECT id, session_id, type, source, occurred_at, payload
+          FROM activities
+          WHERE session_id = ?
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT ?
+        `);
+        rows = stmt.all(sessionId, limit) as unknown as ActivityRow[];
+      }
+
+      const activities: ActivityEvent[] = [];
       for (const row of rows) {
-        const result = rowToActivityEvent(row);
-        if (!result.ok) return result;
-        events.push(result.value);
+        const parsed = rowToActivityEvent(row);
+        if (!parsed.ok) return parsed;
+        activities.push(parsed.value);
       }
-
-      return { ok: true, value: events };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to query timeline: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async count(sessionId: Id, type?: ActivityType): Promise<Result<number>> {
-    const validSessionId = idSchema.safeParse(sessionId);
-    if (!validSessionId.success) {
-      return failure("INVALID_INPUT", `Invalid session id: ${sessionId}`);
-    }
-
-    try {
-      let sql = "SELECT COUNT(*) as count FROM activities WHERE session_id = ?";
-      const params: (string | number)[] = [sessionId];
-      if (type) {
-        sql += " AND type = ?";
-        params.push(type);
-      }
-
-      const stmt = this.db.prepare(sql);
-      const row = stmt.get(...params) as unknown as { count: number };
-      return { ok: true, value: row?.count ?? 0 };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to count activities: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async getTimelineSummary(sessionId: Id): Promise<Result<TimelineSummary>> {
-    const validSessionId = idSchema.safeParse(sessionId);
-    if (!validSessionId.success) {
-      return failure("INVALID_INPUT", `Invalid session id: ${sessionId}`);
-    }
-
-    try {
-      const totalStmt = this.db.prepare(`
-        SELECT COUNT(*) as total, MIN(occurred_at) as first_at, MAX(occurred_at) as last_at
-        FROM activities
-        WHERE session_id = ?
-      `);
-      const totalRow = totalStmt.get(sessionId) as unknown as {
-        total: number;
-        first_at: string | null;
-        last_at: string | null;
-      };
-
-      const groupStmt = this.db.prepare(`
-        SELECT type, COUNT(*) as count
-        FROM activities
-        WHERE session_id = ?
-        GROUP BY type
-      `);
-      const groupRows = groupStmt.all(sessionId) as unknown as {
-        type: ActivityType;
-        count: number;
-      }[];
-
-      const eventsByType: Partial<Record<ActivityType, number>> = {};
-      for (const r of groupRows) {
-        eventsByType[r.type] = r.count;
-      }
-
-      return {
-        ok: true,
-        value: {
-          sessionId,
-          totalEvents: totalRow?.total ?? 0,
-          eventsByType,
-          firstEventAt: totalRow?.first_at ?? null,
-          lastEventAt: totalRow?.last_at ?? null,
-        },
-      };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to get timeline summary: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return { ok: true, value: activities };
+    } catch {
+      return failure("INTERNAL", "Failed to list activities.");
     }
   }
 }

@@ -1,224 +1,164 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ActivityEvent,
-  CollectorContext,
-  UserSettings,
-} from "@rewind/contracts";
+import { afterEach, expect, it, vi } from "vitest";
 import {
-  MockWindowQueryStrategy,
-  WindowsWindowQueryStrategy,
-} from "./window-strategy";
+  createDefaultSettings,
+  failure,
+  type CollectorContext,
+  type Result,
+} from "@rewind/contracts";
 import { WindowsCollector } from "./windows-collector";
-
-describe("WindowsCollector", () => {
-  let strategy: MockWindowQueryStrategy;
-  let collector: WindowsCollector;
-  let emittedEvents: ActivityEvent[];
-  let baseSettings: UserSettings;
-  let context: CollectorContext;
-
-  const sessionId = "00000000-0000-4000-8000-000000000001";
-  const generationId = "10000000-0000-4000-8000-000000000001";
-
-  beforeEach(() => {
-    strategy = new MockWindowQueryStrategy({
-      application: "Code.exe",
-      windowTitle: "session-coordinator.ts - Rewind",
-    });
-
-    collector = new WindowsCollector({
-      strategy,
-      pollIntervalMs: 50,
-      newId: () => "20000000-0000-4000-8000-000000000001",
-      now: () => "2026-11-09T10:00:00.000Z",
-    });
-
-    emittedEvents = [];
-    baseSettings = {
-      collectionConsent: true,
-      cloudAiEnabled: false,
-      articleExtractionEnabled: false,
-      retentionHours: 72,
-      storageLimitBytes: 1024 * 1024 * 100,
-      excludedApplications: [],
-      excludedSiteHosts: [],
-      excludedFolderPaths: [],
-      protectedFolderIds: [],
-    };
-
-    context = {
-      sessionId,
-      generationId,
-      settings: baseSettings,
-      emit: async (events) => {
-        emittedEvents.push(...events);
-        return { ok: true, value: undefined };
-      },
-    };
+import type { ActiveWindowInfo } from "./types";
+const now = "2026-11-16T10:00:00.000Z";
+const ok = async (): Promise<Result<void>> => ({ ok: true, value: undefined });
+const collectors: WindowsCollector[] = [];
+function context(consent = true): CollectorContext {
+  return {
+    sessionId: "00000000-0000-4000-8000-000000000001",
+    generationId: "00000000-0000-4000-8000-000000000002",
+    settings: { ...createDefaultSettings(), collectionConsent: consent },
+    emit: vi.fn(ok),
+  };
+}
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
   });
-
-  it("captures active window applications and emits foreground events", async () => {
-    await collector.start(context);
-
-    // Initial poll occurs immediately on start
-    expect(emittedEvents).toHaveLength(1);
-    expect(emittedEvents[0]).toMatchObject({
-      sessionId,
-      source: "windows",
-      type: "foreground",
-      payload: {
-        application: "Code.exe",
-        windowTitle: "session-coordinator.ts - Rewind",
-      },
-    });
-
-    await collector.stop();
+  return { promise, resolve };
+}
+function fixture() {
+  const query = vi.fn(async (): Promise<ActiveWindowInfo | null> => ({
+    application: "Code.exe",
+    windowTitle: "Synthetic",
+  }));
+  const close = vi.fn(async () => {});
+  const collector = new WindowsCollector({
+    strategy: { getActiveWindow: query, close },
+    pollIntervalMs: 60000,
+    now: () => now,
+    newId: () => "00000000-0000-4000-8000-000000000003",
   });
-
-  it("filters out applications in excludedApplications setting", async () => {
-    baseSettings.excludedApplications = ["KeePass.exe", "1password"];
-    strategy.setActiveWindow({
-      application: "keepass.exe",
-      windowTitle: "Master Key Vault",
-    });
-
-    await collector.start(context);
-    expect(emittedEvents).toHaveLength(0);
-
-    // Switch to unexcluded app
-    strategy.setActiveWindow({
-      application: "terminal",
-      windowTitle: "bash",
-    });
-    await collector.poll();
-
-    expect(emittedEvents).toHaveLength(1);
-    expect(emittedEvents[0]?.payload).toMatchObject({
-      application: "terminal",
-      windowTitle: "bash",
-    });
-
-    await collector.stop();
+  collectors.push(collector);
+  return { collector, query, close };
+}
+afterEach(async () => {
+  for (const collector of collectors.splice(0)) await collector.stop();
+});
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+it("rejects missing consent without querying or starting a timer", async () => {
+  const f = fixture();
+  expect((await f.collector.start(context(false))).ok).toBe(false);
+  expect(f.query).not.toHaveBeenCalled();
+});
+it("waits for helper release and surfaces a failed close rather than acknowledging stop", async () => {
+  const f = fixture();
+  await f.collector.start(context());
+  const release = deferred<void>();
+  f.close.mockImplementationOnce(() => release.promise);
+  let done = false;
+  const stopping = f.collector.stop().then((result) => {
+    done = true;
+    return result;
   });
-
-  it("deduplicates consecutive identical window observations", async () => {
-    await collector.start(context);
-    expect(emittedEvents).toHaveLength(1);
-
-    // Poll again with same active window
-    await collector.poll();
-    expect(emittedEvents).toHaveLength(1); // No duplicate emitted
-
-    // Switch window
-    strategy.setActiveWindow({
-      application: "chrome.exe",
-      windowTitle: "GitHub PR #3",
-    });
-    await collector.poll();
-
-    expect(emittedEvents).toHaveLength(2);
-    expect(emittedEvents[1]?.payload).toMatchObject({
-      application: "chrome.exe",
-      windowTitle: "GitHub PR #3",
-    });
-
-    await collector.stop();
+  await turn();
+  expect(done).toBe(false);
+  release.resolve();
+  expect((await stopping).ok).toBe(true);
+  f.close.mockRejectedValueOnce(new Error("Synthetic helper failure"));
+  expect((await f.collector.stop()).ok).toBe(false);
+});
+it("reports startup query failure instead of pretending successful capture", async () => {
+  const f = fixture();
+  f.query.mockRejectedValue(new Error("Synthetic private text"));
+  expect(await f.collector.start(context())).toMatchObject({ ok: false });
+});
+it("waits for an in-flight native query and rejects its late result after stop", async () => {
+  const f = fixture();
+  const c = context();
+  await f.collector.start(c);
+  await turn();
+  const pending = deferred<ActiveWindowInfo | null>();
+  f.query.mockImplementationOnce(() => pending.promise);
+  const poll = f.collector.poll();
+  await turn();
+  let stopped = false;
+  const stop = f.collector.stop().then(() => {
+    stopped = true;
   });
-
-  it("respects lifecycle states: pauses, resumes, and stops", async () => {
-    await collector.start(context);
-    expect(emittedEvents).toHaveLength(1);
-
-    await collector.pause();
-    strategy.setActiveWindow({
-      application: "slack.exe",
-      windowTitle: "general",
-    });
-    await collector.poll();
-    // No events should be emitted while paused
-    expect(emittedEvents).toHaveLength(1);
-
-    // Resume with fresh context
-    const freshContext: CollectorContext = {
-      ...context,
-      generationId: "10000000-0000-4000-8000-000000000002",
-    };
-    await collector.resume(freshContext);
-    expect(emittedEvents).toHaveLength(2);
-    expect(emittedEvents[1]?.payload).toMatchObject({
-      application: "slack.exe",
-    });
-
-    await collector.stop();
+  await turn();
+  const wasStopped = stopped;
+  pending.resolve({ application: "Other.exe", windowTitle: "Synthetic late" });
+  await Promise.all([poll, stop]);
+  expect(wasStopped).toBe(false);
+  expect(
+    vi
+      .mocked(c.emit)
+      .mock.calls.flatMap(([events]) => events)
+      .some(
+        (event) =>
+          event.type === "foreground" &&
+          event.payload.windowTitle === "Synthetic late",
+      ),
+  ).toBe(false);
+});
+it("does not deduplicate an observation rejected by ingestion", async () => {
+  const f = fixture();
+  const c = context();
+  vi.mocked(c.emit).mockResolvedValueOnce(failure("UNAVAILABLE", "Synthetic"));
+  await f.collector.start(c);
+  await turn();
+  await f.collector.poll();
+  await f.collector.poll();
+  expect(
+    vi
+      .mocked(c.emit)
+      .mock.calls.filter(([events]) =>
+        events.some((event) => event.type === "foreground"),
+      ).length,
+  ).toBeGreaterThanOrEqual(2);
+});
+it("waits for a pending emit before pause acknowledgement", async () => {
+  const f = fixture();
+  const c = context();
+  await f.collector.start(c);
+  const pending = deferred<Result<void>>();
+  vi.mocked(c.emit).mockImplementationOnce(() => pending.promise);
+  const poll = f.collector.poll();
+  await turn();
+  let stopped = false;
+  const pause = f.collector.pause().then(() => {
+    stopped = true;
   });
-
-  it("does not emit events when collectionConsent is false", async () => {
-    baseSettings.collectionConsent = false;
-    await collector.start(context);
-    expect(emittedEvents).toHaveLength(0);
-
-    await collector.poll();
-    expect(emittedEvents).toHaveLength(0);
-
-    await collector.stop();
+  await turn();
+  const early = stopped;
+  pending.resolve({ ok: true, value: undefined });
+  await Promise.all([poll, pause]);
+  expect(early).toBe(false);
+  expect((await f.collector.poll()).ok).toBe(false);
+});
+it("does not activate after stop overtakes an asynchronous startup query", async () => {
+  const f = fixture();
+  const pending = deferred<ActiveWindowInfo | null>();
+  f.query.mockImplementationOnce(() => pending.promise);
+  const start = f.collector.start(context());
+  await turn();
+  const stop = f.collector.stop();
+  pending.resolve(null);
+  expect((await start).ok).toBe(false);
+  expect((await stop).ok).toBe(true);
+  expect((await f.collector.poll()).ok).toBe(false);
+});
+it("reports a capture gap on runtime query failure without sensitive diagnostics", async () => {
+  const f = fixture();
+  const c = context();
+  await f.collector.start(c);
+  f.query.mockRejectedValueOnce(new Error("Synthetic private title/path"));
+  const warn = vi.spyOn(console, "warn");
+  expect(await f.collector.poll()).toMatchObject({
+    ok: false,
+    error: { message: "Window query is unavailable." },
   });
-
-  it("safely catches OS script and strategy errors, logs a warning, and avoids throwing", async () => {
-    const errorStrategy: MockWindowQueryStrategy = {
-      queryCount: 0,
-      setActiveWindow: () => {},
-      getActiveWindow: async () => {
-        throw new Error(
-          "PowerShell process exited with code 1: no desktop window",
-        );
-      },
-    } as unknown as MockWindowQueryStrategy;
-
-    const errorCollector = new WindowsCollector({
-      strategy: errorStrategy,
-      pollIntervalMs: 50,
-      newId: () => "20000000-0000-4000-8000-000000000001",
-      now: () => "2026-11-09T10:00:00.000Z",
-    });
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    // Starting with a failing strategy must not crash or reject
-    const startResult = await errorCollector.start(context);
-    expect(startResult.ok).toBe(true);
-
-    // Polling directly must not throw
-    await expect(errorCollector.poll()).resolves.toBeUndefined();
-    expect(emittedEvents).toHaveLength(0);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[WindowsCollector] Strategy getActiveWindow threw an error:",
-      expect.stringContaining("PowerShell process exited with code 1"),
-    );
-
-    await errorCollector.stop();
-    warnSpy.mockRestore();
-  });
-
-  it("handles null fallback cleanly when no active window is found in headless environments", async () => {
-    strategy.setActiveWindow(null);
-    await collector.start(context);
-    expect(emittedEvents).toHaveLength(0);
-
-    await collector.poll();
-    expect(emittedEvents).toHaveLength(0);
-
-    await collector.stop();
-  });
-
-  it("WindowsWindowQueryStrategy handles OS script errors gracefully and returns fallback null", async () => {
-    const queryStrategy = new WindowsWindowQueryStrategy();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    // In environments without powershell or with failing scripts, must return null and never throw
-    const result = await queryStrategy.getActiveWindow();
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-
-    warnSpy.mockRestore();
-  });
+  expect(c.emit).toHaveBeenCalledWith([
+    expect.objectContaining({ type: "capture-gap" }),
+  ]);
+  expect(warn).not.toHaveBeenCalled();
 });

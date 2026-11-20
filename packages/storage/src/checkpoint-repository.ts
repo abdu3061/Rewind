@@ -1,14 +1,16 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
-  checkpointSchema,
   failure,
+  checkpointSchema,
+  checkpointListQuerySchema,
+  checkpointSummarySchema,
   idSchema,
-  timestampSchema,
   type Checkpoint,
-  type CheckpointQueryOptions,
   type CheckpointRepository,
   type Id,
   type Result,
+  type CheckpointListQuery,
+  type CheckpointSummary,
 } from "@rewind/contracts";
 
 interface CheckpointRow {
@@ -19,115 +21,106 @@ interface CheckpointRow {
   kept: number;
   project_references: string | null;
 }
+function kept(value: number): boolean {
+  if (value !== 0 && value !== 1) throw new Error("CHECKPOINT_KEEP_INVALID");
+  return value === 1;
+}
 
 export class SqliteCheckpointRepository implements CheckpointRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
-  private hydrateCheckpoint(row: CheckpointRow): Result<Checkpoint> {
-    try {
-      // 1. Fetch linked file version IDs
-      const fvStmt = this.db.prepare(`
-        SELECT file_version_id
-        FROM checkpoint_file_versions
-        WHERE checkpoint_id = ?
-        ORDER BY file_version_id ASC
-      `);
-      const fvRows = fvStmt.all(row.id) as unknown as {
-        file_version_id: string;
-      }[];
-      const fileVersionIds = fvRows.map((r) => r.file_version_id);
+  private hydrateCheckpoint(row: CheckpointRow): Checkpoint {
+    // 1. Fetch linked file version IDs from the junction table
+    const fvStmt = this.db.prepare(`
+      SELECT file_version_id
+      FROM checkpoint_file_versions
+      WHERE checkpoint_id = ?
+    `);
+    const fvRows = fvStmt.all(row.id) as unknown as {
+      file_version_id: string;
+    }[];
+    const fileVersionIds = fvRows.map((r) => r.file_version_id);
 
-      // 2. Fetch linked browser visit IDs
-      const bvStmt = this.db.prepare(`
-        SELECT browser_visit_id
-        FROM checkpoint_browser_visits
-        WHERE checkpoint_id = ?
-        ORDER BY browser_visit_id ASC
-      `);
-      const bvRows = bvStmt.all(row.id) as unknown as {
-        browser_visit_id: string;
-      }[];
-      const browserVisitIds = bvRows.map((r) => r.browser_visit_id);
+    // 2. Fetch linked browser visit IDs from the junction table
+    const bvStmt = this.db.prepare(`
+      SELECT browser_visit_id
+      FROM checkpoint_browser_visits
+      WHERE checkpoint_id = ?
+    `);
+    const bvRows = bvStmt.all(row.id) as unknown as {
+      browser_visit_id: string;
+    }[];
+    const browserVisitIds = bvRows.map((r) => r.browser_visit_id);
+    const activityIds = this.db
+      .prepare(
+        "SELECT activity_id FROM checkpoint_activities WHERE checkpoint_id=? ORDER BY activity_id",
+      )
+      .all(row.id)
+      .map((r) => (r as { activity_id: string }).activity_id);
 
-      let parsedProjects: unknown = [];
-      if (row.project_references) {
-        parsedProjects = JSON.parse(row.project_references);
-      }
-
-      const candidate = {
-        id: row.id,
-        sessionId: row.session_id,
-        name: row.name,
-        createdAt: row.created_at,
-        kept: row.kept === 1,
-        fileVersionIds,
-        browserVisitIds,
-        projectReferences: parsedProjects,
-      };
-
-      const parsed = checkpointSchema.safeParse(candidate);
-      if (!parsed.success) {
-        return failure(
-          "INTEGRITY_FAILURE",
-          `Corrupted checkpoint record ${row.id}: ${parsed.error.issues[0]?.message ?? "Schema mismatch"}`,
-        );
-      }
-
-      return { ok: true, value: parsed.data };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to hydrate checkpoint ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    return checkpointSchema.parse({
+      id: row.id,
+      sessionId: row.session_id,
+      name: row.name,
+      createdAt: row.created_at,
+      kept: kept(row.kept),
+      fileVersionIds,
+      activityIds,
+      browserVisitIds,
+      projectReferences: row.project_references
+        ? JSON.parse(row.project_references)
+        : [],
+    });
   }
 
   async save(checkpoint: Checkpoint): Promise<Result<void>> {
     const parsed = checkpointSchema.safeParse(checkpoint);
-    if (!parsed.success) {
+    if (
+      !parsed.success ||
+      (parsed.success &&
+        [
+          parsed.data.fileVersionIds,
+          parsed.data.browserVisitIds,
+          parsed.data.activityIds,
+        ].some((ids) => new Set(ids).size !== ids.length))
+    )
       return failure(
         "INVALID_INPUT",
-        `Invalid checkpoint input: ${parsed.error.issues[0]?.message ?? "Validation failed"}`,
+        "Checkpoint evidence is invalid or duplicated.",
       );
-    }
-
+    checkpoint = parsed.data;
+    if (
+      checkpoint.browserVisitIds.some(
+        (id) => !checkpoint.activityIds.includes(id),
+      )
+    )
+      return failure(
+        "INVALID_INPUT",
+        "Browser checkpoint references must also be selected activity evidence.",
+      );
+    let transactionStarted = false;
     try {
-      // 1. Verify referenced session exists
-      const sessionCheck = this.db.prepare(
-        "SELECT id FROM sessions WHERE id = ?",
-      );
-      if (!sessionCheck.get(checkpoint.sessionId)) {
+      const existing = this.db
+        .prepare("SELECT session_id,created_at FROM checkpoints WHERE id=?")
+        .get(checkpoint.id);
+      if (
+        existing &&
+        (existing.session_id !== checkpoint.sessionId ||
+          existing.created_at !== checkpoint.createdAt)
+      )
         return failure(
-          "NOT_FOUND",
-          `Referenced session ${checkpoint.sessionId} does not exist.`,
+          "CONFLICT",
+          "A checkpoint cannot change its session or creation identity.",
         );
-      }
+      this.db.exec("BEGIN");
+      transactionStarted = true;
 
-      // 2. Verify all referenced file versions exist
-      if (checkpoint.fileVersionIds.length > 0) {
-        const fvCheck = this.db.prepare(
-          "SELECT id FROM file_versions WHERE id = ?",
-        );
-        for (const fvId of checkpoint.fileVersionIds) {
-          if (!fvCheck.get(fvId)) {
-            return failure(
-              "NOT_FOUND",
-              `Referenced file version ${fvId} does not exist.`,
-            );
-          }
-        }
-      }
-
-      this.db.exec("BEGIN IMMEDIATE");
-
-      // 3. Upsert main checkpoint record
+      // 1. Insert or update the main checkpoint record
       const stmt = this.db.prepare(`
         INSERT INTO checkpoints (id, session_id, name, created_at, kept, project_references)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          session_id = excluded.session_id,
           name = excluded.name,
-          created_at = excluded.created_at,
           kept = excluded.kept,
           project_references = excluded.project_references
       `);
@@ -141,7 +134,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
         JSON.stringify(checkpoint.projectReferences),
       );
 
-      // 4. Update junction tables
+      // 2. Clear old junction entries (if updating an existing checkpoint)
       this.db
         .prepare("DELETE FROM checkpoint_file_versions WHERE checkpoint_id = ?")
         .run(checkpoint.id);
@@ -150,7 +143,11 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
           "DELETE FROM checkpoint_browser_visits WHERE checkpoint_id = ?",
         )
         .run(checkpoint.id);
+      this.db
+        .prepare("DELETE FROM checkpoint_activities WHERE checkpoint_id=?")
+        .run(checkpoint.id);
 
+      // 3. Insert linked file versions
       if (checkpoint.fileVersionIds.length > 0) {
         const fvStmt = this.db.prepare(`
           INSERT INTO checkpoint_file_versions (checkpoint_id, file_version_id)
@@ -161,6 +158,7 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
         }
       }
 
+      // 4. Insert linked browser visits
       if (checkpoint.browserVisitIds.length > 0) {
         const bvStmt = this.db.prepare(`
           INSERT INTO checkpoint_browser_visits (checkpoint_id, browser_visit_id)
@@ -170,28 +168,29 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
           bvStmt.run(checkpoint.id, bvId);
         }
       }
+      const activityInsert = this.db.prepare(
+        "INSERT INTO checkpoint_activities(checkpoint_id,activity_id) VALUES (?,?)",
+      );
+      for (const id of checkpoint.activityIds)
+        activityInsert.run(checkpoint.id, id);
 
       this.db.exec("COMMIT");
       return { ok: true, value: undefined };
-    } catch (error) {
-      try {
-        this.db.exec("ROLLBACK");
-      } catch {
-        // Safe ignore
+    } catch {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure if rollback is no longer possible.
+        }
       }
-      return failure(
-        "INTERNAL",
-        `Failed to save checkpoint: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      return failure("INTERNAL", "Checkpoint could not be saved.");
     }
   }
 
   async get(id: Id): Promise<Result<Checkpoint | null>> {
-    const validId = idSchema.safeParse(id);
-    if (!validId.success) {
-      return failure("INVALID_INPUT", `Invalid checkpoint id: ${id}`);
-    }
-
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "A checkpoint ID is required.");
     try {
       const stmt = this.db.prepare(`
         SELECT id, session_id, name, created_at, kept, project_references
@@ -200,180 +199,113 @@ export class SqliteCheckpointRepository implements CheckpointRepository {
       `);
 
       const row = stmt.get(id) as unknown as CheckpointRow | undefined;
-      if (!row) {
-        return { ok: true, value: null };
-      }
-
-      return this.hydrateCheckpoint(row);
-    } catch (error) {
+      return { ok: true, value: row ? this.hydrateCheckpoint(row) : null };
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to get checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored checkpoint is unavailable or invalid.",
       );
     }
   }
 
   async list(sessionId: Id): Promise<Result<Checkpoint[]>> {
-    const validId = idSchema.safeParse(sessionId);
-    if (!validId.success) {
-      return failure("INVALID_INPUT", `Invalid session id: ${sessionId}`);
-    }
-
-    return this.queryCheckpoints({
-      sessionId,
-      order: "desc",
-    });
-  }
-
-  async listKept(sessionId?: Id): Promise<Result<Checkpoint[]>> {
-    if (sessionId) {
-      const validId = idSchema.safeParse(sessionId);
-      if (!validId.success) {
-        return failure("INVALID_INPUT", `Invalid session id: ${sessionId}`);
-      }
-    }
-
-    return this.queryCheckpoints({
-      ...(sessionId !== undefined ? { sessionId } : {}),
-      keptOnly: true,
-      order: "desc",
-    });
-  }
-
-  async setKept(id: Id, kept: boolean): Promise<Result<void>> {
-    const validId = idSchema.safeParse(id);
-    if (!validId.success) {
-      return failure("INVALID_INPUT", `Invalid checkpoint id: ${id}`);
-    }
-
+    if (!idSchema.safeParse(sessionId).success)
+      return failure("INVALID_INPUT", "A session ID is required.");
     try {
-      const checkStmt = this.db.prepare(
-        "SELECT id FROM checkpoints WHERE id = ?",
-      );
-      if (!checkStmt.get(id)) {
-        return failure("NOT_FOUND", `Checkpoint with id ${id} not found.`);
-      }
-
       const stmt = this.db.prepare(`
-        UPDATE checkpoints
-        SET kept = ?
-        WHERE id = ?
+        SELECT id, session_id, name, created_at, kept, project_references
+        FROM checkpoints
+        WHERE session_id = ?
+        ORDER BY created_at DESC, id DESC LIMIT 100
       `);
-      stmt.run(kept ? 1 : 0, id);
 
-      return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to update checkpoint kept status: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async delete(id: Id): Promise<Result<void>> {
-    const validId = idSchema.safeParse(id);
-    if (!validId.success) {
-      return failure("INVALID_INPUT", `Invalid checkpoint id: ${id}`);
-    }
-
-    try {
-      const checkStmt = this.db.prepare(
-        "SELECT id FROM checkpoints WHERE id = ?",
-      );
-      if (!checkStmt.get(id)) {
-        return failure("NOT_FOUND", `Checkpoint with id ${id} not found.`);
-      }
-
-      const stmt = this.db.prepare("DELETE FROM checkpoints WHERE id = ?");
-      stmt.run(id);
-
-      return { ok: true, value: undefined };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to delete checkpoint: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async queryCheckpoints(
-    options: CheckpointQueryOptions,
-  ): Promise<Result<Checkpoint[]>> {
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
-
-    if (options.sessionId) {
-      const validId = idSchema.safeParse(options.sessionId);
-      if (!validId.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid session id: ${options.sessionId}`,
-        );
-      }
-      conditions.push("session_id = ?");
-      params.push(options.sessionId);
-    }
-
-    if (options.keptOnly) {
-      conditions.push("kept = 1");
-    }
-
-    if (options.after) {
-      const validAfter = timestampSchema.safeParse(options.after);
-      if (!validAfter.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid after timestamp: ${options.after}`,
-        );
-      }
-      conditions.push("created_at > ?");
-      params.push(options.after);
-    }
-
-    if (options.before) {
-      const validBefore = timestampSchema.safeParse(options.before);
-      if (!validBefore.success) {
-        return failure(
-          "INVALID_INPUT",
-          `Invalid before timestamp: ${options.before}`,
-        );
-      }
-      conditions.push("created_at < ?");
-      params.push(options.before);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const orderDirection =
-      options.order?.toLowerCase() === "asc" ? "ASC" : "DESC";
-    const limitCount = Math.min(Math.max(options.limit ?? 100, 1), 500);
-
-    const sql = `
-      SELECT id, session_id, name, created_at, kept, project_references
-      FROM checkpoints
-      ${whereClause}
-      ORDER BY created_at ${orderDirection}
-      LIMIT ?
-    `;
-    params.push(limitCount);
-
-    try {
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...params) as unknown as CheckpointRow[];
-
-      const checkpoints: Checkpoint[] = [];
-      for (const row of rows) {
-        const result = this.hydrateCheckpoint(row);
-        if (!result.ok) return result;
-        checkpoints.push(result.value);
-      }
-
+      const rows = stmt.all(sessionId) as unknown as CheckpointRow[];
+      const checkpoints = rows.map((r) => this.hydrateCheckpoint(r));
       return { ok: true, value: checkpoints };
-    } catch (error) {
+    } catch {
       return failure(
         "INTERNAL",
-        `Failed to query checkpoints: ${error instanceof Error ? error.message : String(error)}`,
+        "Stored checkpoints are unavailable or invalid.",
       );
+    }
+  }
+
+  async query(
+    input: CheckpointListQuery,
+  ): Promise<Result<CheckpointSummary[]>> {
+    const parsed = checkpointListQuerySchema.safeParse(input);
+    if (!parsed.success)
+      return failure(
+        "INVALID_INPUT",
+        "A bounded checkpoint query is required.",
+      );
+    const query = parsed.data,
+      conditions: string[] = [],
+      values: (string | number)[] = [];
+    if (query.id) {
+      conditions.push("c.id=?");
+      values.push(query.id);
+    }
+    if (query.sessionId) {
+      conditions.push("c.session_id=?");
+      values.push(query.sessionId);
+    }
+    if (query.before) {
+      conditions.push("(c.created_at < ? OR (c.created_at=? AND c.id<?))");
+      values.push(
+        query.before.createdAt,
+        query.before.createdAt,
+        query.before.id,
+      );
+    }
+    values.push(query.limit);
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT c.*,
+        (SELECT count(*) FROM checkpoint_file_versions v WHERE v.checkpoint_id=c.id) AS version_count,
+        (SELECT count(*) FROM checkpoint_activities a WHERE a.checkpoint_id=c.id) AS activity_count
+        FROM checkpoints c ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+        ORDER BY c.created_at DESC,c.id DESC LIMIT ?`,
+        )
+        .all(...values);
+      return {
+        ok: true,
+        value: rows.map((value) => {
+          const row = value as CheckpointRow & {
+            version_count: number;
+            activity_count: number;
+          };
+          return checkpointSummarySchema.parse({
+            id: row.id,
+            sessionId: row.session_id,
+            name: row.name,
+            createdAt: row.created_at,
+            kept: kept(row.kept),
+            fileVersionCount: row.version_count,
+            activityCount: row.activity_count,
+          });
+        }),
+      };
+    } catch {
+      return failure(
+        "INTEGRITY_FAILURE",
+        "Stored checkpoint summaries are unavailable.",
+      );
+    }
+  }
+  async remove(id: Id): Promise<Result<void>> {
+    if (!idSchema.safeParse(id).success)
+      return failure("INVALID_INPUT", "A checkpoint ID is required.");
+    try {
+      const removed = this.db
+        .prepare("DELETE FROM checkpoints WHERE id=?")
+        .run(id);
+      return Number(removed.changes)
+        ? { ok: true, value: undefined }
+        : failure("NOT_FOUND", "This checkpoint is no longer available.");
+    } catch {
+      return failure("UNAVAILABLE", "The checkpoint could not be removed.");
     }
   }
 }

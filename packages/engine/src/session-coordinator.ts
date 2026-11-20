@@ -1,302 +1,862 @@
 import { randomUUID } from "node:crypto";
 import {
   activityEventSchema,
+  createDefaultSettings,
   failure,
+  idSchema,
+  sessionSchema,
+  userSettingsSchema,
+  snapshotCaptureSchema,
+  fileVersionSchema,
   type ActivityEvent,
-  type BrowserVisitInput,
+  type AppError,
   type CollectorContext,
   type CollectorRegistry,
-  type FileReference,
-  type Id,
-  type Repositories,
   type Result,
+  type Session,
   type SessionAction,
   type SessionState,
+  type SessionStorage,
   type UserSettings,
+  type FileCaptureIngestion,
 } from "@rewind/contracts";
-import type { SessionService } from "./session-service";
+import { Operations } from "./operations";
+import { SessionService } from "./session-service";
+import { isExcluded } from "./event-exclusions";
 
-export interface SessionCoordinatorOptions {
+interface CommonOptions {
   service: SessionService;
-  repositories: Repositories;
-  collectors: CollectorRegistry;
-  getSettings: () => UserSettings;
+  operationTimeoutMs?: number;
   newGenerationId?: () => string;
+  onChanged?: () => void;
 }
+export type SessionCoordinatorOptions = CommonOptions &
+  (
+    | { mode: "session-only" }
+    | {
+        mode: "repository";
+        storage: SessionStorage;
+        collectors: CollectorRegistry;
+        getSettings: () => UserSettings;
+        fileCaptures?: FileCaptureIngestion;
+        /** Engine authorization; a collector's path or URL assertion is insufficient. Denied if absent. */
+        authorizeResource?: (
+          event: ActivityEvent,
+          settings: Readonly<UserSettings>,
+        ) => Promise<Result<void>>;
+      }
+  );
+export interface CoordinatorStatus {
+  collection: "off" | "starting" | "active" | "stopping" | "unavailable";
+  unavailable: boolean;
+  shutdown: boolean;
+  error: AppError | null;
+}
+interface Run {
+  id: string;
+  sessionId: string;
+  settings: UserSettings;
+  permissionKey: string;
+}
+const ok = (): Result<void> => ({ ok: true, value: undefined });
+const maxCommands = 64;
+const maxBatches = 32;
+const maxBatchEvents = 128;
+const maxBatchBytes = 256 * 1024;
+const hasConsent = (settings: UserSettings) =>
+  settings.collectionConsent ||
+  settings.folderCollectionConsent ||
+  settings.browserCollectionConsent;
+const sourceApproved = (source: string, settings: UserSettings): boolean =>
+  source === "windows"
+    ? settings.collectionConsent
+    : source === "folders"
+      ? settings.folderCollectionConsent
+      : source === "browser"
+        ? settings.browserCollectionConsent
+        : false;
 
+/** Adapted from PR #5; lifecycle ports remain independent of Electron and native adapters. */
 export class SessionCoordinator {
-  private readonly service: SessionService;
-  private readonly repositories: Repositories;
-  private readonly collectors: CollectorRegistry;
-  private readonly getSettings: () => UserSettings;
-  private readonly newGenerationId: () => string;
+  private readonly operations: Operations;
+  private commandTail: Promise<unknown> = Promise.resolve();
+  private ingestionTail: Promise<unknown> = Promise.resolve();
+  private commandCount = 0;
+  private batchCount = 0;
+  private cleanupPending = false;
+  private interruption: Promise<Result<void>> | null = null;
+  private interruptionFailure: AppError | null = null;
+  private epoch = 0;
+  private run: Run | null = null;
+  private initialized = false;
+  private closing = false;
+  private closed = false;
+  private shutdownAttempt: Promise<Result<void>> | null = null;
+  private settingsOverride: UserSettings | null = null;
+  private status: CoordinatorStatus = {
+    collection: "off",
+    unavailable: false,
+    shutdown: false,
+    error: null,
+  };
 
-  private currentGenerationId: string | null = null;
-
-  constructor(options: SessionCoordinatorOptions) {
-    this.service = options.service;
-    this.repositories = options.repositories;
-    this.collectors = options.collectors;
-    this.getSettings = options.getSettings;
-    this.newGenerationId = options.newGenerationId ?? randomUUID;
+  constructor(private readonly options: SessionCoordinatorOptions) {
+    const timeout = options.operationTimeoutMs ?? 5000;
+    if (!Number.isFinite(timeout) || timeout < 1 || timeout > 60000)
+      throw new Error("A bounded operation timeout is required.");
+    this.operations = new Operations(timeout);
   }
-
   getState(): SessionState {
-    return this.service.getState();
+    return this.options.service.getState();
   }
-
+  getStatus(): CoordinatorStatus {
+    return structuredClone(this.status);
+  }
   getActiveGenerationId(): string | null {
-    return this.currentGenerationId;
+    return this.run?.id ?? null;
+  }
+  /** Authorized read-model work observes completed lifecycle transactions, never a candidate. */
+  read<T>(query: () => Promise<Result<T>>): Promise<Result<T>> {
+    if (this.closing)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session service is shutting down."),
+      );
+    return this.enqueue(async () => {
+      const ready = await this.initializeInternal();
+      return ready.ok ? this.operations.run("History query", query) : ready;
+    });
   }
 
-  async recordBrowserVisit(input: BrowserVisitInput): Promise<Result<void>> {
-    const browserCol = this.collectors.browser as unknown as Record<
-      string,
-      unknown
-    >;
-    if (typeof browserCol.recordVisit === "function") {
-      return (
-        browserCol as {
-          recordVisit: (i: BrowserVisitInput) => Promise<Result<void>>;
-        }
-      ).recordVisit(input);
-    }
-    return failure(
-      "NOT_IMPLEMENTED",
-      "Browser collector does not support recordVisit.",
-    );
+  initialize(): Promise<Result<SessionState>> {
+    if (this.closing)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session service is shutting down."),
+      );
+    return this.enqueue(async () => {
+      const ready = await this.initializeInternal();
+      if (!ready.ok) return ready;
+      return this.status.unavailable
+        ? failure("UNAVAILABLE", "Session service requires recovery.")
+        : { ok: true, value: this.getState() };
+    }).finally(() => this.notify());
   }
-
-  async recordFileOpened(file: FileReference): Promise<Result<void>> {
-    const foldersCol = this.collectors.folders as unknown as Record<
-      string,
-      unknown
-    >;
-    if (typeof foldersCol.recordFileOpened === "function") {
-      return (
-        foldersCol as {
-          recordFileOpened: (f: FileReference) => Promise<Result<void>>;
-        }
-      ).recordFileOpened(file);
+  execute(action: SessionAction): Promise<Result<SessionState>> {
+    if (this.closing)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session service is shutting down."),
+      );
+    if (action === "pause" || action === "end") {
+      this.invalidate();
+      this.interruptCollectors();
     }
-    return failure(
-      "NOT_IMPLEMENTED",
-      "Folder collector does not support recordFileOpened.",
-    );
-  }
-
-  async recordFileChange(
-    fileId: Id,
-    change: "created" | "updated" | "deleted" | "renamed",
-  ): Promise<Result<void>> {
-    const foldersCol = this.collectors.folders as unknown as Record<
-      string,
-      unknown
-    >;
-    if (typeof foldersCol.recordFileChange === "function") {
-      return (
-        foldersCol as {
-          recordFileChange: (
-            id: Id,
-            c: "created" | "updated" | "deleted" | "renamed",
-          ) => Promise<Result<void>>;
-        }
-      ).recordFileChange(fileId, change);
-    }
-    return failure(
-      "NOT_IMPLEMENTED",
-      "Folder collector does not support recordFileChange.",
-    );
-  }
-
-  async execute(action: SessionAction): Promise<Result<SessionState>> {
-    const result = this.service.execute(action);
-    if (!result.ok) {
-      return result;
-    }
-
-    const state = result.value;
-    const session = state.session;
-    const settings = this.getSettings();
-
-    if (action === "start" && session) {
-      // 1. Persist session into SQLite
-      await this.repositories.sessions.save(session);
-
-      // 2. Start collectors only if consent is granted
-      if (settings.collectionConsent) {
-        this.currentGenerationId = this.newGenerationId();
-        const context = this.createCollectorContext(
-          session.id,
-          this.currentGenerationId,
-          settings,
+    const ticket = this.epoch;
+    return this.enqueue(async () => {
+      const ready = await this.initializeInternal();
+      if (!ready.ok) return ready;
+      if (action === "get")
+        return this.status.unavailable
+          ? failure(
+              "UNAVAILABLE",
+              "Session service requires a successful stop before continuing.",
+            )
+          : { ok: true, value: this.getState() };
+      if (
+        (action === "start" || action === "resume") &&
+        (ticket !== this.epoch || this.status.unavailable)
+      )
+        return failure(
+          "CONFLICT",
+          "A stop or failed operation prevents this transition.",
         );
-
-        await Promise.all([
-          this.collectors.windows.start(context),
-          this.collectors.browser.start(context),
-          this.collectors.folders.start(context),
-        ]);
-      } else {
-        this.currentGenerationId = null;
-      }
-    } else if (action === "pause" && session) {
-      // Invalidate current generation so stale queued events are rejected
-      this.currentGenerationId = null;
-
-      await Promise.all([
-        this.collectors.windows.pause(),
-        this.collectors.browser.pause(),
-        this.collectors.folders.pause(),
-      ]);
-
-      await this.repositories.sessions.save(session);
-    } else if (action === "resume" && session) {
-      await this.repositories.sessions.save(session);
-
-      if (settings.collectionConsent) {
-        this.currentGenerationId = this.newGenerationId();
-        const context = this.createCollectorContext(
-          session.id,
-          this.currentGenerationId,
-          settings,
-        );
-
-        await Promise.all([
-          this.collectors.windows.resume(context),
-          this.collectors.browser.resume(context),
-          this.collectors.folders.resume(context),
-        ]);
-      } else {
-        this.currentGenerationId = null;
-      }
-    } else if (action === "end" && session) {
-      this.currentGenerationId = null;
-
-      await Promise.all([
-        this.collectors.windows.stop(),
-        this.collectors.browser.stop(),
-        this.collectors.folders.stop(),
-      ]);
-
-      await this.repositories.sessions.save(session);
-    }
-
-    return { ok: true, value: state };
+      return this.transition(action, ticket);
+    }).finally(() => this.notify());
   }
 
-  private createCollectorContext(
-    sessionId: Id,
-    generationId: Id,
+  /** Apply an authoritative consent/exclusion change; never auto-resume collection. */
+  updateSettings(
     settings: UserSettings,
-  ): CollectorContext {
+    persist?: () => Promise<Result<void>>,
+  ): Promise<Result<SessionState>> {
+    this.invalidate();
+    this.interruptCollectors();
+    const parsed = userSettingsSchema.safeParse(settings);
+    // Denial applies immediately. A new grant is installed only after stop and persistence.
+    if (!parsed.success || !hasConsent(parsed.data))
+      this.settingsOverride = parsed.success
+        ? structuredClone(parsed.data)
+        : createDefaultSettings();
+    if (!parsed.success)
+      this.fail("INVALID_INPUT", "Collection settings are invalid.");
+    if (this.closing)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session service is shutting down."),
+      );
+    return this.enqueue(async () => {
+      const ready = await this.initializeInternal();
+      if (!ready.ok) return ready;
+      const result =
+        this.getState().session?.status === "active"
+          ? await this.transition("pause", this.epoch)
+          : await this.stopWithoutTransition();
+      if (!parsed.success)
+        return failure("INVALID_INPUT", "Collection settings are invalid.");
+      if (!result.ok && hasConsent(parsed.data)) return result;
+      if (persist) {
+        const saved = await this.operations.run(
+          "Collection settings save",
+          persist,
+        );
+        if (!saved.ok) {
+          this.settingsOverride = {
+            ...structuredClone(parsed.data),
+            collectionConsent: false,
+            folderCollectionConsent: false,
+            browserCollectionConsent: false,
+          };
+          this.fail(saved.error.code, saved.error.message);
+          this.requestCleanup();
+          return saved;
+        }
+      }
+      if (!result.ok) return result;
+      this.settingsOverride = structuredClone(parsed.data);
+      this.status = {
+        collection: "off",
+        unavailable: false,
+        shutdown: false,
+        error: null,
+      };
+      return result;
+    }).finally(() => this.notify());
+  }
+  revokeConsent(): Promise<Result<SessionState>> {
+    return this.updateSettings({
+      ...(this.readSettings() ?? createDefaultSettings()),
+      collectionConsent: false,
+      folderCollectionConsent: false,
+      browserCollectionConsent: false,
+    });
+  }
+
+  shutdown(): Promise<Result<void>> {
+    if (this.closed) return Promise.resolve(ok());
+    if (this.shutdownAttempt) return this.shutdownAttempt;
+    this.closing = true;
+    this.invalidate();
+    this.interruptCollectors();
+    this.shutdownAttempt = this.enqueue(async () => {
+      const stopped = await this.quiesce();
+      if (!stopped.ok) return stopped;
+      const session = this.getState().session;
+      if (session && session.status !== "ended") {
+        const ended = await this.transition("end", this.epoch);
+        if (!ended.ok) return ended;
+      }
+      if (this.options.mode === "repository") {
+        const storage = this.options.storage;
+        const closed = await this.operations.run("Storage close", () =>
+          storage.close(),
+        );
+        if (!closed.ok)
+          return this.fail(closed.error.code, closed.error.message);
+      }
+      this.closed = true;
+      this.status = {
+        collection: "off",
+        unavailable: false,
+        shutdown: true,
+        error: null,
+      };
+      return ok();
+    }).finally(() => {
+      this.shutdownAttempt = null;
+      this.notify();
+    });
+    return this.shutdownAttempt;
+  }
+
+  private enqueue<T>(call: () => Promise<Result<T>>): Promise<Result<T>> {
+    if (this.commandCount >= maxCommands)
+      return Promise.resolve(
+        failure("UNAVAILABLE", "Session command queue is full."),
+      );
+    this.commandCount++;
+    const result = this.commandTail.then(call).catch(() => {
+      const failed = this.fail("UNAVAILABLE", "Session operation failed.");
+      this.requestCleanup();
+      return failed;
+    });
+    this.commandTail = result;
+    return result.finally(() => {
+      this.commandCount--;
+    });
+  }
+  private invalidate(): void {
+    this.epoch++;
+    const wasRunning =
+      this.run !== null ||
+      this.status.collection === "starting" ||
+      this.status.collection === "stopping";
+    this.run = null;
+    this.status.collection = wasRunning ? "stopping" : "off";
+    this.notify();
+  }
+  private notify(): void {
+    try {
+      this.options.onChanged?.();
+    } catch {
+      /* Observers cannot change a transition outcome. */
+    }
+  }
+  private fail(
+    code: AppError["code"],
+    message: string,
+  ): ReturnType<typeof failure> {
+    this.invalidate();
+    this.status = {
+      collection: "unavailable",
+      unavailable: true,
+      shutdown: false,
+      error: { code, message },
+    };
+    this.notify();
+    return failure(code, message);
+  }
+  private readSettings(): UserSettings | null {
+    try {
+      const value =
+        this.settingsOverride ??
+        (this.options.mode === "repository"
+          ? this.options.getSettings()
+          : createDefaultSettings());
+      const parsed = userSettingsSchema.safeParse(value);
+      return parsed.success ? structuredClone(parsed.data) : null;
+    } catch {
+      return null;
+    }
+  }
+  private requestCleanup(): void {
+    if (this.cleanupPending || this.closing) return;
+    this.cleanupPending = true;
+    // One reserved cleanup task cannot be crowded out by the bounded client command queue.
+    this.commandTail = this.commandTail
+      .then(() => this.quiesce())
+      .catch(() => this.fail("UNAVAILABLE", "Collector cleanup failed."))
+      .finally(() => {
+        this.cleanupPending = false;
+      });
+  }
+  private async initializeInternal(): Promise<Result<void>> {
+    if (this.initialized) return ok();
+    if (this.options.mode === "session-only") {
+      this.initialized = true;
+      return ok();
+    }
+    const stopped = await this.quiesce();
+    if (!stopped.ok) return stopped;
+    const storage = this.options.storage;
+    const opened = await this.operations.run("Storage open", () =>
+      storage.open(),
+    );
+    if (!opened.ok) return this.fail(opened.error.code, opened.error.message);
+    const repositories = storage.repositories;
+    const latest = await this.operations.run("Session load", () =>
+      repositories.sessions.getLatest(),
+    );
+    if (!latest.ok) return this.fail(latest.error.code, latest.error.message);
+    if (latest.value !== null) {
+      const parsed = sessionSchema.safeParse(latest.value);
+      if (!parsed.success)
+        return this.fail("INTEGRITY_FAILURE", "Stored session is invalid.");
+      const session =
+        parsed.data.status === "active"
+          ? { ...parsed.data, status: "paused" as const }
+          : parsed.data;
+      if (parsed.data.status === "active") {
+        const saved = await this.save(session);
+        if (!saved.ok) return this.fail(saved.error.code, saved.error.message);
+      }
+      const restored = this.options.service.restore(session);
+      if (!restored.ok)
+        return this.fail(restored.error.code, restored.error.message);
+    }
+    this.initialized = true;
+    this.status = {
+      collection: "off",
+      unavailable: false,
+      shutdown: false,
+      error: null,
+    };
+    return ok();
+  }
+  private async save(session: Session): Promise<Result<void>> {
+    if (this.options.mode === "session-only") return ok();
+    const repositories = this.options.storage.repositories;
+    return this.operations.run("Session save", () =>
+      repositories.sessions.save(structuredClone(session)),
+    );
+  }
+
+  private async transition(
+    action: Exclude<SessionAction, "get">,
+    ticket: number,
+  ): Promise<Result<SessionState>> {
+    const before = this.getState().session;
+    const planned = this.options.service.prepare(action);
+    if (!planned.ok) return planned;
+    const candidate = planned.value.state.session!;
+    const activating = action === "start" || action === "resume";
+    if (action === "start" && this.options.mode === "repository") {
+      const sessions = this.options.storage.repositories.sessions;
+      const existing = await this.operations.run("Session identity check", () =>
+        sessions.get(candidate.id),
+      );
+      if (!existing.ok)
+        return this.fail(existing.error.code, existing.error.message);
+      if (existing.value !== null)
+        return failure(
+          "CONFLICT",
+          "A new session requires an unused identity.",
+        );
+    }
+    if (!activating) {
+      const stopped = await this.quiesce();
+      if (!stopped.ok) return stopped;
+    }
+    const saved = await this.save(candidate);
+    if (!saved.ok)
+      return activating
+        ? this.compensate(before, candidate, saved)
+        : this.fail(saved.error.code, saved.error.message);
+    if (activating) {
+      const settings = this.readSettings();
+      if (!settings)
+        return this.compensate(
+          before,
+          candidate,
+          failure("FORBIDDEN", "Collection policy is unavailable."),
+        );
+      if (ticket !== this.epoch || this.closing)
+        return this.compensate(
+          before,
+          candidate,
+          failure("CONFLICT", "Transition superseded by a stop."),
+        );
+      if (this.options.mode === "repository" && hasConsent(settings)) {
+        let generation: string;
+        try {
+          generation = (this.options.newGenerationId ?? randomUUID)();
+        } catch {
+          return this.compensate(
+            before,
+            candidate,
+            failure(
+              "UNAVAILABLE",
+              "Collection generation could not be created.",
+            ),
+          );
+        }
+        if (!idSchema.safeParse(generation).success)
+          return this.compensate(
+            before,
+            candidate,
+            failure("INTEGRITY_FAILURE", "Collection generation is invalid."),
+          );
+        const run: Run = {
+          id: generation,
+          sessionId: candidate.id,
+          settings,
+          permissionKey: JSON.stringify(settings),
+        };
+        this.status.collection = "starting";
+        this.notify();
+        for (const [source, collector] of Object.entries(
+          this.options.collectors,
+        )) {
+          if (!sourceApproved(source, settings)) continue;
+          const started = await this.operations.run("Collector startup", () =>
+            collector[action === "start" ? "start" : "resume"](
+              this.context(run, source),
+            ),
+          );
+          if (!started.ok) return this.compensate(before, candidate, started);
+          if (
+            ticket !== this.epoch ||
+            this.closing ||
+            JSON.stringify(this.readSettings()) !== run.permissionKey
+          )
+            return this.compensate(
+              before,
+              candidate,
+              failure(
+                "CONFLICT",
+                "Collection authorization changed during startup.",
+              ),
+            );
+        }
+        const committed = planned.value.commit();
+        if (!committed.ok) return this.compensate(before, candidate, committed);
+        this.run = run;
+        this.status = {
+          collection: "active",
+          unavailable: false,
+          shutdown: false,
+          error: null,
+        };
+        return committed;
+      }
+    }
+    const committed = planned.value.commit();
+    if (!committed.ok) return this.compensate(before, candidate, committed);
+    this.status = {
+      collection: "off",
+      unavailable: false,
+      shutdown: false,
+      error: null,
+    };
+    return committed;
+  }
+  private async compensate(
+    before: Session | null,
+    candidate: Session,
+    original: { ok: false; error: AppError },
+  ): Promise<Result<SessionState>> {
+    const stopped = await this.quiesce();
+    if (!stopped.ok) return stopped;
+    const rollback: Session =
+      before?.id === candidate.id
+        ? before
+        : { ...candidate, status: "ended", endedAt: candidate.updatedAt };
+    const saved = await this.save(rollback);
+    if (!saved.ok)
+      return this.fail(saved.error.code, "Session compensation failed.");
+    this.status = {
+      collection: "off",
+      unavailable: false,
+      shutdown: false,
+      error: null,
+    };
+    return original;
+  }
+  private async stopCollectors(): Promise<Result<void>> {
+    if (this.options.mode !== "repository") return ok();
+    const results = await Promise.all(
+      Object.values(this.options.collectors).map((collector) =>
+        this.operations.run("Collector stop", () => collector.stop()),
+      ),
+    );
+    return results.find((result) => !result.ok) ?? ok();
+  }
+  private interruptCollectors(): void {
+    if (this.interruption || this.options.mode !== "repository") return;
+    // Invalidate adapter timers now, even while older lifecycle/read work holds the queue.
+    // Their own stop promises remain tracked; acknowledgement still waits for quiescence.
+    const attempt = this.stopCollectors();
+    this.interruption = attempt;
+    void attempt
+      .then((result) => {
+        if (!result.ok) {
+          this.interruptionFailure = result.error;
+          this.fail(result.error.code, result.error.message);
+          this.requestCleanup();
+        }
+      })
+      .finally(() => {
+        if (this.interruption === attempt) this.interruption = null;
+      });
+  }
+  private async quiesce(): Promise<Result<void>> {
+    this.run = null;
+    this.status.collection = "stopping";
+    this.notify();
+    const lateWork = this.operations.unsettled;
+    const stopped = await this.stopCollectors();
+    if (!stopped.ok)
+      return this.fail(stopped.error.code, stopped.error.message);
+    const drained = await this.operations.drain();
+    if (!drained.ok)
+      return this.fail(drained.error.code, drained.error.message);
+    await this.ingestionTail;
+    if (this.interruptionFailure) {
+      const error = this.interruptionFailure;
+      this.interruptionFailure = null;
+      return this.fail(error.code, error.message);
+    }
+    // A timed-out startup can settle after the first stop; stop it again before acknowledging.
+    if (lateWork) {
+      const restopped = await this.stopCollectors();
+      if (!restopped.ok)
+        return this.fail(restopped.error.code, restopped.error.message);
+    }
+    this.status.collection = "off";
+    this.notify();
+    return ok();
+  }
+  private async stopWithoutTransition(): Promise<Result<SessionState>> {
+    const stopped = await this.quiesce();
+    return stopped.ok ? { ok: true, value: this.getState() } : stopped;
+  }
+  private context(run: Run, source: string): CollectorContext {
     return {
-      sessionId,
-      generationId,
-      settings,
-      emit: async (events: readonly ActivityEvent[]): Promise<Result<void>> => {
-        return this.handleEmittedEvents(generationId, sessionId, events);
+      sessionId: run.sessionId,
+      generationId: run.id,
+      settings: structuredClone(run.settings),
+      authorized: () =>
+        this.allowed(run) && sourceApproved(source, run.settings),
+      emit: (events) => this.admit(run, source, events),
+      reportUnavailable: () => {
+        if (this.run !== run || this.closing) return;
+        this.fail(
+          "UNAVAILABLE",
+          "A collector could not confirm its operation. Recording has stopped.",
+        );
+        this.interruptCollectors();
+        this.requestCleanup();
       },
     };
   }
-
-  private async handleEmittedEvents(
-    generationId: string,
-    sessionId: string,
+  private allowed(run: Run): boolean {
+    const session = this.getState().session;
+    const settings = this.readSettings();
+    const permitted =
+      settings !== null &&
+      hasConsent(settings) &&
+      JSON.stringify(settings) === run.permissionKey;
+    if (
+      this.run === run &&
+      (!permitted ||
+        session?.id !== run.sessionId ||
+        session.status !== "active")
+    ) {
+      this.fail("FORBIDDEN", "Collection authority changed.");
+      this.requestCleanup();
+    }
+    return (
+      this.run === run && !this.closing && !this.status.unavailable && permitted
+    );
+  }
+  private admit(
+    run: Run,
+    source: string,
     events: readonly ActivityEvent[],
   ): Promise<Result<void>> {
-    // 1. Reject stale queued events
-    if (this.currentGenerationId !== generationId) {
-      return failure(
-        "INVALID_TRANSITION",
-        "Stale generation: event emission rejected.",
+    if (!this.allowed(run))
+      return Promise.resolve(
+        failure("FORBIDDEN", "Collection generation is not authorized."),
+      );
+    if (!sourceApproved(source, run.settings))
+      return Promise.resolve(
+        failure("FORBIDDEN", "This collection source is not approved."),
+      );
+    if (!Array.isArray(events) || events.length > maxBatchEvents)
+      return Promise.resolve(
+        failure("INVALID_INPUT", "Activity batch capacity exceeded."),
+      );
+    if (this.batchCount >= maxBatches) {
+      const result = this.fail(
+        "UNAVAILABLE",
+        "Activity queue capacity exceeded.",
+      );
+      this.requestCleanup();
+      return Promise.resolve(result);
+    }
+    let parsed: ActivityEvent[];
+    try {
+      parsed = events.map((event) => activityEventSchema.parse(event));
+      if (
+        this.options.mode === "repository" &&
+        this.options.fileCaptures &&
+        parsed.length > 1 &&
+        parsed.some((event) => event.type === "file-change")
+      )
+        return Promise.resolve(
+          failure(
+            "INVALID_INPUT",
+            "File captures require an individual atomic observation.",
+          ),
+        );
+      if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > maxBatchBytes)
+        return Promise.resolve(
+          failure("INVALID_INPUT", "Activity batch is too large."),
+        );
+    } catch {
+      return Promise.resolve(
+        failure("INVALID_INPUT", "Activity batch is invalid."),
       );
     }
-
-    const currentState = this.service.getState();
-    if (currentState.session?.status !== "active") {
-      return failure(
-        "INVALID_TRANSITION",
-        "Session is not active: event emission rejected.",
+    const expected =
+      source === "windows"
+        ? "windows"
+        : source === "browser"
+          ? "browser"
+          : "filesystem";
+    if (
+      parsed.some(
+        (event) =>
+          event.sessionId !== run.sessionId ||
+          (event.source !== expected &&
+            !(source === "folders" && event.type === "file-opened")) ||
+          (event.type === "browser-visit" &&
+            event.payload.sessionId !== run.sessionId) ||
+          event.occurredAt < this.getState().session!.startedAt,
+      )
+    )
+      return Promise.resolve(
+        failure(
+          "FORBIDDEN",
+          "Activity scope does not match the collection generation.",
+        ),
       );
+    this.batchCount++;
+    const result = this.ingestionTail
+      .then(() => this.ingest(run, parsed))
+      .catch(() => {
+        const failed = this.fail(
+          "UNAVAILABLE",
+          "Activity persistence is unavailable.",
+        );
+        this.requestCleanup();
+        return failed;
+      });
+    this.ingestionTail = result.catch(() => undefined);
+    return result.finally(() => {
+      this.batchCount--;
+    });
+  }
+  private async ingest(
+    run: Run,
+    events: ActivityEvent[],
+  ): Promise<Result<void>> {
+    if (this.options.mode !== "repository" || !this.allowed(run))
+      return failure("FORBIDDEN", "Collection generation is not authorized.");
+    const accepted: ActivityEvent[] = [];
+    for (const event of events) {
+      if (!this.allowed(run))
+        return failure(
+          "FORBIDDEN",
+          "Collection permission changed during validation.",
+        );
+      if (isExcluded(event, run.settings)) continue;
+      if (
+        event.type === "browser-visit" ||
+        event.type === "file-opened" ||
+        event.type === "file-change"
+      ) {
+        if (
+          event.type === "browser-visit" &&
+          event.payload.articleText !== undefined &&
+          !run.settings.articleExtractionEnabled
+        )
+          return failure(
+            "FORBIDDEN",
+            "Article extraction permission is unavailable.",
+          );
+        if (!this.options.authorizeResource)
+          return failure("FORBIDDEN", "Resource authorization is unavailable.");
+        const authorize = this.options.authorizeResource;
+        const authorized = await this.operations.run(
+          "Resource authorization",
+          () => authorize(event, structuredClone(run.settings)),
+        );
+        if (!authorized.ok) return authorized;
+      }
+      accepted.push(event);
     }
-
-    const settings = this.getSettings();
-    if (!settings.collectionConsent) {
+    if (!this.allowed(run))
       return failure(
         "FORBIDDEN",
-        "Collection consent not granted: event emission rejected.",
+        "Collection permission changed before persistence.",
       );
-    }
-
-    // 2. Filter exclusions and validate each event
-    const validEvents: ActivityEvent[] = [];
-
-    for (const event of events) {
-      // Must belong to current session
-      if (event.sessionId !== sessionId) continue;
-
-      const parsed = activityEventSchema.safeParse(event);
-      if (!parsed.success) continue;
-
-      // Filter foreground application exclusions
-      if (event.type === "foreground") {
-        const appName = event.payload.application
-          .toLowerCase()
-          .replace(/\.exe$/, "");
-        const isExcluded = settings.excludedApplications.some(
-          (ex) => ex.toLowerCase().replace(/\.exe$/, "") === appName,
-        );
-        if (isExcluded) continue;
-      }
-
-      // Filter browser visit exclusions
-      if (event.type === "browser-visit") {
-        try {
-          const urlObj = new URL(event.payload.url);
-          const hostname = urlObj.hostname.toLowerCase();
-          const isExcluded = settings.excludedSiteHosts.some((ex) => {
-            const normEx = ex.toLowerCase();
-            return hostname === normEx || hostname.endsWith(`.${normEx}`);
-          });
-          if (isExcluded) continue;
-        } catch {
-          continue;
-        }
-      }
-
-      // Filter opened file exclusions
+    if (!accepted.length) return ok();
+    if (
+      accepted.length === 1 &&
+      accepted[0]!.type === "file-change" &&
+      this.options.fileCaptures
+    ) {
+      const event = accepted[0]!;
+      const port = this.options.fileCaptures;
+      const capture = await this.operations.run(
+        "File capture authorization",
+        () => port.get(event, structuredClone(run.settings)),
+      );
+      if (!capture.ok) return capture;
+      const checked = snapshotCaptureSchema.safeParse(capture.value);
       if (
-        event.type === "file-opened" &&
-        event.payload.identity.kind === "verified-path"
-      ) {
-        const filePath = event.payload.identity.absolutePath.toLowerCase();
-        const isExcluded = settings.excludedFolderPaths.some((ex) =>
-          filePath.startsWith(ex.toLowerCase()),
+        !checked.success ||
+        checked.data.version.sessionId !== run.sessionId ||
+        checked.data.version.fileId !==
+          (event.type === "file-change" ? event.payload.fileId : null)
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "File capture evidence is invalid.",
         );
-        if (isExcluded) continue;
+      if (!this.allowed(run))
+        return failure(
+          "FORBIDDEN",
+          "File capture authority changed before publication.",
+        );
+      const saved = await this.operations.run("Snapshot publication", () =>
+        this.allowed(run)
+          ? port.save(checked.data, event, () => this.allowed(run))
+          : Promise.resolve(
+              failure("FORBIDDEN", "File capture authority expired."),
+            ),
+      );
+      if (!saved.ok) {
+        this.fail(saved.error.code, saved.error.message);
+        this.requestCleanup();
+        return saved;
       }
-
-      validEvents.push(event);
-    }
-
-    if (validEvents.length === 0) {
-      return { ok: true, value: undefined };
-    }
-
-    // 3. Persist activities into SQLite
-    const appendResult = await this.repositories.activities.append(validEvents);
-    if (!appendResult.ok) {
-      return appendResult;
-    }
-
-    // 4. Persist any referenced files into files table
-    for (const event of validEvents) {
-      if (event.type === "file-opened") {
-        await this.repositories.files.saveReference(event.payload);
+      const committed = fileVersionSchema.safeParse(saved.value);
+      if (
+        !committed.success ||
+        committed.data.fileId !== checked.data.version.fileId ||
+        committed.data.sessionId !== run.sessionId ||
+        committed.data.contentHash !== checked.data.version.contentHash ||
+        committed.data.byteLength !== checked.data.version.byteLength ||
+        committed.data.capturedAt > event.occurredAt
+      ) {
+        const invalid = this.fail(
+          "INTEGRITY_FAILURE",
+          "Snapshot publication returned inconsistent evidence.",
+        );
+        this.requestCleanup();
+        return invalid;
       }
+      return ok();
     }
-
-    return { ok: true, value: undefined };
+    const repositories = this.options.storage.repositories;
+    const result = await this.operations.run("Activity append", () =>
+      this.allowed(run)
+        ? repositories.activities.append(accepted)
+        : Promise.resolve(
+            failure(
+              "FORBIDDEN",
+              "Collection permission changed before persistence.",
+            ),
+          ),
+    );
+    const gap = accepted.find((event) => event.type === "capture-gap");
+    if (!result.ok || gap) {
+      const error = result.ok
+        ? {
+            code: "UNAVAILABLE" as const,
+            message:
+              gap?.type === "capture-gap" &&
+              gap.payload.collectorId === "folders"
+                ? gap.payload.reason === "overflow"
+                  ? "File recording stopped because too many file changes arrived at once."
+                  : "File recording stopped because a protected folder could not be verified. Check file protection status."
+                : gap?.type === "capture-gap" &&
+                    gap.payload.collectorId === "windows"
+                  ? "Application recording stopped because the Windows activity service failed."
+                  : "Browser recording stopped because its connection was interrupted.",
+          }
+        : result.error;
+      this.fail(error.code, error.message);
+      this.requestCleanup();
+    }
+    return result;
   }
 }

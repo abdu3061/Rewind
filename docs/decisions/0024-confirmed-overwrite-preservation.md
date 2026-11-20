@@ -1,0 +1,33 @@
+# ADR 0024: confirmed overwrite with verified current-byte preservation
+
+18 November 2026. Local implementation under the core functionality goal, pending Rasit's final recovery/security review. No remote merge, publication or release approval is implied.
+
+## Decision and boundaries
+
+Keep recovery to a new copy as the primary workflow. A separate optional disclosure in captured-version and checkpoint previews lets the user choose an existing target through a main-owned native dialog. The engine prepares an immutable five-minute proposal containing the actual captured source, current target hash/length and a unique preservation filename in the target folder. Only its UUID and literal confirmation authorize execution. Renderer cannot nominate a path, native identity, backup name or byte buffer. Cancellation, use, expiry on either clock and service restart invalidate the plan. At most eight reviews and one operation per service are admitted.
+
+Preparation verifies retained source bytes through encrypted storage and inspects the selected target without writing. Confirmation consumes the plan, rereads the retained source and checks identity/hash/length/expiry before invoking the private Windows primitive. Deletion or corruption between review and confirmation aborts before native mutation. The primitive checks current parent/ancestor identities, canonical fixed-NTFS paths, reparse points, case sensitivity, file type, single-link identity, attributes, size, write time and full target hash. Target and current bytes are bounded to 16 MiB. No path in an existing record grants authorization.
+
+## Preservation and concurrency
+
+The target is opened with `OPEN_EXISTING`, read/write access, zero sharing, write-through and overlapped I/O; opening never truncates it. A required exclusive read/write oplock rejects existing writable mapped sections, including a mapping whose original file handle has closed. Failed or broken acquisition aborts. Parent/ancestor handles prevent redirection, and the target remains under the same exclusive handle throughout preservation and replacement.
+
+Before any target write, create a distinct ordinary preservation file using `CREATE_NEW` in the selected directory. Hold it exclusively, write the complete current bytes, flush them to the device and read back their full SHA-256, length and identity. Recheck the target hash/write-time/identity and oplock before mutation. Failed source, path, identity, sharing, mapping, concurrency or preservation prerequisites leave the target unchanged. An existing preservation filename is never replaced. A failed partial new preservation file is removed only through its own handle; failure/crash may leave a partial new file, never an assumed verified backup.
+
+Only after verified preservation does the helper write the selected snapshot through the held target handle, set its exact length, flush and verify complete output bytes and the same target identity. Success requires verified target and preservation evidence plus observed helper exit. There is no close-and-reopen window before writing. Ordinary competing opens cannot write/delete/replace the held target. Files with unsupported sharing/mapping semantics are refused; there is no weaker fallback.
+
+Native failure after writing begins attempts to restore the original bytes through that same exclusive handle, flushes and verifies rollback, and always retains the previously verified preservation copy. Failed rollback, helper termination, I/O failure, process crash or power loss can leave an incomplete target. This is **not an atomic replace or a power-loss transaction**. The UI warns before confirmation and retains the reviewed preservation filename on failure. A fresh review is needed for retry. Output or close uncertainty never produces a successful receipt.
+
+Overlapped oplock buffers and their event stay alive until completion. Cancellation waits for the completion event before releasing memory. Unobserved cancellation retains ownership until one-shot process exit and returns failure. Utility shutdown invalidates proposals, stops native helpers, observes their closure and drains pending work before storage close; failed shutdown remains retryable.
+
+## Privacy and user-visible limits
+
+The preservation file contains the current ordinary file bytes in the chosen folder. It is explicitly disclosed as an ordinary export outside Rewind's encrypted database and quota/retention/deletion policy. No plaintext recovery backup is placed in Rewind's private storage. The user should keep the preservation file until checking recovery, and manage it with normal file tools. It survives app restart and history deletion. No claim covers alternate streams, ACL preservation, application state, uncaptured edits after the final check, malicious kernel drivers, failing hardware or forensic erasure. Rewind neither executes nor opens either output. AI has no choose/confirm/execute authority.
+
+## Verification
+
+Native tests cover exact binary and complete 16 MiB/empty recovery, preserved hashes/bytes, existing backup refusal, invalid source, intervening content/time/identity changes, hard links, redirected parents, traversal, locked files and a writable mapping after its file handle closes. Fault tests derive the trusted helper source and inject an I/O failure after writing begins, separately including rollback failure; they verify failure reporting and intact preserved bytes. There is no production fault-injection option or arbitrary script capability.
+
+Engine tests cover immutable review, explicit single use, cancellation, bounds, both expiry clocks, late verification, deleted/changed source, failed preservation, invalid receipts, shutdown drain and retry. Worker integration reads actual encrypted captured bytes and uses the actual native writer, including stale targets and source deletion. Packaged UI verification mocks only native dialog choices: cancel creates nothing, a concurrent edit is preserved, explicit confirmation recovers exact bytes and preserves the previous target, and both ordinary files survive history deletion/restart. Full verification results are in the integration report. No dependency is added.
+
+References: [CreateFileW sharing/dispositions](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew), [oplock grant conditions and writable mappings](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/granting-oplocks), [FSCTL_REQUEST_OPLOCK asynchronous lifetime](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_request_oplock), [FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers).

@@ -1,253 +1,1021 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createCollectorRegistry,
-  MockWindowQueryStrategy,
-} from "@rewind/collectors";
-import type {
-  FileReference,
-  Repositories,
-  UserSettings,
+  createDefaultSettings,
+  failure,
+  type ActivityEvent,
+  type CollectorContext,
+  type Result,
+  type Session,
+  type SnapshotCapture,
+  type FileCaptureIngestion,
 } from "@rewind/contracts";
-import {
-  SqliteActivityRepository,
-  SqliteCheckpointRepository,
-  SqliteFileRepository,
-  SqliteSearchRepository,
-  SqliteSessionRepository,
-} from "@rewind/storage";
 import { SessionCoordinator } from "./session-coordinator";
 import { SessionService } from "./session-service";
 
-describe("SessionCoordinator & Ingestion Integration", () => {
-  let db: DatabaseSync;
-  let repositories: Repositories;
-  let windowStrategy: MockWindowQueryStrategy;
-  let coordinator: SessionCoordinator;
-  let userSettings: UserSettings;
+const now = "2026-11-16T10:00:00.000Z";
+const id = (n: number) =>
+  `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const ok = async (): Promise<Result<void>> => ({ ok: true, value: undefined });
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+function event(n = 1): ActivityEvent {
+  return {
+    id: id(100 + n),
+    sessionId: id(1),
+    occurredAt: now,
+    source: "windows",
+    type: "idle",
+    payload: { state: "entered" },
+  };
+}
+function fixture(consent = true, timeout = 1000) {
+  let nextId = 1;
+  const service = new SessionService({
+    newId: () => id(nextId++),
+    now: () => now,
+  });
+  const settings = {
+    ...createDefaultSettings(),
+    collectionConsent: consent,
+    folderCollectionConsent: consent,
+    browserCollectionConsent: consent,
+  };
+  const contexts: CollectorContext[] = [];
+  const makeCollector = () => {
+    const collector = {
+      id: "synthetic",
+      running: false,
+      start: vi.fn(async (context: CollectorContext) => {
+        contexts.push(context);
+        collector.running = true;
+        return ok();
+      }),
+      resume: vi.fn(async (context: CollectorContext) => {
+        contexts.push(context);
+        collector.running = true;
+        return ok();
+      }),
+      pause: vi.fn(ok),
+      stop: vi.fn(async () => {
+        collector.running = false;
+        return ok();
+      }),
+    };
+    return collector;
+  };
+  const collectors = {
+    windows: makeCollector(),
+    browser: makeCollector(),
+    folders: makeCollector(),
+  };
+  const records = new Map<string, Session>();
+  const persisted: ActivityEvent[] = [];
+  const repositories = {
+    sessions: {
+      save: vi.fn(async (session: Session): Promise<Result<void>> => {
+        records.set(session.id, structuredClone(session));
+        return ok();
+      }),
+      get: vi.fn(async (key: string): Promise<Result<Session | null>> => ({
+        ok: true,
+        value: records.get(key) ?? null,
+      })),
+      getLatest: vi.fn(async (): Promise<Result<Session | null>> => ({
+        ok: true,
+        value: [...records.values()].at(-1) ?? null,
+      })),
+    },
+    activities: {
+      append: vi.fn(
+        async (events: readonly ActivityEvent[]): Promise<Result<void>> => {
+          persisted.push(...structuredClone(events));
+          return ok();
+        },
+      ),
+      list: vi.fn(async (): Promise<Result<ActivityEvent[]>> => ({
+        ok: true,
+        value: structuredClone(persisted),
+      })),
+    },
+  };
+  const closeStorage = vi.fn(ok);
+  const storage = { repositories, open: vi.fn(ok), close: closeStorage };
+  const coordinator = new SessionCoordinator({
+    mode: "repository",
+    service,
+    storage,
+    collectors,
+    getSettings: () => settings,
+    newGenerationId: () => id(900),
+    operationTimeoutMs: timeout,
+  });
+  return {
+    coordinator,
+    service,
+    storage,
+    repositories,
+    collectors,
+    contexts,
+    records,
+    persisted,
+    settings,
+    closeStorage,
+  };
+}
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-  beforeEach(async () => {
-    // 1. Create in-memory SQLite database and run migration schema
-    db = new DatabaseSync(":memory:");
-    const migrationSql = readFileSync(
-      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
-      "utf8",
+it("requires folder approval separately and does not activate Windows polling for folder-only consent", async () => {
+  const f = fixture(false);
+  f.settings.folderCollectionConsent = true;
+  await f.coordinator.execute("start");
+  expect(f.collectors.folders.start).toHaveBeenCalledOnce();
+  expect(f.collectors.windows.start).not.toHaveBeenCalled();
+  expect(f.collectors.browser.start).not.toHaveBeenCalled();
+  await f.coordinator.revokeConsent();
+  await f.coordinator.execute("resume");
+  expect(f.collectors.folders.resume).not.toHaveBeenCalled();
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
+  const windowsOnly = fixture();
+  windowsOnly.settings.folderCollectionConsent = false;
+  windowsOnly.settings.browserCollectionConsent = false;
+  await windowsOnly.coordinator.execute("start");
+  expect(windowsOnly.collectors.windows.start).toHaveBeenCalledOnce();
+  expect(windowsOnly.collectors.folders.start).not.toHaveBeenCalled();
+  expect(windowsOnly.collectors.browser.start).not.toHaveBeenCalled();
+  await windowsOnly.coordinator.shutdown();
+});
+it("requires independent browser approval, leaves other sources off for browser-only consent and rejects the revoked context", async () => {
+  const f = fixture(false);
+  f.settings.browserCollectionConsent = true;
+  expect((await f.coordinator.execute("start")).ok).toBe(true);
+  expect(f.collectors.browser.start).toHaveBeenCalledOnce();
+  expect(f.collectors.windows.start).not.toHaveBeenCalled();
+  expect(f.collectors.folders.start).not.toHaveBeenCalled();
+  const context = f.collectors.browser.start.mock.calls[0]![0];
+  expect(context.authorized?.()).toBe(true);
+  const gap: ActivityEvent = {
+    id: id(777),
+    sessionId: context.sessionId,
+    occurredAt: now,
+    type: "capture-gap",
+    source: "browser",
+    payload: { collectorId: "browser", reason: "unavailable" },
+  };
+  expect((await context.emit([gap])).ok).toBe(true);
+  expect(f.persisted).toEqual([gap]);
+  expect(f.coordinator.getStatus().error?.message).toBe(
+    "Browser recording stopped because its connection was interrupted.",
+  );
+  expect((await f.coordinator.revokeConsent()).ok).toBe(true);
+  expect(context.authorized?.()).toBe(false);
+  expect((await context.emit([{ ...gap, id: id(778) }])).ok).toBe(false);
+  await f.coordinator.execute("resume");
+  expect(f.collectors.browser.resume).not.toHaveBeenCalled();
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
+});
+
+function snapshotFixture() {
+  const f = fixture();
+  const observation: ActivityEvent = {
+    id: id(100),
+    sessionId: id(1),
+    occurredAt: now,
+    source: "filesystem",
+    type: "file-change",
+    payload: { fileId: id(500), change: "updated" },
+  };
+  const capture: SnapshotCapture = {
+    file: {
+      id: id(500),
+      displayName: "synthetic.txt",
+      identity: {
+        kind: "verified-path",
+        absolutePath: "C:\\synthetic\\synthetic.txt",
+        verifiedAt: now,
+      },
+    },
+    version: {
+      id: id(501),
+      sessionId: id(1),
+      fileId: id(500),
+      capturedAt: now,
+      contentHash: "a".repeat(64),
+      byteLength: 3,
+      mediaType: "text/plain",
+    },
+    binding: {
+      folderId: id(502),
+      relativePath: "synthetic.txt",
+      osIdentity: "synthetic:file",
+    },
+    bytes: new Uint8Array([1, 2, 3]),
+  };
+  const get = vi.fn(async (): Promise<Result<SnapshotCapture>> => ({
+    ok: true,
+    value: capture,
+  }));
+  const save = vi.fn<FileCaptureIngestion["save"]>(
+    async (_value, _event, authorized) =>
+      authorized()
+        ? { ok: true, value: capture.version }
+        : failure("FORBIDDEN", "Expired synthetic authority"),
+  );
+  const coordinator = new SessionCoordinator({
+    mode: "repository",
+    service: f.service,
+    storage: f.storage,
+    collectors: f.collectors,
+    getSettings: () => f.settings,
+    authorizeResource: ok,
+    fileCaptures: { get, save },
+  });
+  return { ...f, coordinator, observation, capture, get, save };
+}
+it("publishes each captured version through its atomic port without duplicating the activity append", async () => {
+  const f = snapshotFixture();
+  await f.coordinator.execute("start");
+  expect((await f.contexts[2]!.emit([f.observation])).ok).toBe(true);
+  expect(f.save).toHaveBeenCalledOnce();
+  expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  expect((await f.contexts[2]!.emit([f.observation, f.observation])).ok).toBe(
+    false,
+  );
+  expect(f.save).toHaveBeenCalledOnce();
+  await f.coordinator.shutdown();
+});
+it("accepts source failure only from the current generation and interrupts active adapters", async () => {
+  const f = fixture();
+  await f.coordinator.execute("start");
+  const old = f.contexts[2]!;
+  await f.coordinator.execute("pause");
+  await f.coordinator.execute("resume");
+  old.reportUnavailable?.();
+  expect(f.coordinator.getStatus().collection).toBe("active");
+  f.contexts.at(-1)!.reportUnavailable?.();
+  await turn();
+  expect(f.coordinator.getStatus().unavailable).toBe(true);
+  expect(
+    Object.values(f.collectors).every((collector) => !collector.running),
+  ).toBe(true);
+  await f.coordinator.shutdown();
+});
+it("drains pending snapshot preparation and rejects its stale bytes before pause acknowledges", async () => {
+  const f = snapshotFixture();
+  const entered = deferred(),
+    release = deferred();
+  f.get.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return { ok: true, value: f.capture };
+  });
+  await f.coordinator.execute("start");
+  const emission = f.contexts[2]!.emit([f.observation]);
+  await entered.promise;
+  let stopped = false;
+  const pause = f.coordinator.execute("pause").then((result) => {
+    stopped = true;
+    return result;
+  });
+  await turn();
+  expect(stopped).toBe(false);
+  release.resolve();
+  expect((await emission).ok).toBe(false);
+  expect((await pause).ok).toBe(true);
+  expect(f.save).not.toHaveBeenCalled();
+  await f.coordinator.shutdown();
+});
+it("stops the run after failed snapshot publication and rejects inconsistent evidence", async () => {
+  for (const invalidReply of [false, true]) {
+    const f = snapshotFixture();
+    f.save.mockResolvedValueOnce(
+      invalidReply
+        ? {
+            ok: true,
+            value: { ...f.capture.version, contentHash: "b".repeat(64) },
+          }
+        : failure("UNAVAILABLE", "Synthetic full disk"),
     );
-    db.exec(migrationSql);
+    await f.coordinator.execute("start");
+    expect((await f.contexts[2]!.emit([f.observation])).ok).toBe(false);
+    await turn();
+    expect(f.coordinator.getStatus().unavailable).toBe(true);
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+    await f.coordinator.shutdown();
+  }
+});
+it("interrupts collector authority even when read work saturates the lifecycle queue", async () => {
+  const f = fixture();
+  await f.coordinator.execute("start");
+  const release = deferred();
+  const entered = deferred();
+  const first = f.coordinator.read(async () => {
+    entered.resolve();
+    await release.promise;
+    return ok();
+  });
+  await entered.promise;
+  const queued = Array.from({ length: 63 }, () => f.coordinator.read(ok));
+  expect((await f.coordinator.revokeConsent()).ok).toBe(false);
+  await turn();
+  expect(f.collectors.windows.running).toBe(false);
+  expect((await f.contexts[0]!.emit([event()])).ok).toBe(false);
+  release.resolve();
+  await Promise.all([first, ...queued]);
+  await f.coordinator.shutdown();
+});
 
-    repositories = {
-      sessions: new SqliteSessionRepository(db),
-      activities: new SqliteActivityRepository(db),
-      files: new SqliteFileRepository(db),
-      checkpoints: new SqliteCheckpointRepository(db),
-      search: new SqliteSearchRepository(db),
-    };
+it("serializes grant persistence with resume and lets revocation preempt both", async () => {
+  const f = fixture(false);
+  await f.coordinator.execute("start");
+  const entered = deferred();
+  const release = deferred();
+  const grant = f.coordinator.updateSettings(
+    { ...f.settings, collectionConsent: true },
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
+    },
+  );
+  await entered.promise;
+  const resume = f.coordinator.execute("resume");
+  const revoke = f.coordinator.revokeConsent();
+  expect(f.coordinator.getActiveGenerationId()).toBeNull();
+  expect(f.contexts).toHaveLength(0);
+  release.resolve();
+  expect((await grant).ok).toBe(true);
+  expect((await resume).ok).toBe(false);
+  expect((await revoke).ok).toBe(true);
+  await f.coordinator.execute("resume");
+  expect(f.contexts).toHaveLength(0);
+  expect(f.coordinator.getStatus().collection).toBe("off");
+  await f.coordinator.shutdown();
+});
 
-    windowStrategy = new MockWindowQueryStrategy({
-      application: "Code.exe",
-      windowTitle: "main.ts - Rewind",
+it("keeps read models behind an uncommitted lifecycle operation", async () => {
+  const f = fixture();
+  const entered = deferred();
+  const release = deferred();
+  f.collectors.windows.start.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return ok();
+  });
+  const starting = f.coordinator.execute("start");
+  await entered.promise;
+  const read = vi.fn(async () => ({
+    ok: true as const,
+    value: f.coordinator.getState(),
+  }));
+  const reading = f.coordinator.read(read);
+  await turn();
+  expect(read).not.toHaveBeenCalled();
+  release.resolve();
+  expect((await starting).ok).toBe(true);
+  expect(await reading).toMatchObject({
+    ok: true,
+    value: { session: { status: "active" } },
+  });
+  await f.coordinator.shutdown();
+});
+
+describe("SessionCoordinator failure regressions", () => {
+  it("reports session storage failure without publishing an active session", async () => {
+    const f = fixture();
+    f.repositories.sessions.save.mockResolvedValue(
+      failure("UNAVAILABLE", "Synthetic private path"),
+    );
+    expect(await f.coordinator.execute("start")).toMatchObject({ ok: false });
+    expect(f.coordinator.getState()).toEqual({ session: null });
+    expect(f.contexts).toHaveLength(0);
+    expect(f.coordinator.getStatus().unavailable).toBe(true);
+  });
+  it("reports partial collector startup failure and durably compensates", async () => {
+    const f = fixture();
+    f.collectors.browser.start.mockResolvedValue(
+      failure("UNAVAILABLE", "Synthetic failure"),
+    );
+    expect(await f.coordinator.execute("start")).toMatchObject({ ok: false });
+    expect(f.coordinator.getState()).toEqual({ session: null });
+    expect(f.records.get(id(1))?.status).toBe("ended");
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+    expect(f.collectors.folders.start).not.toHaveBeenCalled();
+    expect((await f.contexts[0]!.emit([event()])).ok).toBe(false);
+  });
+  it("preempts an earlier pending start and never starts sources after stop acknowledgement", async () => {
+    const f = fixture();
+    const saveEntered = deferred();
+    const release = deferred();
+    f.repositories.sessions.save.mockImplementationOnce(async () => {
+      saveEntered.resolve();
+      await release.promise;
+      return ok();
     });
-
-    let idCounter = 1;
-    const nextId = () =>
-      `00000000-0000-4000-8000-${String(idCounter++).padStart(12, "0")}`;
-
-    const collectors = createCollectorRegistry({
-      windowStrategy,
-      windowPollIntervalMs: 50,
-      newId: nextId,
-      now: () => "2026-11-09T10:00:00.000Z",
+    const start = f.coordinator.execute("start");
+    await saveEntered.promise;
+    let acknowledged = false;
+    const pause = f.coordinator.execute("pause").then((result) => {
+      acknowledged = true;
+      return result;
     });
+    await turn();
+    expect(acknowledged).toBe(false);
+    release.resolve();
+    expect((await start).ok).toBe(false);
+    // No start committed: pause correctly reports invalid transition instead of inventing a session.
+    expect(await pause).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_TRANSITION" },
+    });
+    expect(f.contexts).toHaveLength(0);
+    expect(f.coordinator.getActiveGenerationId()).toBeNull();
+  });
+  it("waits for an in-flight append before acknowledging pause", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const entered = deferred();
+    const release = deferred();
+    f.repositories.activities.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
+    });
+    const emission = f.contexts[0]!.emit([event()]);
+    await entered.promise;
+    let acknowledged = false;
+    const pause = f.coordinator.execute("pause").then((result) => {
+      acknowledged = true;
+      return result;
+    });
+    expect(f.coordinator.getActiveGenerationId()).toBeNull();
+    await turn();
+    expect(acknowledged).toBe(false);
+    expect((await f.contexts[0]!.emit([event(2)])).ok).toBe(false);
+    release.resolve();
+    expect((await emission).ok).toBe(true);
+    expect(await pause).toMatchObject({
+      ok: true,
+      value: { session: { status: "paused" } },
+    });
+    expect(f.records.get(id(1))?.status).toBe("paused");
+  });
+});
 
-    userSettings = {
+describe("lifecycle, restart and shutdown", () => {
+  it("rejects storage-open failure without accessing repositories or falling back", async () => {
+    const f = fixture();
+    f.storage.open.mockResolvedValueOnce(
+      failure("UNAVAILABLE", "Private synthetic path"),
+    );
+    expect(await f.coordinator.execute("start")).toMatchObject({
+      ok: false,
+      error: { message: "Storage open failed." },
+    });
+    expect(f.repositories.sessions.getLatest).not.toHaveBeenCalled();
+    expect(f.contexts).toHaveLength(0);
+    expect((await f.coordinator.execute("start")).ok).toBe(true);
+  });
+  it("rejects shutdown during partially started collectors without any late activation", async () => {
+    const f = fixture();
+    const entered = deferred();
+    const release = deferred();
+    f.collectors.windows.start.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      f.collectors.windows.running = true;
+      return ok();
+    });
+    const start = f.coordinator.execute("start");
+    await entered.promise;
+    const shutdown = f.coordinator.shutdown();
+    release.resolve();
+    expect((await start).ok).toBe(false);
+    expect((await shutdown).ok).toBe(true);
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+    expect(f.closeStorage).toHaveBeenCalledTimes(1);
+  });
+  it("keeps collection off without consent through a full lifecycle", async () => {
+    const f = fixture(false);
+    for (const action of ["start", "pause", "resume", "end"] as const)
+      expect((await f.coordinator.execute(action)).ok).toBe(true);
+    expect(f.contexts).toHaveLength(0);
+    expect(f.coordinator.getStatus().collection).toBe("off");
+    expect(f.records.get(id(1))?.status).toBe("ended");
+  });
+  it("rejects old contexts even when an injected generation ID repeats", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const old = f.contexts[0]!;
+    expect((await old.emit([event()])).ok).toBe(true);
+    await f.coordinator.execute("pause");
+    await f.coordinator.execute("resume");
+    expect((await old.emit([event(2)])).ok).toBe(false);
+    expect((await f.contexts[3]!.emit([event(3)])).ok).toBe(true);
+    await f.coordinator.execute("end");
+    expect((await f.contexts[3]!.emit([event(4)])).ok).toBe(false);
+    expect(f.persisted).toHaveLength(2);
+  });
+  it("serializes duplicate starts and reads behind the commit point", async () => {
+    const f = fixture(false);
+    const entered = deferred();
+    const release = deferred();
+    f.repositories.sessions.save.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
+    });
+    const first = f.coordinator.execute("start");
+    await entered.promise;
+    const duplicate = f.coordinator.execute("start");
+    const read = f.coordinator.execute("get");
+    expect(f.coordinator.getState()).toEqual({ session: null });
+    release.resolve();
+    expect((await first).ok).toBe(true);
+    expect(await duplicate).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_TRANSITION" },
+    });
+    expect(await read).toMatchObject({
+      ok: true,
+      value: { session: { status: "active" } },
+    });
+  });
+  it("loads an interrupted active session as durably paused without restarting collectors", async () => {
+    const f = fixture();
+    f.records.set(id(1), {
+      id: id(1),
+      status: "active",
+      startedAt: now,
+      updatedAt: now,
+      endedAt: null,
+    });
+    expect(await f.coordinator.initialize()).toMatchObject({
+      ok: true,
+      value: { session: { status: "paused" } },
+    });
+    expect(f.records.get(id(1))?.status).toBe("paused");
+    expect(f.contexts).toHaveLength(0);
+  });
+  it("does not publish restart state when persisting its pause fails", async () => {
+    const f = fixture();
+    f.records.set(id(1), {
+      id: id(1),
+      status: "active",
+      startedAt: now,
+      updatedAt: now,
+      endedAt: null,
+    });
+    f.repositories.sessions.save.mockResolvedValue(
+      failure("UNAVAILABLE", "Failure"),
+    );
+    expect((await f.coordinator.initialize()).ok).toBe(false);
+    expect(f.coordinator.getState().session).toBeNull();
+    expect(f.contexts).toHaveLength(0);
+  });
+  it("rejects failed reads and corrupt persisted sessions with content-free errors", async () => {
+    const f = fixture();
+    f.repositories.sessions.getLatest.mockRejectedValue(
+      new Error("C:\\private\\synthetic"),
+    );
+    const result = await f.coordinator.execute("start");
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "UNAVAILABLE", message: "Session load failed." },
+    });
+    const corrupt = fixture();
+    corrupt.repositories.sessions.getLatest.mockResolvedValue({
+      ok: true,
+      value: { id: "invalid" } as Session,
+    });
+    expect(await corrupt.coordinator.initialize()).toMatchObject({
+      ok: false,
+      error: { code: "INTEGRITY_FAILURE" },
+    });
+  });
+  it("compensates a rejected startup Promise and permits a later fresh start", async () => {
+    const f = fixture();
+    f.collectors.windows.start.mockRejectedValueOnce(
+      new Error("Private upstream message"),
+    );
+    expect(await f.coordinator.execute("start")).toMatchObject({
+      ok: false,
+      error: { message: "Collector startup failed." },
+    });
+    expect((await f.coordinator.execute("start")).ok).toBe(true);
+    expect(f.coordinator.getState().session?.id).toBe(id(2));
+  });
+  it("preserves the prior paused state after failed resume", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    await f.coordinator.execute("pause");
+    const before = f.coordinator.getState();
+    f.collectors.browser.resume.mockResolvedValue(
+      failure("UNAVAILABLE", "Failure"),
+    );
+    expect((await f.coordinator.execute("resume")).ok).toBe(false);
+    expect(f.coordinator.getState()).toEqual(before);
+    expect(f.records.get(id(1))).toEqual(before.session);
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+  });
+  it("does not acknowledge a failed stop and supports end retry after cleanup recovers", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    f.collectors.windows.stop.mockResolvedValueOnce(
+      failure("UNAVAILABLE", "Failure"),
+    );
+    expect((await f.coordinator.execute("pause")).ok).toBe(false);
+    expect(f.coordinator.getState().session?.status).toBe("active");
+    expect(f.coordinator.getStatus().unavailable).toBe(true);
+    expect((await f.coordinator.execute("resume")).ok).toBe(false);
+    expect((await f.coordinator.execute("get")).ok).toBe(false);
+    expect((await f.coordinator.execute("end")).ok).toBe(true);
+    expect(f.coordinator.getStatus().unavailable).toBe(false);
+  });
+  it("does not publish pause on write failure and can retry end safely", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    f.repositories.sessions.save.mockRejectedValueOnce(new Error("Failure"));
+    expect((await f.coordinator.execute("pause")).ok).toBe(false);
+    expect(f.coordinator.getState().session?.status).toBe("active");
+    expect(f.coordinator.getActiveGenerationId()).toBeNull();
+    expect((await f.coordinator.execute("end")).ok).toBe(true);
+  });
+  it("deduplicates shutdown, ends durably before close and rejects commands afterward", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    f.closeStorage.mockImplementation(async () => {
+      expect(f.records.get(id(1))?.status).toBe("ended");
+      expect(
+        Object.values(f.collectors).every((collector) => !collector.running),
+      ).toBe(true);
+      return ok();
+    });
+    const results = await Promise.all([
+      f.coordinator.shutdown(),
+      f.coordinator.shutdown(),
+    ]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(f.closeStorage).toHaveBeenCalledTimes(1);
+    expect((await f.coordinator.execute("start")).ok).toBe(false);
+    expect((await f.coordinator.shutdown()).ok).toBe(true);
+  });
+  it("allows retry after failed storage close without reopening or accepting commands", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    f.closeStorage.mockResolvedValueOnce(failure("UNAVAILABLE", "Failure"));
+    expect((await f.coordinator.shutdown()).ok).toBe(false);
+    expect((await f.coordinator.execute("start")).ok).toBe(false);
+    expect((await f.coordinator.shutdown()).ok).toBe(true);
+    expect(f.closeStorage).toHaveBeenCalledTimes(2);
+  });
+  it("shutdown does not fabricate a hydration or mutate history in an unused instance", async () => {
+    const f = fixture();
+    expect((await f.coordinator.shutdown()).ok).toBe(true);
+    expect(f.repositories.sessions.getLatest).not.toHaveBeenCalled();
+    expect(f.repositories.sessions.save).not.toHaveBeenCalled();
+  });
+});
+
+describe("permission and ingress boundaries", () => {
+  it("rechecks authority after asynchronous resource validation before any write", async () => {
+    const f = fixture();
+    const entered = deferred();
+    const release = deferred();
+    let authorizations = 0;
+    const coordinator = new SessionCoordinator({
+      mode: "repository",
+      service: f.service,
+      storage: f.storage,
+      collectors: f.collectors,
+      getSettings: () => f.settings,
+      authorizeResource: async () => {
+        authorizations++;
+        entered.resolve();
+        await release.promise;
+        return ok();
+      },
+    });
+    await coordinator.execute("start");
+    const emission = f.contexts[2]!.emit([
+      {
+        ...event(),
+        source: "rewind",
+        type: "file-opened",
+        payload: {
+          id: id(600),
+          displayName: "Synthetic",
+          identity: { kind: "unverified", observedTitle: "Synthetic" },
+        },
+      },
+      {
+        ...event(2),
+        source: "rewind",
+        type: "file-opened",
+        payload: {
+          id: id(601),
+          displayName: "Synthetic second",
+          identity: { kind: "unverified", observedTitle: "Synthetic second" },
+        },
+      },
+    ]);
+    await entered.promise;
+    let acknowledged = false;
+    const revoke = coordinator.revokeConsent().then((result) => {
+      acknowledged = true;
+      return result;
+    });
+    await turn();
+    expect(acknowledged).toBe(false);
+    release.resolve();
+    expect((await emission).ok).toBe(false);
+    expect((await revoke).ok).toBe(true);
+    expect(authorizations).toBe(1);
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  });
+  it("does not allow an injected resource policy to bypass separate article consent", async () => {
+    const f = fixture();
+    const authorize = vi.fn(ok);
+    const coordinator = new SessionCoordinator({
+      mode: "repository",
+      service: f.service,
+      storage: f.storage,
+      collectors: f.collectors,
+      getSettings: () => f.settings,
+      authorizeResource: authorize,
+    });
+    await coordinator.execute("start");
+    expect(
+      (
+        await f.contexts[1]!.emit([
+          {
+            ...event(),
+            source: "browser",
+            type: "browser-visit",
+            payload: {
+              id: id(600),
+              sessionId: id(1),
+              browser: "chrome",
+              title: "Synthetic",
+              url: "https://example.com",
+              visitedAt: now,
+              endedAt: null,
+              articleText: "Synthetic",
+            },
+          },
+        ])
+      ).ok,
+    ).toBe(false);
+    expect(authorize).not.toHaveBeenCalled();
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  });
+  it("fails closed when the policy provider changes without the normal notification", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    f.settings.collectionConsent = false;
+    expect((await f.contexts[0]!.emit([event()])).ok).toBe(false);
+    await turn();
+    expect(f.coordinator.getActiveGenerationId()).toBeNull();
+    expect(
+      Object.values(f.collectors).every((collector) => !collector.running),
+    ).toBe(true);
+  });
+  it("revokes before draining and requires an explicit resume after regrant", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const entered = deferred();
+    const release = deferred();
+    f.repositories.activities.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
+    });
+    const emission = f.contexts[0]!.emit([event()]);
+    await entered.promise;
+    let acknowledged = false;
+    const revoke = f.coordinator.revokeConsent().then((result) => {
+      acknowledged = true;
+      return result;
+    });
+    expect((await f.contexts[0]!.emit([event(2)])).ok).toBe(false);
+    await turn();
+    expect(acknowledged).toBe(false);
+    release.resolve();
+    await emission;
+    expect(await revoke).toMatchObject({
+      ok: true,
+      value: { session: { status: "paused" } },
+    });
+    await f.coordinator.updateSettings({
+      ...f.settings,
       collectionConsent: true,
-      cloudAiEnabled: false,
-      articleExtractionEnabled: false,
-      retentionHours: 72,
-      storageLimitBytes: 1024 * 1024 * 100,
-      excludedApplications: [],
-      excludedSiteHosts: [],
-      excludedFolderPaths: [],
-      protectedFolderIds: [],
-    };
-
-    const sessionService = new SessionService({
-      newId: () => "00000000-0000-4000-8000-000000000001",
-      now: () => "2026-11-09T10:00:00.000Z",
     });
-
-    coordinator = new SessionCoordinator({
-      service: sessionService,
-      repositories,
-      collectors,
-      getSettings: () => userSettings,
-      newGenerationId: () => "gen-1",
-    });
+    expect(f.coordinator.getStatus().collection).toBe("off");
+    expect((await f.contexts[0]!.emit([event(3)])).ok).toBe(false);
+    expect((await f.coordinator.execute("resume")).ok).toBe(true);
   });
-
-  it("coordinates start session, collects foreground activity, and persists into SQLite", async () => {
-    // Start session
-    const startResult = await coordinator.execute("start");
-    expect(startResult.ok).toBe(true);
-
-    const sessionId = "00000000-0000-4000-8000-000000000001";
-
-    // Verify session persisted in SQLite
-    const persistedSession = await repositories.sessions.get(sessionId);
-    expect(persistedSession.ok).toBe(true);
-    if (persistedSession.ok) {
-      expect(persistedSession.value?.status).toBe("active");
-    }
-
-    // Verify timeline activity persisted in SQLite
-    const activities = await repositories.activities.list(sessionId, 10);
-    expect(activities.ok).toBe(true);
-    if (activities.ok) {
-      expect(activities.value.length).toBeGreaterThanOrEqual(1);
-      expect(activities.value[0]?.type).toBe("foreground");
-      expect(activities.value[0]?.payload).toEqual({
-        application: "Code.exe",
-        windowTitle: "main.ts - Rewind",
-      });
-    }
-
-    await coordinator.execute("end");
+  it("detects settings changes during startup and denies context mutation as authorization", async () => {
+    const f = fixture();
+    f.collectors.windows.start.mockImplementationOnce(async (context) => {
+      context.settings.excludedApplications.push("mutated-copy");
+      f.settings.collectionConsent = false;
+      return ok();
+    });
+    expect((await f.coordinator.execute("start")).ok).toBe(false);
+    expect(f.settings.excludedApplications).toEqual([]);
+    expect(f.coordinator.getActiveGenerationId()).toBeNull();
   });
-
-  it("persists browser visits and opened files during an active session", async () => {
-    await coordinator.execute("start");
-    const sessionId = "00000000-0000-4000-8000-000000000001";
-
-    // 1. Record browser visit
-    const visitResult = await coordinator.recordBrowserVisit({
-      browser: "chrome",
-      url: "https://rewind.ai/docs",
-      title: "Rewind Documentation",
+  it("rejects startup emissions before commit", async () => {
+    const f = fixture();
+    f.collectors.windows.start.mockImplementationOnce(async (context) => {
+      expect((await context.emit([event()])).ok).toBe(false);
+      return ok();
     });
-    expect(visitResult.ok).toBe(true);
-
-    // 2. Record opened file
-    const fileRef: FileReference = {
-      id: "20000000-0000-4000-8000-000000000001",
-      displayName: "schema.sql",
-      identity: {
-        kind: "verified-path",
-        absolutePath: "C:\\Rewind\\db\\schema.sql",
-        verifiedAt: "2026-11-09T10:00:00.000Z",
-      },
-    };
-    const fileResult = await coordinator.recordFileOpened(fileRef);
-    expect(fileResult.ok).toBe(true);
-
-    // Verify both activities are in SQLite
-    const activities = await repositories.activities.list(sessionId, 10);
-    expect(activities.ok).toBe(true);
-    if (activities.ok) {
-      const types = activities.value.map((a) => a.type);
-      expect(types).toContain("browser-visit");
-      expect(types).toContain("file-opened");
-    }
-
-    // Verify file reference was saved to files table
-    const persistedFile = await repositories.files.getReference(fileRef.id);
-    expect(persistedFile.ok).toBe(true);
-    if (persistedFile.ok) {
-      expect(persistedFile.value?.displayName).toBe("schema.sql");
-    }
-
-    await coordinator.execute("end");
+    expect((await f.coordinator.execute("start")).ok).toBe(true);
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
   });
-
-  it("respects pause and end states: stops recording and updates session in SQLite", async () => {
-    await coordinator.execute("start");
-    const sessionId = "00000000-0000-4000-8000-000000000001";
-
-    // Pause
-    const pauseResult = await coordinator.execute("pause");
-    expect(pauseResult.ok).toBe(true);
-
-    // Verify status updated in SQLite
-    const pausedSession = await repositories.sessions.get(sessionId);
-    expect(pausedSession.ok).toBe(true);
-    if (pausedSession.ok) {
-      expect(pausedSession.value?.status).toBe("paused");
-    }
-
-    // Attempting to record during paused state should fail / be rejected
-    const visitWhilePaused = await coordinator.recordBrowserVisit({
-      browser: "edge",
-      url: "https://example.com",
-      title: "Paused",
+  it("drops queued work after pause even if admitted before revocation", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const entered = deferred();
+    const release = deferred();
+    f.repositories.activities.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
     });
-    expect(visitWhilePaused.ok).toBe(false);
-
-    // Resume
-    const resumeResult = await coordinator.execute("resume");
-    expect(resumeResult.ok).toBe(true);
-
-    // End session
-    const endResult = await coordinator.execute("end");
-    expect(endResult.ok).toBe(true);
-
-    const endedSession = await repositories.sessions.get(sessionId);
-    expect(endedSession.ok).toBe(true);
-    if (endedSession.ok) {
-      expect(endedSession.value?.status).toBe("ended");
-      expect(endedSession.value?.endedAt).toBeDefined();
-    }
+    const first = f.contexts[0]!.emit([event()]);
+    await entered.promise;
+    const queued = f.contexts[0]!.emit([event(2)]);
+    const pause = f.coordinator.execute("pause");
+    release.resolve();
+    expect((await first).ok).toBe(true);
+    expect((await queued).ok).toBe(false);
+    expect((await pause).ok).toBe(true);
+    expect(f.repositories.activities.append).toHaveBeenCalledTimes(1);
   });
-
-  it("enforces privacy exclusions: excluded apps, sites, and folders are never persisted", async () => {
-    userSettings.excludedApplications = ["secret-app"];
-    userSettings.excludedSiteHosts = ["private.com"];
-    userSettings.excludedFolderPaths = ["C:\\private"];
-
-    await coordinator.execute("start");
-    const sessionId = "00000000-0000-4000-8000-000000000001";
-
-    // Switch to excluded app
-    windowStrategy.setActiveWindow({
-      application: "secret-app.exe",
-      windowTitle: "Confidential",
+  it.each(["result", "rejection"])(
+    "fails closed after append %s failure",
+    async (kind) => {
+      const f = fixture();
+      await f.coordinator.execute("start");
+      if (kind === "result")
+        f.repositories.activities.append.mockResolvedValueOnce(
+          failure("INTEGRITY_FAILURE", "private"),
+        );
+      else
+        f.repositories.activities.append.mockRejectedValueOnce(
+          new Error("private"),
+        );
+      expect((await f.contexts[0]!.emit([event()])).ok).toBe(false);
+      await turn();
+      expect(f.coordinator.getStatus().unavailable).toBe(true);
+      expect(
+        Object.values(f.collectors).every((collector) => !collector.running),
+      ).toBe(true);
+      expect((await f.contexts[0]!.emit([event(2)])).ok).toBe(false);
+    },
+  );
+  it("validates complete batches and rejects cross-session/source spoofing", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const context = f.contexts[0]!;
+    for (const invalid of [
+      { ...event(), sessionId: id(2) },
+      { ...event(), source: "browser" },
+      { ...event(), id: "invalid" },
+    ])
+      expect((await context.emit([invalid as ActivityEvent])).ok).toBe(false);
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  });
+  it("suppresses excluded applications and browser titles without private-context provenance", async () => {
+    const f = fixture();
+    f.settings.excludedApplications = ["secret.exe"];
+    await f.coordinator.execute("start");
+    for (const application of ["Secret", "chrome.exe", "msedge", "Rewind.exe"])
+      expect(
+        (
+          await f.contexts[0]!.emit([
+            {
+              ...event(),
+              source: "windows",
+              type: "foreground",
+              payload: { application, windowTitle: "synthetic" },
+            },
+          ])
+        ).ok,
+      ).toBe(true);
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  });
+  it("denies resource observations without engine authorization", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    expect(
+      (
+        await f.contexts[2]!.emit([
+          {
+            ...event(),
+            source: "filesystem",
+            type: "file-change",
+            payload: { fileId: id(500), change: "updated" },
+          },
+        ])
+      ).ok,
+    ).toBe(false);
+    expect(f.repositories.activities.append).not.toHaveBeenCalled();
+  });
+  it("bounds batch and pending work capacity", async () => {
+    const f = fixture();
+    await f.coordinator.execute("start");
+    const context = f.contexts[0]!;
+    expect(
+      (await context.emit(Array.from({ length: 129 }, (_, n) => event(n)))).ok,
+    ).toBe(false);
+    const release = deferred();
+    const entered = deferred();
+    f.repositories.activities.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
     });
+    const first = context.emit([event()]);
+    await entered.promise;
+    const pending = Array.from({ length: 31 }, (_, n) =>
+      context.emit([event(n + 2)]),
+    );
+    expect((await context.emit([event(50)])).ok).toBe(false);
+    const end = f.coordinator.execute("end");
+    release.resolve();
+    await Promise.all([first, ...pending, end]);
+    expect(f.repositories.activities.append).toHaveBeenCalledTimes(1);
+  });
+});
 
-    // Record excluded site
-    await coordinator.recordBrowserVisit({
-      browser: "chrome",
-      url: "https://private.com/docs",
-      title: "Confidential Web",
+describe("deadlines are failures, never cancellation acknowledgements", () => {
+  it("keeps a timed-out append tracked, prevents close, and recovers only after settlement", async () => {
+    vi.useFakeTimers();
+    const f = fixture(true, 20);
+    await f.coordinator.execute("start");
+    const entered = deferred();
+    const release = deferred();
+    f.repositories.activities.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      return ok();
     });
-
-    // Record excluded folder
-    await coordinator.recordFileOpened({
-      id: "20000000-0000-4000-8000-000000000099",
-      displayName: "secret.txt",
-      identity: {
-        kind: "verified-path",
-        absolutePath: "C:\\private\\secret.txt",
-        verifiedAt: "2026-11-09T10:00:00.000Z",
-      },
+    const emission = f.contexts[0]!.emit([event()]);
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(21);
+    expect((await emission).ok).toBe(false);
+    const shutdown = f.coordinator.shutdown();
+    await vi.advanceTimersByTimeAsync(50);
+    expect((await shutdown).ok).toBe(false);
+    expect(f.closeStorage).not.toHaveBeenCalled();
+    release.resolve();
+    await vi.advanceTimersByTimeAsync(50);
+    expect((await f.coordinator.shutdown()).ok).toBe(true);
+    expect(f.closeStorage).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("stops a late startup again before acknowledging shutdown", async () => {
+    vi.useFakeTimers();
+    const f = fixture(true, 20);
+    const entered = deferred();
+    const release = deferred();
+    f.collectors.windows.start.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+      f.collectors.windows.running = true;
+      return ok();
     });
-
-    // None of the excluded items should be in SQLite
-    const activities = await repositories.activities.list(sessionId, 20);
-    expect(activities.ok).toBe(true);
-    if (activities.ok) {
-      for (const act of activities.value) {
-        if (act.type === "browser-visit") {
-          expect(act.payload.url).not.toContain("private.com");
-        }
-        if (
-          act.type === "file-opened" &&
-          act.payload.identity.kind === "verified-path"
-        ) {
-          expect(act.payload.identity.absolutePath).not.toContain("private");
-        }
-      }
-    }
-
-    await coordinator.execute("end");
+    const start = f.coordinator.execute("start");
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(45);
+    expect((await start).ok).toBe(false);
+    const shutdown = f.coordinator.shutdown();
+    await vi.advanceTimersByTimeAsync(1);
+    release.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await shutdown).ok).toBe(true);
+    expect(f.collectors.windows.running).toBe(false);
+    expect(f.closeStorage).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

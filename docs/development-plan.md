@@ -1,6 +1,6 @@
 # Development plan
 
-The starter is Phase 0's technical foundation. Subsequent phases deliver complete, tested slices; they are not a request to implement the whole product now. Rasit approves architecture/contracts/dependencies, then module owners implement independently against ports. See [task backlog](team-tasks.md) for per-task branches and acceptance criteria.
+The original phase plan remains the version-one target. The current [local implementation report](audit/secure-storage-collection-integration.md) records completed encrypted history/key, utility/consent and Windows timeline slices. Browser/folder capture, retention/deletion, snapshots/recovery and AI remain future work. Rasit reviews architecture/contracts/dependencies; existing module ownership is preserved.
 
 ## Phase 0 — Foundation and design contracts
 

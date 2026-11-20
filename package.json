@@ -23,11 +23,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:app": "playwright test",
+    "test:browser": "playwright test --config playwright.browser.config.ts",
+    "test:documents:packaged": "node scripts/test-document-runtime.mjs",
     "build": "npm run typecheck && npm run build:extension && npm run package --workspace @rewind/desktop",
     "build:extension": "npm run build --workspace @rewind/browser-extension",
-    "rebuild": "npm run rebuild --workspace @rewind/desktop",
-    "make": "npm run make --workspace @rewind/desktop",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+    "make": "node scripts/make-release.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "lock:prepare": "node scripts/prepare-native-lock.mjs",
+    "check:install": "node scripts/prepare-native-lock.mjs --check",
+    "check": "npm run check:install && npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -37,13 +41,13 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "6.1.2",
-    "eslint": "10.13.0",
+    "eslint": "10.15.0",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react-hooks": "^7.0.0",
     "globals": "^16.0.0",
     "prettier": "^3.0.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.71.2",
+    "typescript-eslint": "8.73.0",
     "vite": "8.3.4",
     "vitest": "5.0.5"
   }

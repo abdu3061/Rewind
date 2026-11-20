@@ -1,0 +1,28 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, expect, it } from "vitest";
+import { SqliteSessionRepository } from "./session-repository";
+import { SqliteFileRepository } from "./file-repository";
+import { SqliteSearchRepository } from "./search-repository";
+import { SqliteActivityRepository } from "./activity-repository";
+const db = new DatabaseSync(":memory:");
+db.exec(readFileSync(resolve(__dirname, "../../../db/migrations/001_initial.sql"), "utf8"));
+afterEach(() => { db.exec("DELETE FROM files; DELETE FROM sessions;"); });
+const sessionId = "00000000-0000-4000-8000-000000000001";
+async function session() { await new SqliteSessionRepository(db).save({ id: sessionId, status: "active", startedAt: "2026-11-16T10:00:00.000Z", updatedAt: "2026-11-16T10:00:00.000Z", endedAt: null }); }
+it("must not label an uncaptured file as a recoverable version in an unrelated session", async () => {
+  await session();
+  await new SqliteFileRepository(db).saveReference({ id: "30000000-0000-4000-8000-000000000001", displayName: "Synthetic report", identity: { kind: "unverified", observedTitle: "Synthetic report" } });
+  const result = await new SqliteSearchRepository(db).search({ text: "Synthetic", mode: "keyword", limit: 10, sessionId: "00000000-0000-4000-8000-000000000002" });
+  expect(result.ok && result.value).toHaveLength(0);
+});
+it("must paginate distinct events sharing a timestamp without losing one", async () => {
+  await session();
+  const repo = new SqliteActivityRepository(db);
+  await repo.append([1, 2].map((n) => ({ id: `20000000-0000-4000-8000-${String(n).padStart(12, "0")}`, sessionId, occurredAt: "2026-11-16T10:00:00.000Z", source: "windows" as const, type: "idle" as const, payload: { state: "entered" as const } })));
+  const first = await repo.list(sessionId, 1);
+  if (!first.ok || !first.value[0]) throw new Error("Missing first page.");
+  const second = await repo.list(sessionId, 1, first.value[0].occurredAt);
+  expect(second.ok && [...first.value, ...second.value]).toHaveLength(2);
+});

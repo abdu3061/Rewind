@@ -1,0 +1,72 @@
+# Premium desktop and floating notch
+
+19 November 2026. Local branch `feature/premium-notch-ui`, starting from tested release candidate `aca3e9c`. The implementation is `cc5ee37`, failure-state/subscription refinement `34f5e5c`, activity-expiration fence `5c7bdc7`, and independently tested active-recording shutdown correction `f47c6fa`. No push, remote PR, merge, publication, deployment or signing was performed for this goal. Rasit's architecture/security/dependency review and Abdullah's product review remain integration gates, not claims made by this implementation.
+
+Rewind remains one application, one encrypted profile and one supervised recording worker. The existing six pages, source approvals, browser setup, captured-content search, document previews, recovery/overwrite confirmations, checkpoints, Gemini reviews and storage controls remain in place. The full desktop now uses navy/lavender surfaces, system typography, standard local icons and cleaner cards. Repetitive global copy is replaced with a compact truthful privacy summary; sensitive-title warnings, independent launch approvals, source limitations and destructive confirmations remain in their workflows.
+
+## Connected behavior
+
+| Interaction                      | Actual behavior                                                                                                                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Minimize desktop                 | Keep its mounted page/drafts, session and approved operations; lazily show an inactive 144 × 64 DIP compact notch on the desktop's display.                                                   |
+| Hover/click                      | Expand without hover focus theft. Native bounds follow measured content, at most 760 DIPs wide and 560 high, clamped to work area. Only eight-pixel shadow margins are transparent hit area.  |
+| Input/quick actions              | Existing start/pause/resume/end APIs; bounded local activity search; actual same-session checkpoint evidence selection and save.                                                              |
+| Open Rewind                      | Hide notch, restore/focus the same desktop and preserve its state. Explicit Files/Search/Settings shortcuts select the existing page.                                                         |
+| Taskbar/tray/second instance     | Native restore and shared tray Open/double-click paths restore the existing desktop. Tray also shows/hides the notch.                                                                         |
+| Escape/click-away/Hide           | Collapse or hide as labeled. Keyboard Tab/Enter and visible focus are supported. The tray/taskbar remain available.                                                                           |
+| Quit/desktop close/renderer loss | Hide the notch, revoke/drain sources and wait for actual worker/parser shutdown. No second session/backend is created.                                                                        |
+| Display changes                  | Use DIPs directly, remember the non-minimized desktop display, reposition on metrics/add/remove and fall back to an available display after unplug. Short work areas retain scrolling access. |
+
+Try “Start my session”, “Pause my recording”, “What was I working on?”, “Show websites I visited”, “Find thesis”, “Save a checkpoint”, or “Restore a file”. Unsupported phrasing becomes a bounded local text search. It is explicitly local recall, not an invented semantic or cloud answer. Gemini still requires the full app's existing per-question sharing review. There is no microphone or unsupported shortcut legend.
+
+Checkpoint quick save loads up to ten actual file versions and ten observations from the same current session, requires a name and explicit evidence selection, and calls the existing engine. Ordinary retention applies; Keep remains in the full app. Busy work remains tracked until settlement. Results/reviews are fenced during render by current retained-evidence authority, visibility and session, and invalidated by maintenance. New observations preserve an explicit selection. Only an acknowledged backend write produces success feedback.
+
+The display stamp combines the existing metadata authority with document authority: activity-only expiration advances the former without unnecessarily invalidating file previews. An actual encrypted-runtime regression ages synthetic observations, runs ordinary automatic cleanup and verifies that notch metadata becomes stale while the file-preview receipt stays unchanged. Cloud remains off; no AI call or new permission is involved.
+
+## Boundaries preserved
+
+[ADR 0037](../decisions/0037-connected-desktop-notch.md) records the window roles, contracts, dependency and native behavior. Main owns each WebContents identity and validates its main frame and renderer location. The notch's smaller preload bridge exposes presentation, session controls, runtime reads, timeline reads, version summaries and checkpoint creation. Main separately denies grants, cloud tools, credential configuration, body parsing/search, native dialogs, recovery and maintenance from that window. Context isolation, sandboxing, web security, permission denial and navigation/window-open restrictions apply to both surfaces. No renderer receives Node, a raw IPC API or filesystem capability.
+
+The new active-recording close/restart test exposed an existing shutdown transition bug: a stopping worker could briefly report active collection while drain began. The worker now reports stopping collection until quiescence. The supervisor's consistency rejection remains intact. A runtime regression and actual packaged shutdown/restart verify the correction.
+
+Final failure-state review added the existing sanitized worker error and an explicit desktop reconnect route to the notch. A packaged worker-crash test confirms the visible failure, successful reconnection, and fresh session operation with all source approvals still off. Window subscriptions reject non-function listeners before registering them.
+
+The transparent glossy arrow [mascot](../design/premium-notch/mascot-source.md) is a reusable local PNG generated with the built-in image tool from the supplied references; that document preserves its exact prompt and inspection. Idle/recording is static; thinking/working and acknowledged success have restrained motion, disabled under reduced motion. The pinned MIT Phosphor icon package is bundled locally and added to release notices. No service or framework was introduced.
+
+## Verification record
+
+All automated application runs use marked temporary synthetic profiles, observations and files. No personal activity, documents, credential entry, production browser setup or live Gemini request was used.
+
+| Gate                            | Current evidence                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clean install                   | `npm ci` passed: 404 packages installed, 413 audited, zero vulnerabilities; native prebuild metadata preserved.                                                                                                                                                                                                                                 |
+| Complete check                  | Clean-install `npm run check` passed native-lock validation, typecheck, lint, formatting and all **641 tests / 75 files** in 189.83 seconds.                                                                                                                                                                                                    |
+| Windows verification build      | `npm run build` passed typecheck, the extension build and the packaged Windows x64 verification folder.                                                                                                                                                                                                                                         |
+| Packaged app suite              | All **29 tests passed** (3.5 minutes), including the original 25 full-app regressions and four notch lifecycle/security/action cases.                                                                                                                                                                                                           |
+| New notch checks                | Four packaged tests cover transitions/focus/keyboard/single worker/restricted bridge; real recording/search/checkpoint/retention/restart; renderer-loss drain; and worker failure/reconnect without approval. Unit checks cover geometry, monitor removal/scaling, asynchronous restore, tray callbacks and activity-only automatic expiration. |
+| Installed Chrome/Edge           | All **six isolated installed-browser tests passed** (47.5 seconds): Chrome/Edge dual consent, exclusions, authenticated native relay and engine lifecycle.                                                                                                                                                                                      |
+| Packaged document harness       | Actual-ASAR/native-guard harness passed (4.95 seconds), retaining admission/resource deadlines and original-byte recovery checks.                                                                                                                                                                                                               |
+| Unsigned ZIP/Squirrel candidate | `npm run make` and `npm run verify:release` passed: hardened fuses, matching ZIP/NuGet payloads, native/resource hashes, 64 notice entries and actual synthetic startup/graceful shutdown. Both application and Setup signatures are NotSigned.                                                                                                 |
+
+## Local unsigned candidate
+
+Artifacts were built from clean committed source `f831b6c31b4543dcea86d53218f0237ec62d2511` in release mode, with lock SHA-256 `bb5cac043b94dc01dbf7481921eff8045f2553e083a3a2727c161e0846137453`. This report's subsequent documentation-only update does not change product sources or relabel that build. The generated [release manifest](../../apps/desktop/out/make/release-manifest.json) records exact sizes and hashes:
+
+| Artifact                                                                                     |     Bytes | SHA-256                                                            |
+| -------------------------------------------------------------------------------------------- | --------: | ------------------------------------------------------------------ |
+| [Windows ZIP](../../apps/desktop/out/make/zip/win32/x64/Rewind-win32-x64-0.1.0.zip)          | 178578888 | `fb5a5b95e831600cbd7b5946e1c675a39f0423884ada7fc92ce9491d576122a7` |
+| [Unsigned Squirrel Setup](../../apps/desktop/out/make/squirrel.windows/x64/Rewind-Setup.exe) | 173336064 | `0f02e0fcf7f22743539981c6b27ec2cd8e0ee0fb15780919848d551b8f2b2668` |
+
+Additional actual-ASAR inspection confirms that the bundled transparent mascot is byte-identical to the source PNG, recall and worker-failure views are present, and the restricted presentation bridge is included. Release inspection confirms no Rewind process remains after the acknowledged smoke shutdown. Installation, upgrade/removal, Authenticode trust and live Gemini acceptance are not claimed.
+
+## Visual evidence
+
+[Visual QA](../../design-qa.md) passed after combined reference/implementation review and fixes to action affordances, small text, dashboard ordering/alignment and settled-height screenshot capture. Captured and inspected:
+
+- [Dashboard](../design/premium-notch/dashboard.png) and [desktop restored with its Search draft](../design/premium-notch/desktop-restored.png).
+- [Compact notch](../design/premium-notch/notch-collapsed.png), [expanded notch](../design/premium-notch/notch-expanded.png), [compact recording](../design/premium-notch/notch-recording-collapsed.png) and [expanded recording](../design/premium-notch/notch-recording.png).
+- [Real local matches](../design/premium-notch/notch-search.png), [acknowledged checkpoint success](../design/premium-notch/notch-checkpoint.png), [worker failure](../design/premium-notch/notch-unavailable.png) and the [combined design comparison](../design/premium-notch/comparison-final.png).
+
+The overlay uses normal floating priority and may yield to exclusive fullscreen applications. It does not inspect foreground titles/geometry or promise detection of every borderless game. Physical multi-monitor/DPI hotplug, every fullscreen application, assistive technology and extended resource soak remain manual device acceptance, distinct from automated geometry/focus coverage. Existing independent security, signing/licensing, VM install/upgrade/removal and native Gemini/live-account release gates in [Windows release](../windows-release.md) remain unchanged.
+
+Automatic approval review rejected optional cleanup of five earlier failed synthetic test-profile directories with the stated reason “blocked by policy.” Those Temp directories were left untouched. The successful verification fixtures cleaned up normally; no Rewind process remains. This optional housekeeping does not affect the build or product verification.

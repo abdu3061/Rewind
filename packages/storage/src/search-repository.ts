@@ -1,6 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseConnection } from "./database";
 import {
   failure,
+  activityEventSchema,
   searchQuerySchema,
   searchResultSchema,
   type Result,
@@ -13,19 +14,20 @@ interface ActivitySearchRow {
   id: string;
   session_id: string;
   type: string;
+  source: string;
   occurred_at: string;
   payload: string;
 }
 
-interface FileVersionSearchRow {
-  file_id: string;
+interface FileSearchRow {
+  id: string;
   version_id: string;
+  captured_at: string;
   display_name: string;
   identity_kind: "verified-path" | "unverified";
   absolute_path: string | null;
+  verified_at: string | null;
   observed_title: string | null;
-  captured_at: string;
-  media_type: string;
 }
 
 interface CheckpointSearchRow {
@@ -36,30 +38,28 @@ interface CheckpointSearchRow {
 }
 
 export class SqliteSearchRepository implements SearchRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseConnection) {}
 
   async search(query: SearchQuery): Promise<Result<SearchResult[]>> {
     const parsedQuery = searchQuerySchema.safeParse(query);
-    if (!parsedQuery.success) {
-      return failure(
-        "INVALID_INPUT",
-        `Invalid search query: ${parsedQuery.error.issues[0]?.message ?? "Validation failed"}`,
-      );
-    }
-
+    if (!parsedQuery.success)
+      return failure("INVALID_INPUT", "Search query is invalid.");
+    query = parsedQuery.data;
+    if (query.mode !== "keyword")
+      return failure("NOT_IMPLEMENTED", "Only keyword search is available.");
     try {
-      const term = query.text.trim();
+      const results: SearchResult[] = [];
+      const term = query.text.replace(/[\\%_]/g, "\\$&");
+
       if (!term) {
         return { ok: true, value: [] };
       }
 
-      const results: SearchResult[] = [];
-
       // 1. Search Activities (matching payload text)
       let actSql = `
-        SELECT id, session_id, type, occurred_at, payload
+        SELECT id, session_id, type, source, occurred_at, payload
         FROM activities
-        WHERE payload LIKE '%' || ? || '%'
+        WHERE payload LIKE '%' || ? || '%' ESCAPE '\\'
       `;
       const actParams: (string | number)[] = [term];
 
@@ -75,7 +75,7 @@ export class SqliteSearchRepository implements SearchRepository {
         actSql += ` AND occurred_at <= ?`;
         actParams.push(query.to);
       }
-      actSql += ` ORDER BY occurred_at DESC LIMIT ?`;
+      actSql += ` ORDER BY occurred_at DESC, id DESC LIMIT ?`;
       actParams.push(query.limit);
 
       const actRows = this.db
@@ -84,131 +84,110 @@ export class SqliteSearchRepository implements SearchRepository {
 
       for (const row of actRows) {
         let title = `Activity: ${row.type}`;
-        let browserVisitId: string | null = null;
         try {
-          const parsed = JSON.parse(row.payload);
-          if (row.type === "browser-visit" && parsed.id) {
-            browserVisitId = String(parsed.id);
-            if (parsed.title) title = String(parsed.title);
-            else if (parsed.url) title = String(parsed.url);
-          } else if (parsed.windowTitle) {
-            title = String(parsed.windowTitle);
-          } else if (parsed.application) {
-            title = String(parsed.application);
-          } else if (parsed.displayName) {
-            title = String(parsed.displayName);
-          }
+          const parsed = activityEventSchema.safeParse({
+            id: row.id,
+            sessionId: row.session_id,
+            type: row.type,
+            source: row.source,
+            occurredAt: row.occurred_at,
+            payload: JSON.parse(row.payload),
+          });
+          if (!parsed.success)
+            return failure(
+              "INTEGRITY_FAILURE",
+              "Stored search evidence is invalid.",
+            );
+          const event = parsed.data;
+          if (event.type === "foreground")
+            title = event.payload.windowTitle || event.payload.application;
+          else if (event.type === "browser-visit") title = event.payload.title;
+          else if (event.type === "file-opened")
+            title = event.payload.displayName;
         } catch {
-          // Keep fallback title
+          return failure(
+            "INTEGRITY_FAILURE",
+            "Stored search evidence is invalid.",
+          );
         }
 
-        const candidateResult: SearchResult = {
-          source: browserVisitId
-            ? { kind: "browser-visit", browserVisitId }
-            : { kind: "activity", activityId: row.id },
+        results.push({
+          source: { kind: "activity", activityId: row.id },
           occurredAt: row.occurred_at,
-          title: title.slice(0, 2048),
-          excerpt: row.payload.slice(0, 300),
+          title,
+          excerpt: title.slice(0, 300),
           evidence: "recorded",
-        };
-
-        const parsedResult = searchResultSchema.safeParse(candidateResult);
-        if (parsedResult.success) {
-          results.push(parsedResult.data);
-        }
+        });
       }
 
-      // 2. Search Files (matching display name, path, or observed title)
-      let fileSql = `
-        SELECT 
-          f.id as file_id,
-          COALESCE(fv.id, f.id) as version_id,
-          f.display_name,
-          f.identity_kind,
-          f.absolute_path,
-          f.observed_title,
-          COALESCE(fv.captured_at, f.verified_at, '2026-01-01T00:00:00.000Z') as captured_at,
-          COALESCE(fv.media_type, 'application/octet-stream') as media_type
-        FROM files f
-        LEFT JOIN (
-          SELECT id, file_id, captured_at, media_type, session_id
-          FROM file_versions
-          WHERE (file_id, captured_at) IN (
-            SELECT file_id, MAX(captured_at) FROM file_versions GROUP BY file_id
-          )
-        ) fv ON f.id = fv.file_id
-        WHERE (
-          f.display_name LIKE '%' || ? || '%'
-          OR (f.absolute_path IS NOT NULL AND f.absolute_path LIKE '%' || ? || '%')
-          OR (f.observed_title IS NOT NULL AND f.observed_title LIKE '%' || ? || '%')
-        )
-      `;
-      const fileParams: (string | number)[] = [term, term, term];
-
+      // 2. Search Files (matching display name or path)
+      let scope = "1 = 1";
+      const fileParams: (string | number)[] = [];
       if (query.sessionId) {
-        fileSql += ` AND (fv.session_id = ? OR fv.session_id IS NULL)`;
+        scope += " AND session_id = ?";
         fileParams.push(query.sessionId);
       }
       if (query.from) {
-        fileSql += ` AND COALESCE(fv.captured_at, f.verified_at, '2026-01-01T00:00:00.000Z') >= ?`;
+        scope += " AND captured_at >= ?";
         fileParams.push(query.from);
       }
       if (query.to) {
-        fileSql += ` AND COALESCE(fv.captured_at, f.verified_at, '2026-01-01T00:00:00.000Z') <= ?`;
+        scope += " AND captured_at <= ?";
         fileParams.push(query.to);
       }
-      fileSql += ` ORDER BY captured_at DESC LIMIT ?`;
-      fileParams.push(query.limit);
-
+      const fileSql = `
+        WITH scoped AS (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY file_id ORDER BY captured_at DESC, id DESC) AS position
+          FROM file_versions WHERE ${scope}
+        )
+        SELECT f.*, fv.id AS version_id, fv.captured_at FROM files f
+        JOIN scoped fv ON fv.file_id = f.id AND fv.position = 1
+        WHERE (display_name LIKE '%' || ? || '%' ESCAPE '\\'
+           OR absolute_path LIKE '%' || ? || '%' ESCAPE '\\'
+           OR observed_title LIKE '%' || ? || '%' ESCAPE '\\')
+        ORDER BY fv.captured_at DESC, fv.id DESC LIMIT ?`;
+      fileParams.push(term, term, term, query.limit);
       const fileRows = this.db
         .prepare(fileSql)
-        .all(...fileParams) as unknown as FileVersionSearchRow[];
+        .all(...fileParams) as unknown as FileSearchRow[];
 
       for (const row of fileRows) {
         const isVerified = row.identity_kind === "verified-path";
-        const excerpt = isVerified
-          ? (row.absolute_path ?? row.display_name)
-          : (row.observed_title ?? row.display_name);
-
-        const candidateResult: SearchResult = {
+        results.push({
           source: {
             kind: "file-version",
-            fileId: row.file_id,
+            fileId: row.id,
             fileVersionId: row.version_id,
           },
           occurredAt: row.captured_at,
-          title: row.display_name.slice(0, 2048),
-          excerpt: excerpt.slice(0, 4000),
+          title: row.display_name,
+          excerpt: isVerified
+            ? (row.absolute_path ?? "").slice(0, 4000)
+            : (row.observed_title ?? "").slice(0, 4000),
           evidence: isVerified ? "verified-path" : "title-only",
-        };
-
-        const parsedResult = searchResultSchema.safeParse(candidateResult);
-        if (parsedResult.success) {
-          results.push(parsedResult.data);
-        }
+        });
       }
 
       // 3. Search Checkpoints (matching checkpoint name)
       let cpSql = `
         SELECT id, session_id, name, created_at
         FROM checkpoints
-        WHERE name LIKE '%' || ? || '%'
+        WHERE name LIKE '%' || ? || '%' ESCAPE '\\'
       `;
       const cpParams: (string | number)[] = [term];
-
       if (query.sessionId) {
         cpSql += ` AND session_id = ?`;
         cpParams.push(query.sessionId);
       }
       if (query.from) {
-        cpSql += ` AND created_at >= ?`;
+        cpSql += " AND created_at >= ?";
         cpParams.push(query.from);
       }
       if (query.to) {
-        cpSql += ` AND created_at <= ?`;
+        cpSql += " AND created_at <= ?";
         cpParams.push(query.to);
       }
-      cpSql += ` ORDER BY created_at DESC LIMIT ?`;
+      cpSql += ` ORDER BY created_at DESC, id DESC LIMIT ?`;
       cpParams.push(query.limit);
 
       const cpRows = this.db
@@ -216,30 +195,33 @@ export class SqliteSearchRepository implements SearchRepository {
         .all(...cpParams) as unknown as CheckpointSearchRow[];
 
       for (const row of cpRows) {
-        const candidateResult: SearchResult = {
+        results.push({
           source: { kind: "checkpoint", checkpointId: row.id },
           occurredAt: row.created_at,
-          title: `Checkpoint: ${row.name}`.slice(0, 2048),
-          excerpt: `Named milestone: ${row.name}`.slice(0, 4000),
+          title: `Checkpoint: ${row.name}`,
+          excerpt: `Named milestone: ${row.name}`,
           evidence: "recorded",
-        };
-
-        const parsedResult = searchResultSchema.safeParse(candidateResult);
-        if (parsedResult.success) {
-          results.push(parsedResult.data);
-        }
+        });
       }
 
-      // Sort combined results by occurredAt DESC and apply limit
-      results.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      // Sort all combined results by occurredAt DESC and apply limit
+      results.sort((a, b) => {
+        const left = `${a.occurredAt}:${JSON.stringify(a.source)}`;
+        const right = `${b.occurredAt}:${JSON.stringify(b.source)}`;
+        return left === right ? 0 : left < right ? 1 : -1;
+      });
       const sliced = results.slice(0, query.limit);
+      if (
+        sliced.some((result) => !searchResultSchema.safeParse(result).success)
+      )
+        return failure(
+          "INTEGRITY_FAILURE",
+          "Stored search evidence is invalid.",
+        );
 
       return { ok: true, value: sliced };
-    } catch (error) {
-      return failure(
-        "INTERNAL",
-        `Failed to execute search: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      return failure("INTERNAL", "Failed to execute search.");
     }
   }
 }

@@ -1,5 +1,41 @@
 # Architecture
 
+[ADR 0041](decisions/0041-change-only-file-capture.md) supersedes initial file import and periodic content reconciliation. One consent-gated native helper arms verified-root Windows notifications; bounded hints trigger current native reads only after active-run authorization. No existing-file enumeration/body import occurs at startup/Resume. Same-content saves are deduplicated against retained versions across runs, and content indexing receives only actual new versions. Queues, retries and per-poll byte/file work are bounded; notification overflow remains an explicit fatal gap.
+
+The automatic-folder repair in [ADR 0039](decisions/0039-bounded-folder-scan-continuation.md) continues native scans in bounded pages instead of treating ordinary folder size as a fatal gap. Every page revalidates the selected root and active directory frame; every content read retains independent native authorization. Unsupported nested entries produce visible incomplete-coverage warnings, while invalid selected roots still stop recording. Helper shutdown discards all cursors.
+
+[ADR 0038](decisions/0038-one-time-local-recording-setup.md) adds the requested combined local setup. One-time approval enrolls verified Desktop/Documents/Downloads and remembers local startup approval in encrypted settings. The worker still announces default-off ready; its first boot of a desktop launch may renew approval afterward. Reconnect remains off and interrupted sessions remain paused. Renderer roots are never accepted; main supplies OS locations, with synthetic substitutions under isolated profiles. Older launch-only descriptions below apply to manual/historical behavior; browser/cloud approvals remain independent.
+
+The desktop now keeps one mounted full window and lazily creates a restricted floating notch on minimize ([ADR 0037](decisions/0037-connected-desktop-notch.md)). Both observe the same utility worker, encrypted history, session and source approvals. Native restore/tray activation returns to the existing desktop state; Quit drains the worker. Main authenticates each window/frame and independently denies the notch permission grants, cloud tools, recovery and maintenance. Its local recall and explicitly selected checkpoint actions reuse existing engine APIs. The presentation layer owns monitor/DIP geometry and bounded resizing without collecting foreground-window information.
+
+ADRs 0034–0035 now compose encrypted captured-content search in the normal recording worker and Search screen. Derived text/hash/format/limits live in the verified cipher database with source-bound FTS and cascade lifetime; publication rechecks current original identity/bytes, policy and physical quota. `ContentOperations` admits automatic active-session/file-grant work and explicit retained-history backfill, one source at a time. The existing private processor preserves guarded PDF/DOCX limits and preview priority; owner-scoped stop cannot cancel a replacement. Visible status/Stop/retry and escaped version-linked results use document receipts and pre-commit source-specific invalidation. Pending work settles outside the coordinator before storage closes. Gemini remains metadata-only. The current check passes 616 tests / 69 files; final packaged validation is recorded in the core report. Earlier implementation-stage descriptions below are historical where superseded by these ADRs.
+
+Normal Files/Checkpoints now use a distinct single-use document utility (ADRs 0031–0033). The recording worker reads verified retained original bytes, main mediates a private bounded binary request, and a pre-admission Windows Job Object plus external supervisor contain parser resources/lifetime. Parsing releases the coordinator queue; publication requires fresh retained-byte/hash checks and a current document generation/revision receipt. Explicit maintenance confirms parser closure, automatic cleanup fences affected sources before commit, and request-specific cancellation cannot stop a newer screen. Recovery destination selection uses metadata independently of parsing. Extracted text is ephemeral and remains excluded from Gemini; separately searchable extracted content is still a specification gap under review.
+
+Normal Settings/Search now compose the optional assistant through typed preload capabilities and main-owned sealed native credential entry (ADR 0030). A separate launch grant and explicit per-question evidence review authorize bounded official-SDK calls in the utility. Generation/revision/expiry fencing clears stale UI evidence and exposes actual outstanding work. Packaged verification uses a fixed offline provider inside marked synthetic profiles; interactive native entry and live-account compatibility remain manual acceptance gates. Older implementation-stage notes below retain their historical scope.
+
+The utility now composes private assistant credentials, engine source reviews and the official SDK under separate launch consent (ADR 0029). Current privacy/storage/checkpoint changes invalidate active authority; SDK work must actually close before replacement or storage shutdown. Main/native public routing and Search controls remain unfinished, so ordinary cloud use is still unavailable.
+
+Engine-owned assistant sharing reviews now select actual retained activity IDs and expose immutable bounded excerpts for explicit subset approval (ADR 0028). Private disclosure leases revalidate source identity, policy and checkpoint-aware wall/monotonic retention; actual maintenance writes offer synchronous invalidation before commit. Utility/model and public Search composition remain in progress.
+
+Private Gemini credential primitives now use the cipher database and a two-minute native-to-utility sealed entry channel (ADR 0027). Main receives public/sealed metadata only. They are not yet wired to normal public controls; engine review/permission/Search composition remains required.
+
+The conditional assistant now has a private approved-evidence SDK service (ADR 0025), with strict read-only tools, typed citations, current-approval/source checks and bounded/cancellable transport. It is not yet composed into normal desktop cloud controls; credential/review/Search integration remains required. Tooling security updates and the remaining unpatched development advisory are recorded in ADR 0026.
+
+Current recovery composition also includes optional explicitly confirmed overwrite with current target proof, exclusive admission and verified preservation before mutation; [ADR 0024](decisions/0024-confirmed-overwrite-preservation.md) governs this workflow and its interrupted-write limits. Core checks pass 410 unit tests, 16 packaged tests and 6 installed-browser tests.
+
+Current desktop browser composition is implemented locally under [ADR 0023](decisions/0023-desktop-browser-composition.md): private boot assets, utility-owned setup/registration/broker, independent browser consent, exact engine admission and encrypted timeline/search. The real packaged UI passes isolated Chrome and Edge flows. Startup remains passive and approvals expire on restart. Earlier follow-up entries below describe their historical implementation stages.
+
+Browser setup ownership follow-up: [ADR 0022](decisions/0022-durable-browser-setup.md) adds the encrypted revision-checked journal, verified CREATE_NEW installation generations and confirmed setup/repair orchestration. Startup remains read-only and collection approvals remain separate. Worker/private bootstrap and public browser controls are still being integrated.
+
+Browser packaging follow-up: [ADR 0021](decisions/0021-browser-assets-and-owned-registration.md) adds precompiled Windows x64 host assets and the normal extension outside ASAR, bounded inventory/hash verification and an owned per-user registration primitive. Building does not register a host. Receipt-backed installation, worker wiring and public browser controls remain unfinished.
+
+Browser client follow-up: [ADR 0020](decisions/0020-extension-consent-controls.md) records the normal MV3 background/popup, default-off execution, explicit approval, browser-context/frame controls and actual encrypted browser tests. Native/engine components are implemented; owned desktop setup/registration and worker/public UI composition remain in progress, so normal app browser recording is still unavailable.
+
+Current core follow-up: [integration report](audit/core-functionality-integration.md), [ADR 0013](decisions/0013-protected-folder-capture.md) and [ADR 0014](decisions/0014-confirmed-recovery-copies.md) supersede the earlier planned file/retention sections below. The utility now hosts independent consent-gated Windows and protected-folder collectors, transactional encrypted original-byte capture, retained version queries/previews, automatic expiry and explicit deletion/quota controls. Engine-owned expiring confirmation authorizes a verified native new-file recovery copy through a main-owned dialog. Named checkpoints pin actual same-session versions/activity with transitive Keep, verified views and management (ADR 0015). Browser transport, overwrite recovery, rich document extraction and AI remain pending. Folder reconciliation uses scoped native handle checks, not path-string watcher authorization.
+
+Current local implementation: [report](audit/secure-storage-collection-integration.md), [ADR 0010](decisions/0010-encrypted-recording-store.md) and [ADR 0011](decisions/0011-recording-worker-consent.md). A supervised utility process hosts the coordinator, encrypted SQLite and Windows collector. Main handles UI/tray, renderer authorization, DPAPI and supervision. Lifecycle commit/drain semantics from ADR 0009 are preserved.
+
 The initialization keeps domain code independent of Electron and React. It uses the approved stack and introduces only dependencies required by the runnable starter. Proposed production mechanisms have explicit implementation gates.
 
 ## Components and dependency direction
@@ -8,33 +44,34 @@ The initialization keeps domain code independent of Electron and React. It uses 
 flowchart LR
   R[React renderer] --> P[Typed preload bridge]
   P --> M[Electron main: authorization and composition]
-  M --> E[Engine: in-memory sessions today]
-  M -. later .-> U[Node utility-process host]
-  U -. later .-> C[Collectors]
-  U -. later .-> S[Encrypted storage and FTS5]
-  U -. later .-> A[Optional Gemini assistant]
+  M --> U[Node utility process]
+  U --> E[Engine: serialized coordinator and session state machine]
+  U --> C[Consent-gated Windows collector]
+  U --> S[Encrypted SQLite and FTS5]
+  U -. approved question .-> A[Optional Gemini assistant]
   E --> K[Shared contracts and ports]
   C --> K
   S --> K
   A --> K
-  B[Chrome/Edge extension] -. proposed native host and pipe .-> U
+  B[Chrome/Edge extension] --> H[Authenticated native host and broker]
+  H --> U
 ```
 
-Solid arrows describe existing calls/dependencies. Dotted arrows are planned runtime integration, with no worker, native host, database, collector, or cloud request currently running.
+The dashed assistant path is implemented but requires separate cloud approval and per-question evidence review. Windows, selected-folder and browser collectors require independent approval and an active session. Article extraction and idle/lock collection remain unavailable. The old stock-SQLite adapter remains a synthetic repository prototype; the verified feature branch uses only SecureStorage with the pinned cipher and protected key. Remote main's prototype composition is not an approved replacement.
 
-| Module            | Allowed responsibility / dependency                                                                                                                                                           |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                                   |
-| engine            | Session lifecycle now; future collection coordination, snapshots, checkpoints, recovery, retention and permissions. Depends on contracts and injected ports; never imports React or Electron. |
-| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                                             |
-| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                                   |
-| assistant         | Official Gemini adapter and validated tool loop later. Uses application-approved capabilities and evidence references; no file overwrite capability.                                          |
-| desktop main      | Privileged composition, BrowserWindow/tray, sender authorization, future utility-process host and dialogs.                                                                                    |
-| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                                       |
-| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                                         |
-| browser extension | MV3 background, separate permissions/extraction/transport adapters. No current permissions or monitoring.                                                                                     |
+| Module            | Allowed responsibility / dependency                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| contracts         | Platform-neutral types, Zod validation, errors, ports. Depends only on Zod.                                                                                                   |
+| engine            | Serialized lifecycle, ingestion authorization, exclusion/drain, snapshot orchestration, checkpoints and confirmed recovery. Contracts/injected ports only, no React/Electron. |
+| storage           | SQLite migrations/repositories/FTS, encrypted content store, usage/retention queries. Implements contracts; no dependency on UI/engine internals.                             |
+| collectors        | Windows/browser/folder adapters implementing lifecycle/event contracts. No permission to decide when monitoring is allowed.                                                   |
+| assistant         | Official Gemini SDK over immutable approved evidence, bounded read-only tools, real source citations and observed cancellation; no recovery/deletion authority.               |
+| desktop main      | Window/tray, exact renderer authorization, Windows DPAPI, utility supervision and dialogs. No SQL or window polling.                                                          |
+| preload           | Small explicit capability bridge, arguments/responses/event validation. No generic `send`, `invoke`, file API, or raw Electron objects.                                       |
+| renderer          | React presentation via DesktopApi. No Node, secrets, database, collector, or privileged file imports.                                                                         |
+| browser extension | MV3 background/popup, tabs/nativeMessaging/storage permissions, explicit memory-only consent and focused regular-tab metadata.                                                |
 
-All private packages expose TypeScript source and are bundled by Vite/Vitest. There are no separate package emit steps or alias-only imports that fail after packaging. Runtime desktop code is bundled, and its workspace/React dependencies are build dependencies. Introduce native dependencies only in privileged package manifests and externalize them from Vite when the native spike proves Forge packaging, ABI rebuild, and ASAR unpack behavior. No database binding is selected by this initialization.
+Private packages expose TypeScript source bundled by Vite/Vitest. The worker entry lives in desktop composition. `better-sqlite3-multiple-ciphers` 13.1.1 is externalized, copied with its native runtime/license, and its Windows x64 Node-API binary is unpacked from ASAR. Packaged reopen is tested on Electron 44.11.3. SQL/collection never run in main or renderer.
 
 ## Electron boundaries
 
@@ -44,7 +81,7 @@ The development page uses a loopback Vite server. A per-server nonce permits Rea
 
 The main handler requires the known window's webContents, its exact main frame, and the expected renderer scheme/host/entry path before command validation. Preload validates no-argument public methods and response/event schemas. Main dispatches a strict command enum; errors are small structured values without stacks or sensitive input. Tray commands call the same engine and broadcast resulting state. `get` reads state; events are snapshots, not privileged objects.
 
-Main temporarily hosts the lightweight synchronous session engine. There is no background workload to offload yet. New persistent/collector workloads will move behind a utility-process transport; process creation/restart/error handling lives in desktop main while engine logic remains platform-neutral. This is an explicit staging choice, not a change to the approved Node utility-process architecture. UI closure currently quits the starter. Product tray-only operation needs durable lifecycle and shutdown semantics first.
+Worker messages are versioned, strictly validated and bounded at 2 MiB; IDs and a boot nonce fence replies. Main enforces startup/request deadlines and observes exit before a retry. A heartbeat lease ends orphaned worker authority. Ingestion has a stricter 256 KiB batch limit. Normal quit awaits end/drain/store close; crash recovery restores an interrupted session paused and records a gap, never fabricating an ended acknowledgement. The window close button minimizes to the notch; Quit (tray menu or `Rewind.exe --quit`) and Windows log-off perform the acknowledged shutdown (ADR 0042).
 
 ## Session lifecycle today
 
@@ -58,14 +95,14 @@ stateDiagram-v2
   Ended --> Active: start new session ID
 ```
 
-`get` is valid in every state; all other unlisted transitions return `INVALID_TRANSITION` without mutation. An ended session remains visible until a new start. UTC wall-clock timestamps are clamped within a session against backward clock changes; durations will require a monotonic clock in the real collector engine. Returned objects are copies. State disappears on app exit. There is no persistence, protection, or monitoring implied by Active.
+`get` is valid in every healthy state; unlisted transitions return `INVALID_TRANSITION`. Sessions/history persist encrypted. Active alone never grants recording permission. Approval is explicit per worker launch, settings changes pause without automatic resume, and revocation invalidates generation authority before awaiting cleanup. UTC session timestamps are clamped against backward clock changes. Returned objects are copies.
 
-## Planned ingestion
+## Ingestion
 
 ```mermaid
 flowchart TD
   U[Explicit consent and settings] --> G[Engine session and generation gate]
-  W[Windows foreground / idle / lock] --> N[Validate and normalize]
+  W[Approved Windows foreground activity] --> N[Validate and normalize]
   F[Selected-folder watcher] --> N
   B[Browser extension and native bridge] --> N
   N --> G
@@ -76,19 +113,19 @@ flowchart TD
   V --> O[Encrypted immutable blob store]
 ```
 
-Collectors must stop emitting and release handles on pause/stop. Engine ingestion must additionally reject a stale generation, paused/ended session, invalid session linkage, excluded resources, or revoked permission. Pause/end acknowledgement must follow queue quiescence; delayed file notifications or extension reconnects cannot silently re-enable capture. Collector/worker failures become explicit gaps. No collectors are registered today, so these guarantees remain acceptance criteria for Phase 1 rather than a claimed implementation.
+The Windows collector is registered only after secure startup; it samples only after grant plus session activation. One PowerShell helper compiles C# once per run and checks process exclusions before reading titles. Pause/end stop timers, await queries/emits and release the helper. The engine separately rejects stale run/session/source/policy events and drains admitted writes. Selected-folder capture verifies current Windows identities and original bytes. Browser ingestion requires native-proven peers and exact staged event authorization; neither a path record nor a browser assertion is an authorization token. Idle/lock handling remains unimplemented and is not inferred from a missing foreground window.
 
-Subscribe to selected-folder notifications before baseline capture, stabilize reads, reconcile saves/renames/deletes, and explicitly track baseline completion. Folder events show changes, not user attention. Browser page text is captured at permissioned visit time, as bounded plain text, separately from the URL/title. No page content is executed in privileged processes. Idle and lock observations gate collection according to the approved policy.
+Selected folders are reconciled on bounded polling with an initial baseline and periodic full reconciliation; progress and failures are visible. Folder events show saved changes, not user attention, and brief intermediate saves can be missed. Browser capture contains focused regular-tab URL/title metadata only, with exclusions and query/fragment redaction. Article extraction and idle/lock handling are unavailable. Captured markup is never executed.
 
-## Planned storage, retention, and recovery
+## Storage, retention, and recovery
 
 SQLite owns normalized records, relationships, versioned transactions/migrations, and FTS5 indexes. The content store owns immutable encrypted original bytes addressed internally by hashes; public FileVersion models contain no blob paths or encryption keys. Text extraction is a derivative for search/preview; a DOCX recovery must preserve the original formatting bytes. Hashes, verified writes, atomic publication, size limits, crash reconciliation, and protected-folder path checks are required.
 
-The encryption-enabled SQLite build, key lifecycle, journal/temp/FTS coverage, and encrypted blob format need a packaged Windows spike and Rasit's approval before storing real history. Never treat stock SQLite, Electron ASAR, OS file permissions, or a privacy label as encrypted storage. Release must fail closed when encryption/key services are unavailable.
+ADR 0010 selects authenticated SQLCipher-profile metadata encryption with protected key creation, checksummed migrations, schema/FK/SQLite/FTS integrity checks and encrypted WAL. Temporary SQL storage stays in memory. Missing/wrong keys, plaintext, tampering or unavailable encryption fail closed without replacement. Original bytes are stored in the same encrypted database as immutable hash-verified BLOBs. Key rotation and independent security review remain release work; stock SQLite, ASAR and file permissions are not encryption.
 
-The engine creates recovery proposals from authorized existing file-version IDs. Default recovery writes a new copy after preview and explicit user confirmation. An overwrite additionally preserves and verifies current bytes, checks file identity/hash/mtime against the confirmed target, and aborts if preservation or revalidation fails. Recovery execution is not an assistant tool and is not exposed by current IPC. Reparse points, traversal, destination changes, locked files, corruption, low disk space, and interrupted publication all require tests.
+The engine creates expiring single-use recovery-copy proposals from actual retained file-version IDs and a main-owned native destination dialog. Confirmation rechecks the source and current native parent identity, writes only a new file and verifies complete bytes. Existing destinations are rejected. Narrow public IPC exposes choose/confirm/cancel, never arbitrary filesystem access. Recovery execution is not an assistant tool. Optional overwrite now has separate native selection, expiring explicit confirmation, current identity/hash/write-time checks and exclusive handle/oplock admission. Before mutation, it flushes and verifies a new ordinary preservation file in the chosen folder; output is verified through the held target handle. Failed prerequisites leave the target unchanged; an interrupted write may require recovery from its preserved copy. This is not an atomic replacement or a power-loss transaction. ADR 0024 records rollback and shutdown limits.
 
-Retention starts at a configurable 72 hours with a proposed 2 GiB quota. Keep pins a checkpoint's transitive files/versions/visits/derived content. Cleanup must cover records, FTS, blobs, previews, queues, extension buffers, logs and transient assistant evidence, with reference counting or equivalent integrity. Kept data exceeding quota needs explicit user feedback and a safe stop policy, not silent loss. SQL deletion alone is not a forensic-erasure guarantee. No retention job exists yet.
+Retention defaults to 72 hours and is configurable from 1 to 8760 hours. Physical usage and configurable quota include the encrypted database and journals. Startup, retrieval and periodic cleanup expire unkept evidence; bounded pressure eviction preserves kept checkpoint references and denies new capture if sufficient space cannot be recovered. Explicit cleanup/deletion pauses and drains sources and revokes launch approvals. Settings exposes actual usage, policy and confirmed deletion, with separate inclusion of kept evidence. Session shells, privacy settings and operational setup receipts remain. SQL deletion/compaction does not promise forensic erasure or a hard filesystem quota.
 
 ## Sources and decision status
 

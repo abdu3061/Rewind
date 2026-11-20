@@ -1,10 +1,14 @@
 node_modules/
 **/.vite/
+**/.generated/
 **/dist/
 **/out/
 coverage/
 test-results/
+test-results-browser/
 playwright-report/
+artifacts/
+/Rewind/
 *.log
 .env
 .env.*

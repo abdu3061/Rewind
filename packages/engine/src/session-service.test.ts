@@ -13,6 +13,46 @@ function harness() {
 }
 
 describe("SessionService", () => {
+  it("does not publish prepared state and rejects stale or repeated commits", () => {
+    const service = harness();
+    const first = service.prepare("start");
+    const second = service.prepare("start");
+    expect(service.getState()).toEqual({ session: null });
+    if (!first.ok || !second.ok) throw new Error("Expected candidates.");
+    first.value.state.session!.status = "ended";
+    expect(first.value.commit()).toMatchObject({
+      ok: true,
+      value: { session: { status: "active" } },
+    });
+    expect(first.value.commit().ok).toBe(false);
+    expect(second.value.commit().ok).toBe(false);
+  });
+  it("rejects a new session identity reused by a broken environment", () => {
+    const service = new SessionService({
+      newId: () => "00000000-0000-4000-8000-000000000001",
+      now: () => "2026-11-16T10:00:00.000Z",
+    });
+    service.execute("start");
+    service.execute("end");
+    expect(service.execute("start")).toMatchObject({
+      ok: false,
+      error: { code: "CONFLICT" },
+    });
+    expect(service.getState().session?.status).toBe("ended");
+  });
+  it("rejects invalid or active restored state instead of resuming authority", () => {
+    const service = harness();
+    expect(
+      service.restore({
+        id: "00000000-0000-4000-8000-000000000001",
+        status: "active",
+        startedAt: "2026-11-16T10:00:00.000Z",
+        updatedAt: "2026-11-16T10:00:00.000Z",
+        endedAt: null,
+      }).ok,
+    ).toBe(false);
+    expect(service.getState()).toEqual({ session: null });
+  });
   it("runs a full lifecycle, retains the ended session, and starts a distinct session", () => {
     const service = harness();
     expect(service.getState()).toEqual({ session: null });

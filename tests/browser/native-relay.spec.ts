@@ -1,0 +1,547 @@
+import { chromium, expect, test, type BrowserContext } from "@playwright/test";
+import {
+  execFileSync,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type { BrowserPeer, NativeBrowserMessage } from "@rewind/contracts";
+import {
+  NativeBrowserBridge,
+  nativeBridgeConfigSchema,
+} from "../../apps/desktop/src/main/browser-bridge";
+
+import {
+  registerTestHost as register,
+  removeBrowserFixture as removeFixture,
+} from "./native-fixtures";
+
+const hash = (file: string) =>
+  createHash("sha256").update(readFileSync(file)).digest("hex");
+for (const [browser, channel, executable] of [
+  [
+    "chrome",
+    "chrome",
+    path.join(
+      process.env.ProgramFiles ?? "C:\\Program Files",
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
+  ],
+  [
+    "edge",
+    "msedge",
+    path.join(
+      process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+      "Microsoft",
+      "Edge",
+      "Application",
+      "msedge.exe",
+    ),
+  ],
+] as const) {
+  test(`${browser} authenticates the generated native relay through an isolated extension/profile`, async () => {
+    test.skip(
+      process.platform !== "win32" || !existsSync(executable),
+      "Installed Windows browser required.",
+    );
+    const root = mkdtempSync(path.join(tmpdir(), "rewind-browser-e2e-")),
+      nonce = randomUUID().replaceAll("-", "");
+    const hostName = `com.rewind.test.${nonce}`,
+      manifest = path.join(root, "native-host.json"),
+      native = path.join(root, "SyntheticRewindHost.exe");
+    let context: BrowserContext | null = null,
+      child: ChildProcessWithoutNullStreams | null = null;
+    let bridge: NativeBrowserBridge | null = null;
+    let registered = false,
+      exited: Promise<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }> | null = null,
+      closed = false;
+    let succeeded = false;
+    let bodyError: unknown, cleanupError: unknown;
+    let stopResult: {
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    } | null = null;
+    const messages: {
+      type: string;
+      channelId?: string;
+      browser?: string;
+      origin?: string;
+      payload?: string;
+    }[] = [];
+    try {
+      const compiler = path.join(
+        process.env.WINDIR ?? "C:\\Windows",
+        "Microsoft.NET",
+        "Framework64",
+        "v4.0.30319",
+        "csc.exe",
+      );
+      execFileSync(
+        compiler,
+        [
+          "/nologo",
+          "/target:exe",
+          "/platform:x64",
+          "/r:System.Web.Extensions.dll",
+          `/out:${native}`,
+          path.resolve("apps/desktop/src/native/browser-process-proof.cs"),
+          path.resolve("apps/desktop/src/native/browser-native-program.cs"),
+          path.resolve("apps/desktop/src/native/browser-registration.cs"),
+        ],
+        { windowsHide: true, timeout: 15000, maxBuffer: 65536 },
+      );
+      const extension = path.join(root, "extension");
+      mkdirSync(extension);
+      writeFileSync(
+        path.join(extension, "manifest.json"),
+        JSON.stringify({
+          manifest_version: 3,
+          name: "Synthetic Rewind Native Relay Probe",
+          version: "1.0",
+          permissions: ["nativeMessaging"],
+          incognito: "not_allowed",
+          background: { service_worker: "probe.js" },
+        }),
+      );
+      writeFileSync(
+        path.join(extension, "probe.js"),
+        String.raw`
+globalThis.probeMessages=[];globalThis.probeError=null;
+globalThis.openProbe=(host,message={type:'synthetic-native-probe',text:'Synthetic relay fixture'})=>{
+  globalThis.probeError=null;
+  const port=chrome.runtime.connectNative(host);globalThis.probePort=port;
+  port.onMessage.addListener((message)=>globalThis.probeMessages.push(message));
+  port.onDisconnect.addListener(()=>{globalThis.probeError=chrome.runtime.lastError?.message ?? 'disconnected'});
+  port.postMessage(message);
+};
+chrome.runtime.onInstalled.addListener(()=>{});
+`,
+      );
+      context = await chromium.launchPersistentContext(
+        path.join(root, `${browser}-profile`),
+        {
+          channel,
+          headless: true,
+          args: ["--enable-unsafe-extension-debugging"],
+          ignoreDefaultArgs: ["--disable-extensions"],
+        },
+      );
+      const instance = context.browser();
+      if (!instance) throw new Error("BROWSER_DEBUG_SESSION_UNAVAILABLE");
+      const cdp = await instance.newBrowserCDPSession();
+      const loaded = await cdp.send("Extensions.loadUnpacked", {
+        path: extension,
+        enableInIncognito: false,
+      });
+      const worker =
+        context
+          .serviceWorkers()
+          .find((item) =>
+            item.url().startsWith(`chrome-extension://${loaded.id}/`),
+          ) ??
+        (await context.waitForEvent("serviceworker", {
+          predicate: (item) =>
+            item.url().startsWith(`chrome-extension://${loaded.id}/`),
+        }));
+      const config = {
+        version: 1,
+        pipeName: `rewind.browser.test.${nonce}`,
+        desktopPath: process.execPath,
+        desktopHash: hash(process.execPath),
+        hostHash: hash(native),
+        origins: [`chrome-extension://${loaded.id}/`],
+        browsers: [{ kind: browser, path: executable }],
+      };
+      writeFileSync(native + ".json", JSON.stringify(config));
+      writeFileSync(
+        manifest,
+        JSON.stringify({
+          name: hostName,
+          description: "Temporary synthetic Rewind relay test",
+          path: native,
+          type: "stdio",
+          allowed_origins: config.origins,
+        }),
+      );
+      child = spawn(native, ["--broker"], { windowsHide: true, stdio: "pipe" });
+      exited = new Promise((resolve, reject) => {
+        child!.once("error", reject);
+        child!.once("close", (code, signal) => {
+          closed = true;
+          resolve({ code, signal });
+        });
+      });
+      let output = "";
+      child.stderr.resume();
+      child.stdin.on("error", () => {});
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (data: string) => {
+        output += data;
+        while (output.includes("\n")) {
+          const at = output.indexOf("\n");
+          messages.push(
+            JSON.parse(output.slice(0, at)) as (typeof messages)[number],
+          );
+          output = output.slice(at + 1);
+        }
+      });
+      child.stdin.write(JSON.stringify(config) + "\n");
+      await expect
+        .poll(() => messages.some((item) => item.type === "ready"), {
+          timeout: 10000,
+        })
+        .toBe(true);
+      registered = true;
+      await register(browser, hostName, manifest, false, native);
+      await worker.evaluate(
+        (host) =>
+          (
+            globalThis as unknown as { openProbe: (name: string) => void }
+          ).openProbe(host),
+        hostName,
+      );
+      await expect
+        .poll(
+          async () => ({
+            connected: messages.some((item) => item.type === "connected"),
+            error: await worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeError: unknown }).probeError,
+            ),
+          }),
+          { timeout: 15000 },
+        )
+        .toEqual({ connected: true, error: null });
+      const connected = messages.find((item) => item.type === "connected")!;
+      expect(connected.browser).toBe(browser);
+      expect(connected.origin).toBe(config.origins[0]);
+      await expect
+        .poll(() => messages.some((item) => item.type === "message"), {
+          timeout: 10000,
+        })
+        .toBe(true);
+      const received = messages.find((item) => item.type === "message")!;
+      expect(
+        JSON.parse(Buffer.from(received.payload!, "base64").toString("utf8")),
+      ).toEqual({
+        type: "synthetic-native-probe",
+        text: "Synthetic relay fixture",
+      });
+      child.stdin.write(
+        JSON.stringify({
+          type: "send",
+          channelId: connected.channelId,
+          payload: Buffer.from(
+            JSON.stringify({ syntheticReply: true }),
+            "utf8",
+          ).toString("base64"),
+        }) + "\n",
+      );
+      await expect
+        .poll(
+          () =>
+            worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeMessages: unknown[] })
+                  .probeMessages,
+            ),
+          { timeout: 10000 },
+        )
+        .toEqual([{ syntheticReply: true }]);
+      await worker.evaluate(() =>
+        (
+          globalThis as unknown as { probePort: { disconnect(): void } }
+        ).probePort.disconnect(),
+      );
+      await expect
+        .poll(
+          () =>
+            messages.some(
+              (item) =>
+                item.type === "disconnected" &&
+                item.channelId === connected.channelId,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true);
+      await worker.evaluate(
+        (host) =>
+          (
+            globalThis as unknown as { openProbe: (name: string) => void }
+          ).openProbe(host),
+        hostName,
+      );
+      await expect
+        .poll(
+          () => messages.filter((item) => item.type === "connected").length,
+          { timeout: 10000 },
+        )
+        .toBe(2);
+      const replacement = messages.filter(
+        (item) => item.type === "connected",
+      )[1]!;
+      expect(replacement.channelId).not.toBe(connected.channelId);
+      expect(replacement.browser).toBe(browser);
+      await expect
+        .poll(() => messages.filter((item) => item.type === "message").length, {
+          timeout: 10000,
+        })
+        .toBe(2);
+      child.stdin.write(
+        JSON.stringify({
+          type: "disconnect",
+          channelId: replacement.channelId,
+        }) + "\n",
+      );
+      await expect
+        .poll(
+          () =>
+            messages.some(
+              (item) =>
+                item.type === "disconnected" &&
+                item.channelId === replacement.channelId,
+            ),
+          { timeout: 5000 },
+        )
+        .toBe(true);
+      child.stdin.write('{"type":"shutdown"}\n');
+      stopResult = await exited;
+      expect(stopResult).toEqual({ code: 0, signal: null });
+      // Exercise the production Node adapter against the same real browser/host, after observing the old broker's exit.
+      const observed: BrowserPeer[] = [],
+        inbound: NativeBrowserMessage[] = [],
+        disconnected: string[] = [];
+      let unavailable = false;
+      bridge = new NativeBrowserBridge();
+      const adapter = bridge;
+      bridge.setListener({
+        connected: (peer) => observed.push(peer),
+        message: (id, message) => {
+          inbound.push(message);
+          if (message.type === "hello") {
+            const peer = observed.find((item) => item.id === id)!;
+            const sent = adapter.send(id, {
+              version: 2,
+              type: "state",
+              connectionId: message.connectionId,
+              browser: peer.browser,
+              revision: 1,
+              authority: null,
+            });
+            if (!sent.ok) throw new Error("SYNTHETIC_ADAPTER_SEND_FAILED");
+          }
+        },
+        disconnected: (id) => disconnected.push(id),
+        unavailable: () => {
+          unavailable = true;
+        },
+      });
+      expect(
+        (await bridge.start(native, nativeBridgeConfigSchema.parse(config))).ok,
+      ).toBe(true);
+      const connectionId = randomUUID(),
+        profileId = randomUUID();
+      await worker.evaluate(
+        ({ host, connectionId, profileId }) => {
+          (
+            globalThis as unknown as {
+              openProbe(host: string, message: unknown): void;
+            }
+          ).openProbe(host, {
+            version: 2,
+            type: "hello",
+            connectionId,
+            profileId,
+          });
+        },
+        { host: hostName, connectionId, profileId },
+      );
+      await expect.poll(() => inbound.length, { timeout: 10000 }).toBe(1);
+      expect(inbound[0]).toEqual({
+        version: 2,
+        type: "hello",
+        connectionId,
+        profileId,
+      });
+      expect(observed).toEqual([
+        expect.objectContaining({ browser, origin: config.origins[0] }),
+      ]);
+      await expect
+        .poll(
+          () =>
+            worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeMessages: unknown[] })
+                  .probeMessages,
+            ),
+          { timeout: 5000 },
+        )
+        .toContainEqual({
+          version: 2,
+          type: "state",
+          connectionId,
+          browser,
+          revision: 1,
+          authority: null,
+        });
+      await worker.evaluate(
+        ({ connectionId }) =>
+          (
+            globalThis as unknown as {
+              probePort: { postMessage(value: unknown): void };
+            }
+          ).probePort.postMessage({
+            version: 2,
+            type: "stopped",
+            connectionId,
+            revision: 1,
+          }),
+        { connectionId },
+      );
+      await expect.poll(() => inbound.length, { timeout: 5000 }).toBe(2);
+      expect(inbound[1]).toEqual({
+        version: 2,
+        type: "stopped",
+        connectionId,
+        revision: 1,
+      });
+      bridge.disconnect(observed[0]!.id);
+      await expect
+        .poll(() => disconnected, { timeout: 5000 })
+        .toEqual([observed[0]!.id]);
+      expect(unavailable).toBe(false);
+      expect((await bridge.close()).ok).toBe(true);
+      bridge = null;
+      // Keep the browser's original host/sidecar in place, but remove its kind from private broker policy.
+      // This models a stale cached host registration after explicit browser removal.
+      const otherBrowser = browser === "chrome" ? "edge" : "chrome";
+      const otherPath =
+        otherBrowser === "edge"
+          ? path.join(
+              process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)",
+              "Microsoft/Edge/Application/msedge.exe",
+            )
+          : path.join(
+              process.env.ProgramFiles ?? "C:\\Program Files",
+              "Google/Chrome/Application/chrome.exe",
+            );
+      let deniedConnected = 0,
+        deniedMessages = 0;
+      bridge = new NativeBrowserBridge();
+      bridge.setListener({
+        connected() {
+          deniedConnected++;
+        },
+        message() {
+          deniedMessages++;
+        },
+        disconnected() {},
+        unavailable() {},
+      });
+      expect(
+        (
+          await bridge.start(
+            native,
+            nativeBridgeConfigSchema.parse({
+              ...config,
+              browsers: [{ kind: otherBrowser, path: otherPath }],
+            }),
+          )
+        ).ok,
+      ).toBe(true);
+      await worker.evaluate(
+        ({ host, connectionId, profileId }) => {
+          (
+            globalThis as unknown as {
+              openProbe(host: string, message: unknown): void;
+            }
+          ).openProbe(host, {
+            version: 2,
+            type: "hello",
+            connectionId,
+            profileId,
+          });
+        },
+        { host: hostName, connectionId: randomUUID(), profileId: randomUUID() },
+      );
+      await expect
+        .poll(
+          () =>
+            worker.evaluate(
+              () =>
+                (globalThis as unknown as { probeError: string | null })
+                  .probeError,
+            ),
+          { timeout: 5000 },
+        )
+        .not.toBeNull();
+      expect(deniedConnected).toBe(0);
+      expect(deniedMessages).toBe(0);
+      expect(bridge.status()).toEqual({ state: "ready", connected: 0 });
+      expect((await bridge.close()).ok).toBe(true);
+      bridge = null;
+      succeeded = true;
+    } catch (error) {
+      bodyError = error;
+    } finally {
+      try {
+        if (bridge && !(await bridge.close()).ok)
+          cleanupError ??= new Error("SYNTHETIC_ADAPTER_EXIT_UNCONFIRMED");
+      } catch (error) {
+        cleanupError ??= error;
+      }
+      try {
+        if (context) await context.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+      if (child && !closed) child.stdin.write('{"type":"shutdown"}\n');
+      if (exited) {
+        const timer = setTimeout(() => child?.kill(), 3000);
+        try {
+          stopResult = await exited;
+        } catch (error) {
+          cleanupError ??= error;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      try {
+        if (registered)
+          await register(browser, hostName, manifest, true, native);
+      } catch (error) {
+        cleanupError ??= error;
+      }
+      if (!cleanupError) {
+        try {
+          removeFixture(root);
+        } catch (error) {
+          cleanupError = error;
+        }
+      }
+    }
+    if (bodyError && cleanupError)
+      throw new AggregateError(
+        [bodyError, cleanupError],
+        "The synthetic relay test and cleanup both failed.",
+      );
+    if (bodyError) throw bodyError;
+    if (cleanupError) throw cleanupError;
+    if (succeeded) expect(stopResult).toEqual({ code: 0, signal: null });
+  });
+}

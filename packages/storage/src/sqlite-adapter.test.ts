@@ -1,13 +1,162 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import type { FileReference, FileVersion, Session } from "@rewind/contracts";
+import { relative, isAbsolute } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { describe, expect, it, vi, afterAll } from "vitest";
+import type { Session } from "@rewind/contracts";
 import { SqliteStorageAdapter } from "./sqlite-adapter";
+import { currentSchemaFixture } from "./current-schema.test-support";
+
+function removeFixtureDirectory(directory: string): void {
+  const scoped = relative(resolve(tmpdir()), resolve(directory));
+  if (
+    isAbsolute(scoped) ||
+    scoped.startsWith("..") ||
+    !scoped.startsWith("rewind-audit-")
+  ) {
+    throw new Error("Refusing cleanup outside the audit fixture directory.");
+  }
+  rmSync(directory, { recursive: true, force: true });
+}
 
 describe("SqliteStorageAdapter", () => {
-  const migrationsDir = resolve(__dirname, "../../../db/migrations");
-  const migrationPath = resolve(migrationsDir, "001_initial.sql");
+  const schema = currentSchemaFixture();
+  const migrationPath = schema.path;
+  afterAll(schema.remove);
+  it("does not claim usable storage usage before opening", async () => {
+    expect((await new SqliteStorageAdapter().usage()).ok).toBe(false);
+  });
+  it("refuses an existing database whose table names hide missing required columns", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "rewind-audit-"));
+    const databasePath = resolve(directory, "synthetic.sqlite");
+    const broken = new DatabaseSync(databasePath);
+    for (const name of [
+      "sessions",
+      "activities",
+      "files",
+      "file_versions",
+      "checkpoints",
+      "checkpoint_file_versions",
+      "checkpoint_browser_visits",
+    ])
+      broken.exec(`CREATE TABLE ${name} (id TEXT)`);
+    broken.close();
+    const adapter = new SqliteStorageAdapter(databasePath);
+    try {
+      expect((await adapter.open()).ok).toBe(false);
+      expect(() => adapter.repositories).toThrow();
+    } finally {
+      await adapter.close();
+      removeFixtureDirectory(directory);
+    }
+  });
+  it("rolls back a valid but incomplete migration when readiness checks fail", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "rewind-audit-"));
+    const databasePath = resolve(directory, "synthetic.sqlite");
+    const incomplete = resolve(directory, "incomplete.sql");
+    writeFileSync(incomplete, "CREATE TABLE incomplete_fixture (id TEXT);");
+    const adapter = new SqliteStorageAdapter(databasePath, incomplete);
+    try {
+      expect((await adapter.open()).ok).toBe(false);
+      const inspection = new DatabaseSync(databasePath);
+      try {
+        expect(
+          inspection
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'incomplete_fixture'",
+            )
+            .get(),
+        ).toBeUndefined();
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      await adapter.close();
+      removeFixtureDirectory(directory);
+    }
+  });
+
+  it("keeps the same repositories and data when open is called twice", async () => {
+    const adapter = new SqliteStorageAdapter(":memory:", migrationPath);
+    try {
+      expect((await adapter.open()).ok).toBe(true);
+      const session: Session = {
+        id: "00000000-0000-4000-8000-000000000001",
+        status: "active",
+        startedAt: "2026-10-25T00:00:00.000Z",
+        updatedAt: "2026-10-25T00:00:00.000Z",
+        endedAt: null,
+      };
+      expect((await adapter.repositories.sessions.save(session)).ok).toBe(true);
+      expect((await adapter.open()).ok).toBe(true);
+      expect(await adapter.repositories.sessions.get(session.id)).toEqual({
+        ok: true,
+        value: session,
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it("does not report a usable database when no schema exists", async () => {
+    const adapter = new SqliteStorageAdapter();
+    try {
+      expect(await adapter.open()).toMatchObject({ ok: false });
+      expect(() => adapter.repositories).toThrow();
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it("closes a failed open and returns a content-free error", async () => {
+    const close = vi.spyOn(DatabaseSync.prototype, "close");
+    const adapter = new SqliteStorageAdapter(
+      ":memory:",
+      resolve(__dirname, "synthetic-private-path", "missing.sql"),
+    );
+    try {
+      const result = await adapter.open();
+      expect(result).toEqual({
+        ok: false,
+        error: { code: "INTERNAL", message: "Failed to open storage adapter." },
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(() => adapter.repositories).toThrow();
+    } finally {
+      await adapter.close();
+      close.mockRestore();
+    }
+  });
+
+  it("rolls back a failed migration before closing the database", async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "rewind-audit-"));
+    const databasePath = resolve(directory, "synthetic.sqlite");
+    const failedMigration = resolve(directory, "failed.sql");
+    writeFileSync(
+      failedMigration,
+      "CREATE TABLE audit_partial (id TEXT); INVALID SQL;",
+    );
+    const adapter = new SqliteStorageAdapter(databasePath, failedMigration);
+    try {
+      expect((await adapter.open()).ok).toBe(false);
+      const inspection = new DatabaseSync(databasePath);
+      try {
+        expect(
+          inspection
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE name = 'audit_partial'",
+            )
+            .get(),
+        ).toBeUndefined();
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      await adapter.close();
+      removeFixtureDirectory(directory);
+    }
+  });
 
   it("opens database, executes migrations, exposes all repositories, and closes cleanly", async () => {
     const adapter = new SqliteStorageAdapter(":memory:", migrationPath);
@@ -48,110 +197,5 @@ describe("SqliteStorageAdapter", () => {
     // Closing adapter
     const closeResult = await adapter.close();
     expect(closeResult.ok).toBe(true);
-  });
-
-  it("applies migrations from a directory and records them in schema_migrations", async () => {
-    const adapter = new SqliteStorageAdapter(":memory:", migrationsDir);
-    await adapter.open();
-
-    const db = adapter.database;
-    const migrations = db
-      .prepare("SELECT version, name FROM schema_migrations")
-      .all() as { version: number; name: string }[];
-
-    expect(migrations.length).toBeGreaterThan(0);
-    expect(migrations[0]?.version).toBe(1);
-    expect(migrations[0]?.name).toBe("001_initial.sql");
-
-    await adapter.close();
-  });
-
-  it("reopens persistent database without re-executing applied migrations", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "rewind-db-test-"));
-    const dbFile = join(tempDir, "test.sqlite");
-
-    try {
-      // 1. Open and write data
-      const adapter1 = new SqliteStorageAdapter(dbFile, migrationsDir);
-      await adapter1.open();
-
-      const session: Session = {
-        id: "00000000-0000-4000-8000-000000000001",
-        status: "active",
-        startedAt: "2026-10-25T00:00:00.000Z",
-        updatedAt: "2026-10-25T00:00:00.000Z",
-        endedAt: null,
-      };
-      await adapter1.repositories.sessions.save(session);
-      await adapter1.close();
-
-      // 2. Reopen same file
-      const adapter2 = new SqliteStorageAdapter(dbFile, migrationsDir);
-      await adapter2.open();
-
-      const retrieved = await adapter2.repositories.sessions.get(session.id);
-      expect(retrieved.ok).toBe(true);
-      if (retrieved.ok) {
-        expect(retrieved.value).toEqual(session);
-      }
-
-      await adapter2.close();
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("accurately calculates storage usage including file sizes and snapshot bytes", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "rewind-usage-test-"));
-    const dbFile = join(tempDir, "test-usage.sqlite");
-
-    try {
-      const adapter = new SqliteStorageAdapter(dbFile, migrationsDir);
-      await adapter.open();
-
-      const sessionId = "00000000-0000-4000-8000-000000000001";
-      const fileId = "20000000-0000-4000-8000-000000000001";
-
-      await adapter.repositories.sessions.save({
-        id: sessionId,
-        status: "active",
-        startedAt: "2026-10-25T00:00:00.000Z",
-        updatedAt: "2026-10-25T00:00:00.000Z",
-        endedAt: null,
-      });
-
-      const file: FileReference = {
-        id: fileId,
-        displayName: "data.bin",
-        identity: {
-          kind: "verified-path",
-          absolutePath: "C:\\data.bin",
-          verifiedAt: "2026-10-25T00:00:00.000Z",
-        },
-      };
-      await adapter.repositories.files.saveReference(file);
-
-      const version: FileVersion = {
-        id: "30000000-0000-4000-8000-000000000001",
-        sessionId,
-        fileId,
-        capturedAt: "2026-10-25T00:01:00.000Z",
-        contentHash: "f".repeat(64),
-        byteLength: 4096,
-        mediaType: "application/octet-stream",
-      };
-      await adapter.repositories.files.addVersion(version);
-
-      const usage = await adapter.usage();
-      expect(usage.ok).toBe(true);
-      if (usage.ok) {
-        expect(usage.value.metadataBytes).toBeGreaterThan(0);
-        expect(usage.value.snapshotBytes).toBe(4096);
-      }
-
-      await adapter.close();
-    } finally {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
   });
 });

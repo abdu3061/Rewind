@@ -5,6 +5,19 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      beta_installer_only:
+        description: Test an uploaded beta installer on this disposable Windows runner
+        type: boolean
+        default: false
+      beta_tag:
+        description: Existing beta release tag to verify
+        type: string
+        default: v0.1.0-beta.1
+      upgrade_from_tag:
+        description: Optional earlier beta to install first for an upgrade check
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -15,8 +28,9 @@ concurrency:
 
 jobs:
   windows-checks:
+    if: ${{ !inputs.beta_installer_only }}
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,10 +39,25 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      # Hosted runners expose TEMP as an 8.3 short path (C:\Users\RUNNER~1\...).
+      # Rewind's native path checks correctly refuse non-canonical folders, so
+      # synthetic fixtures need the long-form path on the same NTFS drive.
+      - name: Use the canonical temporary directory
+        shell: pwsh
+        run: |
+          $temp = node -p "require('fs').realpathSync.native(require('os').tmpdir())"
+          if (-not $temp) { throw "Could not resolve the temporary directory." }
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "Temporary directory: $temp"
       - run: npm ci
       - run: npm run check
       - run: npm run build
       - run: npm run test:app
+      - run: npm run test:browser
+      - run: npm run test:documents:packaged
+      - run: npm run make
+      - run: npm run verify:release
       - name: Upload application test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -37,3 +66,29 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+  beta-installer:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.beta_installer_only }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      # Draft release assets require collaborator-level content access.
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Accept the uploaded installer in an isolated synthetic Windows account
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REWIND_BETA_TAG: ${{ inputs.beta_tag }}
+          REWIND_UPGRADE_FROM_TAG: ${{ inputs.upgrade_from_tag }}
+        run: ./scripts/test-windows-installer.ps1
+      - name: Upload fixed-code installer acceptance receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-installer-acceptance
+          path: artifacts/windows-installer-acceptance.json
+          if-no-files-found: ignore
+          retention-days: 14

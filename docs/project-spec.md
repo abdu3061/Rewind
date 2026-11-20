@@ -1,8 +1,10 @@
 # Project specification
 
-Status: initialization, 17 October 2026. Product owner and technical approver: Rasit (`@RXD3`). This document refines the existing plan without expanding version one.
+Specification baseline: 17 October 2026; product owner and technical approver: Rasit (`@RXD3`). The version-one requirements below remain targets. Current integrated Windows/browser recording, encrypted versions, confirmed recovery, checkpoints, privacy management and optional reviewed-evidence Gemini functionality are tracked in the [core implementation report](audit/core-functionality-integration.md). This remains a local development branch; the report distinguishes verified behavior from manual acceptance and release gates.
 
 ## Product and scope
+
+19 November 2026 product-owner update: local app/file recording offers one explicit remembered setup approval. Verified Desktop/Documents/Downloads are enrolled without manual folder selection; normal opening starts a session, with Pause/End and durable opt-out. Users can add application/file/folder exclusions. This supersedes earlier manual-only setup descriptions below; whole-drive capture is not included. Browser/cloud approvals stay separate. See ADR 0038 and the automatic-recording implementation report.
 
 Rewind provides temporary local memory for a computer work session. Users explicitly start a session, select folders to protect, inspect evidence on a timeline, search it, and recover previously captured saved files. Windows, Chrome, and Edge are the first supported platforms.
 

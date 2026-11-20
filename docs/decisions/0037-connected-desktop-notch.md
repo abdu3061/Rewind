@@ -1,0 +1,29 @@
+# ADR 0037: One desktop application with a restricted floating notch
+
+Status: Implemented locally on `feature/premium-notch-ui`; Rasit's architecture/security/dependency review remains required before integration.
+
+## Decision
+
+Keep the existing desktop renderer mounted and retain its page, drafts and workflow state when minimized. A lazily created, sandboxed, frameless Electron window presents the notch. It uses the **same** supervised worker, encrypted history, session and launch approvals. Minimizing is presentation only; closing the desktop or Quit still invokes acknowledged shutdown. Open Rewind, native restore, tray activation and second-instance activation hide the notch and restore the existing desktop. Hiding the notch leaves the visible tray and the minimized taskbar entry available.
+
+Main owns both window identities. The new presentation channel accepts only strict bounded window commands and enumerated page intents. Sender WebContents, main frame and trusted renderer location remain mandatory. A main-supplied preload argument selects the notch's smaller bridge; a renderer URL/hash does not grant a role. Main also independently limits notch recording commands to runtime reads, bounded local timeline reads, version summaries and actual checkpoint creation. It cannot grant collection/cloud access, configure credentials, run parsers, maintain/delete history or recover/overwrite files. Sessions use the existing validated transition dispatcher. No generic IPC/filesystem/window API is exposed.
+
+Both windows subscribe to the same revisioned worker snapshots and committed activity notifications. Recall is explicitly **local metadata search**, with a small documented command vocabulary; it does not pretend to provide semantic AI answers. Gemini remains in the existing per-question sharing-review workflow. Checkpoint quick actions load bounded actual same-session evidence, require a name and explicit selection, and call the existing engine. Ordinary retention applies; Keep is managed in the full app. Read replies are fenced on visibility, session and retained-evidence authority changes. Writes remain pending until observed settlement and only actual acknowledged results produce success feedback.
+
+Retained observation display combines the existing metadata-authority generation/revision (`runtime.assistant`, advanced synchronously by the storage evidence-mutation hook even when cloud is off) with document-source authority. Document authority alone deliberately does not invalidate unrelated previews for activity-only expiration. This combined UI stamp covers automatic activity retention without changing source-specific document invalidation or adding a cloud capability. An encrypted synthetic runtime regression expires activity through ordinary read-triggered cleanup and verifies a changed notch stamp while document authority remains unchanged.
+
+## Native behavior
+
+The overlay appears inactive at the top center of the display containing the desktop window, in Electron device-independent work-area coordinates. Compact bounds are 144 × 64 including an eight-pixel shadow margin. Expansion is at most 760 DIPs wide; measured panel height is bounded, and response content scrolls. The native bounds follow the actual panel rather than leaving a large invisible hit target. Display changes/removal re-clamp to an available work area. There is no polling, foreground-window/title collection, screen capture or new background service.
+
+Use normal `floating` always-on-top priority, not a screen-saver/secure/fullscreen level. Exclusive fullscreen applications may cover it; users can hide it explicitly. The overlay does not promise to detect every borderless game's fullscreen state. Hover expands without taking focus; clicking supports input, Tab and Escape. Unfocused pointer departure and window blur collapse it; click-away cancels visible evidence. Full desktop restoration hides it. The renderer uses short reveal transitions and meaningful working/success motion, disabled under reduced motion. The mascot remains static during ordinary recording.
+
+## Visual assets and dependencies
+
+Retain the existing pages and workflows. Refine navy/lavender surfaces, system typography, spacing, cards and empty states. Preserve consent, sensitive-title warnings, recovery confirmations and source limitations. Add the pinned MIT `@phosphor-icons/react` 2.1.10 library for consistent standard interface icons; it is bundled locally and included in release notices. The original transparent mascot PNG is generated from the user's references with the built-in image tool, used locally with no runtime service or network dependency. No microphone is shown.
+
+## Verification
+
+The new packaged active-recording close/restart test exposed an existing transition inconsistency: shutdown set service to `stopping` before an active collector finished draining. The supervisor rejected the resulting `active` collection snapshot and correctly failed closed. The worker now reports those sources as `stopping` until quiescence; the supervisor's consistency checks remain unchanged. A direct runtime regression checks the intermediate snapshot and final ended session, and the packaged test verifies actual acknowledged exit/restart.
+
+Geometry/capability/command tests cover bounded monitor placement, negative origins, scaled DIP work areas, narrow displays and denial of privileged operations. Packaged synthetic-profile tests exercise minimize/restore, state/draft preservation, hover/Escape/hide, isolated bridge/sandbox, shared recording controls, actual recall/checkpoint persistence and approval expiry on restart. Visual captures and full regression/release results are recorded in the implementation report when completed. Physical multi-monitor hotplug, every fullscreen application and assistive-technology acceptance remain distinct from simulated geometry coverage.

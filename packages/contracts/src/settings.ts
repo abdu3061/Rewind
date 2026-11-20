@@ -1,8 +1,14 @@
 import { z } from "zod";
 import { idSchema } from "./common";
+import { automaticFoldersSchema } from "./automatic-recording";
 
 export const userSettingsSchema = z.strictObject({
   collectionConsent: z.boolean(),
+  folderCollectionConsent: z.boolean().default(false),
+  // Absent on older profiles: a new, explicit setup approval is required.
+  automaticRecording: z.boolean().optional(),
+  automaticRecordingLocations: automaticFoldersSchema.optional(),
+  browserCollectionConsent: z.boolean().default(false),
   cloudAiEnabled: z.boolean(),
   articleExtractionEnabled: z.boolean(),
   retentionHours: z.number().int().min(1).max(8760),
@@ -17,6 +23,8 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export function createDefaultSettings(): UserSettings {
   return {
     collectionConsent: false,
+    folderCollectionConsent: false,
+    browserCollectionConsent: false,
     cloudAiEnabled: false,
     articleExtractionEnabled: false,
     retentionHours: 72,

@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-19",
+  "platform": "Windows x64",
+  "fixture": "Marked synthetic temporary Electron profile",
+  "existingFileCount": 2501,
+  "idleStoredVersions": 0,
+  "sampleCount": 5,
+  "sampleIntervalMs": 1000,
+  "recordingEngineAverageCpuPercent": 0.35519103646384254,
+  "recordingEngineWorkingSetGrowthKiB": 4388,
+  "recordingEngineSamples": [
+    { "cpuPercent": 0.30366766601082634, "workingSetKiB": 86064 },
+    { "cpuPercent": 0.4098559328010903, "workingSetKiB": 87256 },
+    { "cpuPercent": 0.27181557295979275, "workingSetKiB": 87664 },
+    { "cpuPercent": 0.3726030645209093, "workingSetKiB": 87576 },
+    { "cpuPercent": 0.41801294602659383, "workingSetKiB": 90452 }
+  ],
+  "limitations": [
+    "Short idle sample from the recording utility; excludes the external PowerShell helper and renderer/main processes.",
+    "The synthetic app source emits observations faster than production; hardware and workloads vary.",
+    "Native/collector behavior tests independently verify zero idle directory enumeration and zero idle original-byte reads."
+  ]
+}

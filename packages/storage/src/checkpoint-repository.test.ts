@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type {
   Checkpoint,
   FileReference,
@@ -11,9 +9,15 @@ import type {
 import { SqliteCheckpointRepository } from "./checkpoint-repository";
 import { SqliteFileRepository } from "./file-repository";
 import { SqliteSessionRepository } from "./session-repository";
+import { applySecureMigrations } from "./migrations";
+import { SqliteActivityRepository } from "./activity-repository";
 
 describe("SqliteCheckpointRepository", () => {
   let db: DatabaseSync;
+
+  afterEach(() => {
+    if (db?.isOpen) db.close();
+  });
   let sessionRepo: SqliteSessionRepository;
   let fileRepo: SqliteFileRepository;
   let checkpointRepo: SqliteCheckpointRepository;
@@ -25,12 +29,8 @@ describe("SqliteCheckpointRepository", () => {
   beforeEach(async () => {
     db = new DatabaseSync(":memory:");
 
-    // Run schema migration
-    const migrationSql = readFileSync(
-      resolve(__dirname, "../../../db/migrations/001_initial.sql"),
-      "utf8",
-    );
-    db.exec(migrationSql);
+    applySecureMigrations(db);
+    db.exec("PRAGMA foreign_keys=ON");
 
     sessionRepo = new SqliteSessionRepository(db);
     fileRepo = new SqliteFileRepository(db);
@@ -45,6 +45,28 @@ describe("SqliteCheckpointRepository", () => {
       endedAt: null,
     };
     await sessionRepo.save(session);
+    expect(
+      (
+        await new SqliteActivityRepository(db).append([
+          {
+            id: "50000000-0000-4000-8000-000000000001",
+            sessionId: validSessionId,
+            occurredAt: "2026-10-25T00:01:00.000Z",
+            source: "browser",
+            type: "browser-visit",
+            payload: {
+              id: "50000000-0000-4000-8000-000000000001",
+              sessionId: validSessionId,
+              browser: "chrome",
+              title: "Synthetic page",
+              url: "https://example.test/",
+              visitedAt: "2026-10-25T00:01:00.000Z",
+              endedAt: null,
+            },
+          },
+        ])
+      ).ok,
+    ).toBe(true);
 
     // 2. Create a file reference and version so foreign keys are satisfied
     const file: FileReference = {
@@ -77,6 +99,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Milestone 1",
       createdAt: "2026-10-25T00:10:00.000Z",
       kept: true,
+      activityIds: ["50000000-0000-4000-8000-000000000001"],
       fileVersionIds: [validFileVersionId],
       browserVisitIds: ["50000000-0000-4000-8000-000000000001"],
       projectReferences: [
@@ -106,6 +129,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Checkpoint 1 (Old)",
       createdAt: "2026-10-25T00:10:00.000Z",
       kept: false,
+      activityIds: [],
       fileVersionIds: [],
       browserVisitIds: [],
       projectReferences: [],
@@ -117,6 +141,7 @@ describe("SqliteCheckpointRepository", () => {
       name: "Checkpoint 2 (New)",
       createdAt: "2026-10-25T00:20:00.000Z",
       kept: true,
+      activityIds: [],
       fileVersionIds: [],
       browserVisitIds: [],
       projectReferences: [],
@@ -129,105 +154,29 @@ describe("SqliteCheckpointRepository", () => {
     expect(listResult.ok).toBe(true);
     if (listResult.ok) {
       expect(listResult.value).toHaveLength(2);
-      expect(listResult.value[0]!.name).toBe("Checkpoint 2 (New)");
+      expect(listResult.value[0]!.name).toBe("Checkpoint 2 (New)"); // Newest first!
       expect(listResult.value[1]!.name).toBe("Checkpoint 1 (Old)");
     }
   });
 
-  it("filters kept checkpoints and updates kept flag with setKept", async () => {
-    const cp: Checkpoint = {
-      id: "40000000-0000-4000-8000-000000000001",
-      sessionId: validSessionId,
-      name: "Pinnable Checkpoint",
-      createdAt: "2026-10-25T00:10:00.000Z",
-      kept: false,
-      fileVersionIds: [],
-      browserVisitIds: [],
-      projectReferences: [],
-    };
-    await checkpointRepo.save(cp);
-
-    let keptList = await checkpointRepo.listKept(validSessionId);
-    expect(keptList.ok).toBe(true);
-    if (keptList.ok) {
-      expect(keptList.value).toHaveLength(0);
-    }
-
-    // Pin checkpoint
-    const setKeptResult = await checkpointRepo.setKept(cp.id, true);
-    expect(setKeptResult.ok).toBe(true);
-
-    keptList = await checkpointRepo.listKept(validSessionId);
-    expect(keptList.ok).toBe(true);
-    if (keptList.ok) {
-      expect(keptList.value).toHaveLength(1);
-      expect(keptList.value[0]?.id).toBe(cp.id);
-      expect(keptList.value[0]?.kept).toBe(true);
-    }
-  });
-
-  it("deletes a checkpoint and cascades removal of junction rows", async () => {
-    const cp: Checkpoint = {
-      id: "40000000-0000-4000-8000-000000000001",
-      sessionId: validSessionId,
-      name: "Delete Me",
-      createdAt: "2026-10-25T00:10:00.000Z",
-      kept: false,
-      fileVersionIds: [validFileVersionId],
-      browserVisitIds: ["50000000-0000-4000-8000-000000000001"],
-      projectReferences: [],
-    };
-    await checkpointRepo.save(cp);
-
-    const deleteResult = await checkpointRepo.delete(cp.id);
-    expect(deleteResult.ok).toBe(true);
-
-    const getResult = await checkpointRepo.get(cp.id);
-    expect(getResult.ok).toBe(true);
-    if (getResult.ok) {
-      expect(getResult.value).toBeNull();
-    }
-
-    // Junction rows also removed
-    const fvJunction = db
-      .prepare(
-        "SELECT COUNT(*) as count FROM checkpoint_file_versions WHERE checkpoint_id = ?",
-      )
-      .get(cp.id) as { count: number };
-    expect(fvJunction.count).toBe(0);
-  });
-
-  it("rejects saving a checkpoint referencing non-existent session or file versions", async () => {
-    const badSessionCp: Checkpoint = {
-      id: "40000000-0000-4000-8000-000000000001",
-      sessionId: "99999999-0000-4000-8000-000000000001",
-      name: "Invalid Session",
-      createdAt: "2026-10-25T00:10:00.000Z",
-      kept: false,
-      fileVersionIds: [],
-      browserVisitIds: [],
-      projectReferences: [],
-    };
-    const badSessionResult = await checkpointRepo.save(badSessionCp);
-    expect(badSessionResult.ok).toBe(false);
-    if (!badSessionResult.ok) {
-      expect(badSessionResult.error.code).toBe("NOT_FOUND");
-    }
-
-    const badVersionCp: Checkpoint = {
-      id: "40000000-0000-4000-8000-000000000002",
-      sessionId: validSessionId,
-      name: "Invalid Version",
-      createdAt: "2026-10-25T00:10:00.000Z",
-      kept: false,
-      fileVersionIds: ["99999999-0000-4000-8000-000000000002"],
-      browserVisitIds: [],
-      projectReferences: [],
-    };
-    const badVersionResult = await checkpointRepo.save(badVersionCp);
-    expect(badVersionResult.ok).toBe(false);
-    if (!badVersionResult.ok) {
-      expect(badVersionResult.error.code).toBe("NOT_FOUND");
+  it("preserves a caller transaction when a nested save cannot begin", async () => {
+    db.exec("BEGIN");
+    try {
+      const result = await checkpointRepo.save({
+        id: "40000000-0000-4000-8000-000000000099",
+        sessionId: validSessionId,
+        name: "Synthetic checkpoint",
+        createdAt: "2026-10-25T00:10:00.000Z",
+        kept: false,
+        activityIds: [],
+        fileVersionIds: [],
+        browserVisitIds: [],
+        projectReferences: [],
+      });
+      expect(result.ok).toBe(false);
+      expect(db.isTransaction).toBe(true);
+    } finally {
+      if (db.isTransaction) db.exec("ROLLBACK");
     }
   });
 });

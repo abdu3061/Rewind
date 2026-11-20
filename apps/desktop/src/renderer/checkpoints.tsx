@@ -1,0 +1,716 @@
+import { useEffect, useRef, useState } from "react";
+import { currentPreview } from "./captured-preview";
+import { usePreviewRequest } from "./use-preview-request";
+import type {
+  ActivityEvent,
+  CapturedVersionSummary,
+  CheckpointSummary,
+  CheckpointView,
+  RuntimeSnapshot,
+  Session,
+  VersionPreview,
+  Result,
+} from "@rewind/contracts";
+import { RecoveryCopy } from "./recovery-copy";
+import { RecoveryOverwrite } from "./recovery-overwrite";
+import { EmptyState, HowItWorks, formatBytes, plural } from "./ui";
+
+const time = (value: string) => new Date(value).toLocaleString();
+function label(event: ActivityEvent): string {
+  switch (event.type) {
+    case "foreground":
+      return `${event.payload.application} · ${event.payload.windowTitle}`;
+    case "file-change":
+      return `${event.payload.displayName ?? "Saved file"} · ${event.payload.change === "captured" ? "Recovery backup" : event.payload.change}`;
+    case "browser-visit":
+      return `${event.payload.title} · ${event.payload.url}`;
+    case "capture-gap":
+      return `Capture gap · ${event.payload.collectorId} · ${event.payload.reason}`;
+    case "file-opened":
+      return event.payload.displayName;
+    case "idle":
+    case "lock":
+      return `${event.type} · ${event.payload.state}`;
+  }
+}
+export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
+  const {
+    request: requestPreview,
+    cancel: cancelPreview,
+    loading: previewLoading,
+  } = usePreviewRequest();
+  const [sessions, setSessions] = useState<Session[]>([]),
+    [sessionId, setSessionId] = useState("");
+  const [versions, setVersions] = useState<CapturedVersionSummary[]>([]),
+    [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]),
+    [selectedActivities, setSelectedActivities] = useState<string[]>([]);
+  const [name, setName] = useState(""),
+    [kept, setKept] = useState(true),
+    [choosing, setChoosing] = useState(false);
+  const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]),
+    [view, setView] = useState<CheckpointView | null>(null);
+  const [storedPreview, setPreview] = useState<VersionPreview | null>(null),
+    [editName, setEditName] = useState(""),
+    [editKept, setEditKept] = useState(true);
+  const [deleting, setDeleting] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [message, setMessage] = useState("");
+  const [moreFiles, setMoreFiles] = useState(false),
+    [moreSessions, setMoreSessions] = useState(false),
+    [moreActivities, setMoreActivities] = useState(false),
+    [moreCheckpoints, setMoreCheckpoints] = useState(false);
+  const [evidenceRefresh, setEvidenceRefresh] = useState(0);
+  const live = useRef(true),
+    evidenceSerial = useRef(0),
+    previewSerial = useRef(0);
+  const preview = currentPreview(storedPreview, runtime?.documentAuthority)
+    ? storedPreview
+    : null;
+  const authority = useRef(runtime?.documentAuthority);
+  authority.current = runtime?.documentAuthority;
+  useEffect(() => {
+    previewSerial.current++;
+    setPreview(null);
+    void cancelPreview();
+  }, [
+    runtime?.documentAuthority.generation,
+    runtime?.documentAuthority.revision,
+    cancelPreview,
+  ]);
+  const readable = Boolean(
+    runtime?.secureStorage && window.rewind?.checkpoints,
+  );
+  async function loadCheckpoints(older = false) {
+    const last = older ? checkpoints.at(-1) : null;
+    const result = await window.rewind.checkpoints.list({
+      limit: 50,
+      ...(last ? { before: { createdAt: last.createdAt, id: last.id } } : {}),
+    });
+    if (!live.current) return;
+    if (result.ok) {
+      setCheckpoints((current) =>
+        last ? [...current, ...result.value].slice(-1000) : result.value,
+      );
+      setMoreCheckpoints(result.value.length === 50);
+    } else setError(result.error.message);
+  }
+  // Keep the list current when history changes elsewhere (for example a
+  // checkpoint saved from the notch, or cleanup). Only the first page reloads.
+  const historyStamp = `${runtime?.documentAuthority.generation ?? ""}:${runtime?.documentAuthority.revision ?? ""}`;
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    if (!readable) return;
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      return;
+    }
+    void loadCheckpoints().catch(() => undefined);
+    // loadCheckpoints only reads state through the latest render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyStamp, readable]);
+  useEffect(() => {
+    live.current = true;
+    evidenceSerial.current++;
+    previewSerial.current++;
+    let mounted = true;
+    if (!readable) return;
+    void Promise.all([
+      window.rewind.history.list({ limit: 100 }),
+      window.rewind.checkpoints.list({ limit: 50 }),
+    ])
+      .then(([history, saved]) => {
+        if (!live.current || !mounted) return;
+        if (history.ok) {
+          setSessions(history.value);
+          setMoreSessions(history.value.length === 100);
+          setSessionId(history.value[0]?.id ?? "");
+        } else setError(history.error.message);
+        if (saved.ok) {
+          setCheckpoints(saved.value);
+          setMoreCheckpoints(saved.value.length === 50);
+        } else setError(saved.error.message);
+      })
+      .catch(() => {
+        if (live.current && mounted)
+          setError("Checkpoint history could not be loaded.");
+      });
+    return () => {
+      mounted = false;
+      live.current = false;
+    };
+  }, [readable]);
+  useEffect(() => {
+    const ticket = ++evidenceSerial.current;
+    setSelectedFiles([]);
+    setSelectedActivities([]);
+    setVersions([]);
+    setActivities([]);
+    if (!readable || !sessionId) return;
+    void Promise.all([
+      window.rewind.versions.list({ limit: 100, sessionId }),
+      window.rewind.timeline.query({
+        limit: 100,
+        sessionId,
+        includeFileBackups: true,
+      }),
+    ])
+      .then(([files, events]) => {
+        if (!live.current || ticket !== evidenceSerial.current) return;
+        if (files.ok) {
+          setVersions(files.value);
+          setMoreFiles(files.value.length === 100);
+        } else setError(files.error.message);
+        if (events.ok) {
+          setActivities(events.value);
+          setMoreActivities(events.value.length === 100);
+        } else setError(events.error.message);
+      })
+      .catch(() => {
+        if (live.current && ticket === evidenceSerial.current)
+          setError("Captured checkpoint evidence could not be loaded.");
+      });
+  }, [readable, sessionId, evidenceRefresh]);
+  useEffect(() => {
+    const id = view?.checkpoint.id;
+    if (!readable || !id) return;
+    let mounted = true,
+      checking = false;
+    const timer = setInterval(() => {
+      if (checking) return;
+      checking = true;
+      void window.rewind.checkpoints
+        .list({ limit: 1, id })
+        .then((result) => {
+          if (!mounted) return;
+          if (!result.ok || !result.value.length) {
+            setView(null);
+            setPreview(null);
+            setMessage(
+              "The checkpoint is no longer available from verified retained history.",
+            );
+          }
+        })
+        .catch(() => {
+          if (mounted) {
+            setView(null);
+            setPreview(null);
+          }
+        })
+        .finally(() => {
+          checking = false;
+        });
+    }, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [readable, view?.checkpoint.id]);
+  async function run(
+    operation: () => Promise<Result<unknown>>,
+    success?: string,
+  ) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await operation();
+      if (!live.current) return;
+      if (!result.ok) setError(result.error.message);
+      else if (success) {
+        setMessage(success);
+        await loadCheckpoints();
+      }
+    } catch {
+      if (live.current)
+        setError("The checkpoint operation could not be confirmed.");
+    } finally {
+      if (live.current) setBusy(false);
+    }
+  }
+  async function inspect(id: string) {
+    const result = await window.rewind.checkpoints.view(id);
+    if (live.current && result.ok) {
+      setView(result.value);
+      setEditName(result.value.checkpoint.name);
+      setEditKept(result.value.checkpoint.kept);
+      setDeleting(false);
+      setPreview(null);
+      previewSerial.current++;
+    }
+    return result;
+  }
+  async function olderEvidence(files: boolean) {
+    const ticket = evidenceSerial.current;
+    if (files) {
+      const last = versions.at(-1)?.version;
+      if (!last) return { ok: true as const, value: true };
+      const result = await window.rewind.versions.list({
+        limit: 100,
+        sessionId,
+        before: { capturedAt: last.capturedAt, id: last.id },
+      });
+      if (live.current && ticket === evidenceSerial.current && result.ok) {
+        setVersions((current) => [...current, ...result.value].slice(-1000));
+        setMoreFiles(result.value.length === 100);
+      }
+      return result;
+    }
+    const last = activities.at(-1);
+    if (!last) return { ok: true as const, value: true };
+    const result = await window.rewind.timeline.query({
+      limit: 100,
+      sessionId,
+      includeFileBackups: true,
+      before: { occurredAt: last.occurredAt, id: last.id },
+    });
+    if (live.current && ticket === evidenceSerial.current && result.ok) {
+      setActivities((current) => [...current, ...result.value].slice(-1000));
+      setMoreActivities(result.value.length === 100);
+    }
+    return result;
+  }
+  // Quick save takes everything loaded for the session, within the engine limits.
+  const quickFiles = versions.slice(0, 100).map((item) => item.version.id);
+  const quickActivities = activities.slice(0, 200).map((event) => event.id);
+  const fileVersionIds = choosing ? selectedFiles : quickFiles;
+  const activityIds = choosing ? selectedActivities : quickActivities;
+  if (!readable)
+    return (
+      <section className="panel">
+        <h2>Checkpoints unavailable</h2>
+        <p>Reconnect secure storage to manage checkpoints.</p>
+      </section>
+    );
+  return (
+    <>
+      <section className="panel" aria-labelledby="checkpoint-create-heading">
+        <h2 id="checkpoint-create-heading">Save a named checkpoint</h2>
+        <p>
+          Bookmark files and activity from a session so you can find them again.
+        </p>
+        <HowItWorks>
+          <p>
+            A checkpoint groups saved file versions and activity. It can't
+            restore unsaved work in an app, and it doesn't prove a document was
+            read. Up to 100 file versions, 200 activities and 64 MB of files per
+            checkpoint; your selection is checked again before saving.
+          </p>
+          <p>
+            Kept checkpoints survive automatic cleanup, storage limits and
+            history deletion. Checkpoints that aren't kept expire like the rest
+            of your history.
+          </p>
+        </HowItWorks>
+        <label htmlFor="checkpoint-session">Session</label>
+        <select
+          id="checkpoint-session"
+          value={sessionId}
+          disabled={busy}
+          onChange={(event) => setSessionId(event.target.value)}
+        >
+          {!sessions.length && <option value="">No recorded sessions</option>}
+          {sessions.map((session) => (
+            <option key={session.id} value={session.id}>
+              {time(session.startedAt)} · {session.status}
+            </option>
+          ))}
+        </select>
+        {moreSessions && (
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const last = sessions.at(-1);
+                if (!last) return { ok: true, value: true };
+                const result = await window.rewind.history.list({
+                  limit: 100,
+                  before: { startedAt: last.startedAt, id: last.id },
+                });
+                if (live.current && result.ok) {
+                  setSessions((current) => {
+                    const selected = current.find(
+                        (session) => session.id === sessionId,
+                      ),
+                      page = [...current, ...result.value].slice(-1000);
+                    return selected &&
+                      !page.some((session) => session.id === sessionId)
+                      ? [selected, ...page]
+                      : page;
+                  });
+                  setMoreSessions(result.value.length === 100);
+                }
+                return result;
+              })
+            }
+          >
+            Load older sessions
+          </button>
+        )}
+        <label htmlFor="checkpoint-name">Checkpoint name</label>
+        <input
+          id="checkpoint-name"
+          maxLength={120}
+          value={name}
+          disabled={busy}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <label>
+          <input
+            type="checkbox"
+            checked={kept}
+            disabled={busy}
+            onChange={(event) => setKept(event.target.checked)}
+          />{" "}
+          Keep this checkpoint (skip automatic cleanup)
+        </label>
+        {!choosing && (
+          <p className="hint">
+            {quickFiles.length + quickActivities.length
+              ? `Saves ${plural(quickFiles.length, "file version")} and ${plural(quickActivities.length, "activity", "activities")} from this session${moreFiles || moreActivities ? " (the most recent ones)" : ""}.`
+              : "Nothing has been recorded in this session yet."}
+          </p>
+        )}
+        <div className="controls inline-controls">
+          <button
+            type="button"
+            className="ghost"
+            aria-expanded={choosing}
+            disabled={busy || !sessionId}
+            onClick={() => setChoosing((current) => !current)}
+          >
+            {choosing ? "Save everything instead" : "Choose items…"}
+          </button>
+          {choosing && (
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !sessionId}
+              onClick={() => setEvidenceRefresh((current) => current + 1)}
+            >
+              Reload items
+            </button>
+          )}
+        </div>
+        {choosing && (
+          <>
+            <fieldset disabled={busy}>
+              <legend>File versions ({selectedFiles.length} selected)</legend>
+              {!versions.length && (
+                <p className="hint">No saved file versions in this session.</p>
+              )}
+              <div className="evidence-picker">
+                {versions.map((item) => (
+                  <label key={item.version.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select version ${item.displayName} ${item.version.capturedAt} from ${item.sourceLabel}`}
+                      checked={selectedFiles.includes(item.version.id)}
+                      disabled={
+                        !selectedFiles.includes(item.version.id) &&
+                        selectedFiles.length >= 100
+                      }
+                      onChange={(event) =>
+                        setSelectedFiles((current) =>
+                          event.target.checked
+                            ? [...current, item.version.id]
+                            : current.filter((id) => id !== item.version.id),
+                        )
+                      }
+                    />{" "}
+                    {item.displayName} · {time(item.version.capturedAt)} ·{" "}
+                    {formatBytes(item.version.byteLength)}
+                    <span className="content-hash"> · {item.sourceLabel}</span>
+                  </label>
+                ))}
+              </div>
+              {moreFiles && (
+                <button onClick={() => void run(() => olderEvidence(true))}>
+                  Load older file versions
+                </button>
+              )}
+            </fieldset>
+            <fieldset disabled={busy}>
+              <legend>
+                Recorded activity ({selectedActivities.length} selected)
+              </legend>
+              {!activities.length && (
+                <p className="hint">No recorded activity in this session.</p>
+              )}
+              <div className="evidence-picker">
+                {activities.map((event) => (
+                  <label key={event.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select activity ${event.id}`}
+                      checked={selectedActivities.includes(event.id)}
+                      disabled={
+                        !selectedActivities.includes(event.id) &&
+                        selectedActivities.length >= 200
+                      }
+                      onChange={(input) =>
+                        setSelectedActivities((current) =>
+                          input.target.checked
+                            ? [...current, event.id]
+                            : current.filter((id) => id !== event.id),
+                        )
+                      }
+                    />{" "}
+                    {time(event.occurredAt)} · {label(event)}
+                  </label>
+                ))}
+              </div>
+              {moreActivities && (
+                <button onClick={() => void run(() => olderEvidence(false))}>
+                  Load older activity
+                </button>
+              )}
+            </fieldset>
+          </>
+        )}
+        <button
+          className="primary"
+          disabled={
+            busy ||
+            !name.trim() ||
+            !sessionId ||
+            fileVersionIds.length + activityIds.length === 0
+          }
+          onClick={() =>
+            void run(async () => {
+              const result = await window.rewind.checkpoints.create({
+                sessionId,
+                name,
+                kept,
+                fileVersionIds,
+                activityIds,
+              });
+              if (live.current && result.ok) {
+                setName("");
+                setSelectedFiles([]);
+                setSelectedActivities([]);
+                await inspect(result.value.id);
+              }
+              return result;
+            }, "Checkpoint saved.")
+          }
+        >
+          Save checkpoint
+        </button>
+        {message && <p role="status">{message}</p>}
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+      </section>
+      <section className="panel" aria-labelledby="saved-checkpoints-heading">
+        <h2 id="saved-checkpoints-heading">Saved checkpoints</h2>
+        {!checkpoints.length && (
+          <EmptyState title="No checkpoints yet">
+            Save one above, or from the notch while you work.
+          </EmptyState>
+        )}
+        <ol className="timeline-events">
+          {checkpoints.map((checkpoint) => (
+            <li key={checkpoint.id} data-testid="saved-checkpoint">
+              <strong>{checkpoint.name}</strong>
+              <p>
+                {time(checkpoint.createdAt)} ·{" "}
+                {checkpoint.kept ? "Kept" : "Expires with history"} ·{" "}
+                {plural(checkpoint.fileVersionCount, "file")} ·{" "}
+                {plural(checkpoint.activityCount, "activity", "activities")}
+              </p>
+              <button
+                disabled={busy}
+                onClick={() => void run(() => inspect(checkpoint.id))}
+                aria-label={`View checkpoint ${checkpoint.name}`}
+              >
+                View checkpoint
+              </button>
+            </li>
+          ))}
+        </ol>
+        {moreCheckpoints && (
+          <button
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await loadCheckpoints(true);
+                return { ok: true, value: true };
+              })
+            }
+          >
+            Load older checkpoints
+          </button>
+        )}
+      </section>
+      {view && (
+        <section className="panel" aria-labelledby="checkpoint-view-heading">
+          <h2 id="checkpoint-view-heading">
+            Checkpoint: {view.checkpoint.name}
+          </h2>
+          <p>Created {time(view.checkpoint.createdAt)}</p>
+          <label htmlFor="checkpoint-edit-name">Saved checkpoint name</label>
+          <input
+            id="checkpoint-edit-name"
+            maxLength={120}
+            value={editName}
+            disabled={busy}
+            onChange={(event) => setEditName(event.target.value)}
+          />
+          <label>
+            <input
+              type="checkbox"
+              checked={editKept}
+              disabled={busy}
+              onChange={(event) => setEditKept(event.target.checked)}
+            />{" "}
+            Keep saved checkpoint
+          </label>
+          {!editKept && (
+            <p className="hint">
+              Without Keep, this checkpoint expires like the rest of your
+              history. Items that are already old may be removed at the next
+              cleanup.
+            </p>
+          )}
+          <button
+            disabled={busy || !editName.trim()}
+            onClick={() =>
+              void run(async () => {
+                const result = await window.rewind.checkpoints.update({
+                  id: view.checkpoint.id,
+                  name: editName,
+                  kept: editKept,
+                });
+                if (live.current && result.ok) {
+                  setView(null);
+                  setPreview(null);
+                }
+                return result;
+              }, "Checkpoint updated.")
+            }
+          >
+            Save checkpoint changes
+          </button>
+          <h3>Files</h3>
+          <ol className="timeline-events">
+            {view.versions.map((item) => (
+              <li key={item.version.id}>
+                <strong>{item.displayName}</strong>
+                <p className="content-hash">{item.sourceLabel}</p>
+                <p>
+                  {time(item.version.capturedAt)} ·{" "}
+                  {formatBytes(item.version.byteLength)}
+                </p>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const ticket = ++previewSerial.current,
+                        result = await requestPreview(item.version.id);
+                      if (
+                        live.current &&
+                        ticket === previewSerial.current &&
+                        result.ok &&
+                        currentPreview(result.value, authority.current)
+                      )
+                        setPreview(result.value);
+                      return result;
+                    })
+                  }
+                >
+                  Preview checkpoint version
+                </button>
+              </li>
+            ))}
+          </ol>
+          <h3>Activity</h3>
+          <ul>
+            {view.activities.map((event) => (
+              <li key={event.id}>
+                {time(event.occurredAt)} · {label(event)}
+              </li>
+            ))}
+          </ul>
+          {previewLoading && (
+            <div>
+              <p role="status">Preparing captured preview…</p>
+              <button
+                onClick={() => {
+                  previewSerial.current++;
+                  setPreview(null);
+                  void cancelPreview().then((result) => {
+                    if (!result.ok && live.current)
+                      setError(result.error.message);
+                  });
+                }}
+              >
+                Cancel preview
+              </button>
+            </div>
+          )}
+          {preview && (
+            <div>
+              <h3>Preview: {preview.displayName}</h3>
+              {preview.warning && <p>{preview.warning}</p>}
+              {preview.text !== null && (
+                <pre className="captured-preview">{preview.text}</pre>
+              )}
+              {preview.truncated && (
+                <p className="hint">
+                  Preview shortened. Recovering uses the complete file.
+                </p>
+              )}
+              <RecoveryCopy key={preview.version.id} preview={preview} />
+              <RecoveryOverwrite
+                key={`overwrite-${preview.version.id}`}
+                preview={preview}
+              />
+            </div>
+          )}
+          {!deleting ? (
+            <button
+              className="end-button"
+              disabled={busy}
+              onClick={() => setDeleting(true)}
+            >
+              Delete checkpoint
+            </button>
+          ) : (
+            <div>
+              <p>
+                Delete this checkpoint? Your files and recovered copies aren't
+                affected. Its items then expire like the rest of your history.
+              </p>
+              <button
+                className="end-button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const result = await window.rewind.checkpoints.delete(
+                      view.checkpoint.id,
+                      true,
+                    );
+                    if (live.current && result.ok) {
+                      setView(null);
+                      setPreview(null);
+                    }
+                    return result;
+                  }, "Checkpoint deleted.")
+                }
+              >
+                Confirm delete checkpoint
+              </button>
+              <button disabled={busy} onClick={() => setDeleting(false)}>
+                Cancel checkpoint deletion
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+    </>
+  );
+}

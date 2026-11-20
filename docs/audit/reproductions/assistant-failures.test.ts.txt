@@ -1,0 +1,45 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createDefaultSettings, type Repositories, type SearchResult } from "@rewind/contracts";
+import { GeminiAssistantService } from "./gemini-service";
+
+const generate = vi.hoisted(() => vi.fn());
+vi.mock("@google/genai", () => ({ GoogleGenAI: class { models = { generateContent: generate }; } }));
+beforeEach(() => { vi.useFakeTimers(); generate.mockReset(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+function fixture() {
+  const settings = { ...createDefaultSettings(), cloudAiEnabled: true };
+  const result: SearchResult = {
+    source: { kind: "activity", activityId: "20000000-0000-4000-8000-000000000001" },
+    occurredAt: "2026-11-16T10:00:00.000Z", title: "Synthetic report", excerpt: "Synthetic evidence", evidence: "recorded",
+  };
+  const repositories = { search: { search: async () => ({ ok: true, value: [result] }) } } as unknown as Repositories;
+  return { settings, service: new GeminiAssistantService({ apiKey: "synthetic-not-a-credential", repositories, settings }) };
+}
+const toolCall = { candidates: [{ content: { parts: [{ functionCall: { name: "search_activity", args: { text: "report" } } }] } }] };
+const answer = { candidates: [{ content: { parts: [{ text: "You worked on the synthetic report." }] } }] };
+
+it("must resolve citations for evidence returned by a tool", async () => {
+  generate.mockResolvedValueOnce(toolCall).mockResolvedValueOnce(answer);
+  const result = await fixture().service.ask("What report?");
+  expect(result.ok && result.value.sources).toHaveLength(1);
+});
+
+it("must stop additional cloud requests after permission is revoked", async () => {
+  const f = fixture();
+  generate.mockImplementationOnce(async () => { f.settings.cloudAiEnabled = false; return toolCall; }).mockResolvedValueOnce(answer);
+  await f.service.ask("What report?");
+  expect(generate).toHaveBeenCalledTimes(1);
+});
+
+it("must clear its timeout after a successful request", async () => {
+  generate.mockResolvedValueOnce(answer);
+  await fixture().service.ask("What report?");
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("must disclose insufficient evidence when no tool evidence was obtained", async () => {
+  generate.mockResolvedValueOnce(answer);
+  const result = await fixture().service.ask("What report?");
+  expect(result.ok && result.value.insufficientEvidence).toBe(true);
+});

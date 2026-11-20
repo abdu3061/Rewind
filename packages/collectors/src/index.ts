@@ -1,48 +1,18 @@
-import type { CollectorRegistry } from "@rewind/contracts";
-import { BrowserCollector } from "./browser-collector";
-import { FolderCollector } from "./folder-collector";
-import type { CollectorRegistryOptions } from "./types";
-import { WindowsCollector } from "./windows-collector";
-
 export type {
   Collector,
   CollectorContext,
   CollectorRegistry,
 } from "@rewind/contracts";
-export * from "./types";
-export * from "./window-strategy";
-export * from "./windows-collector";
-export * from "./browser-collector";
-export * from "./folder-collector";
+export { WindowsCollector } from "./windows-collector";
+export type {
+  ActiveWindowInfo,
+  WindowQueryStrategy,
+  WindowsCollectorOptions,
+} from "./types";
 
-export function createCollectorRegistry(
-  options: CollectorRegistryOptions = {},
-): CollectorRegistry {
-  const windows = new WindowsCollector({
-    ...(options.windowStrategy !== undefined
-      ? { strategy: options.windowStrategy }
-      : {}),
-    ...(options.windowPollIntervalMs !== undefined
-      ? { pollIntervalMs: options.windowPollIntervalMs }
-      : {}),
-    ...(options.newId !== undefined ? { newId: options.newId } : {}),
-    ...(options.now !== undefined ? { now: options.now } : {}),
-  });
-
-  const browser = new BrowserCollector({
-    ...(options.newId !== undefined ? { newId: options.newId } : {}),
-    ...(options.now !== undefined ? { now: options.now } : {}),
-  });
-
-  const folders = new FolderCollector({
-    ...(options.watchRoots !== undefined
-      ? { watchRoots: options.watchRoots }
-      : {}),
-    ...(options.newId !== undefined ? { newId: options.newId } : {}),
-    ...(options.now !== undefined ? { now: options.now } : {}),
-  });
-
-  return { windows, browser, folders };
-}
-
-export const collectorImplementationStatus = "implemented" as const;
+// Composition and source approval remain the desktop utility/coordinator's responsibility.
+export const collectorImplementationStatus = "consent-gated-sources" as const;
+export { WindowsProtectedFileAccess } from "./windows-file-access";
+export { ProtectedFolderCollector } from "./protected-folder-collector";
+export { WindowsRecoveryCopyWriter } from "./windows-copy-writer";
+export { WindowsRecoveryOverwriteWriter } from "./windows-overwrite-writer";

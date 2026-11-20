@@ -1,0 +1,339 @@
+html.notch-document,
+.notch-document body,
+.notch-document #root {
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+.notch-document #root {
+  /* A work area shorter than the panel still exposes every control by scroll/Tab. */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #817796 transparent;
+}
+.notch-root {
+  --color-text: #f2f1ff;
+  --color-muted: #b8b9d0;
+  --color-border: #3f4263;
+  --color-surface: #20223b;
+  --color-soft: #343650;
+  color: var(--color-text);
+  padding: 8px;
+  width: 100%;
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+.notch-root button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #d8d8ef;
+  font-size: 12px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border-color: transparent;
+}
+.notch-root button:hover:not(:disabled) {
+  background: #3b3c5c;
+  color: white;
+}
+.notch-root button:focus-visible,
+.notch-root input:focus-visible {
+  outline: 2px solid #b3a5ff;
+  outline-offset: 2px;
+}
+.notch-root .notch-compact {
+  display: flex;
+  width: 128px;
+  height: 48px;
+  gap: 7px;
+  padding: 3px 11px 3px 5px;
+  border: 1px solid #77729e80;
+  border-radius: 20px;
+  background: linear-gradient(130deg, #262940, #171a2e);
+  box-shadow:
+    0 3px 7px #080a1838,
+    inset 0 1px #b8b6ef14;
+}
+.notch-compact .mascot {
+  width: 40px;
+  height: 40px;
+}
+.compact-wordmark {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.35px;
+}
+.recording-light {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #9594b0;
+}
+.recording-light.is-recording {
+  background: #fa7f94;
+  box-shadow: 0 0 8px #fa7f9440;
+}
+.notch-panel {
+  width: 100%;
+  padding: 16px 20px 12px;
+  border: 1px solid #827ab773;
+  border-radius: 25px;
+  background: linear-gradient(115deg, #24283fec, #202037f7 55%, #242139f5);
+  box-shadow:
+    0 4px 8px #0c0c242b,
+    inset 0 1px #c7baff14;
+  animation: notch-reveal 140ms ease-out;
+}
+.notch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notch-wordmark {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+}
+.notch-wordmark > span {
+  margin-left: 10px;
+  font-size: 10px;
+  font-weight: 400;
+  color: #b2b0cb;
+  letter-spacing: 0;
+}
+.notch-window-actions {
+  display: flex;
+  gap: 2px;
+}
+.notch-window-actions button {
+  padding: 5px 7px;
+  font-size: 11px;
+  min-height: 28px;
+}
+.notch-command-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 9px 0 8px;
+}
+.notch-command-row .mascot {
+  width: 74px;
+  height: 74px;
+  flex: none;
+}
+.notch-command {
+  flex: 1;
+  display: flex;
+  gap: 9px;
+  padding: 7px;
+  min-width: 0;
+  background: #14172d70;
+  border: 1px solid #7d78a98c;
+  border-radius: 17px;
+  box-shadow: inset 0 1px 5px #05081930;
+}
+.notch-command input {
+  color: #f5f3ff;
+  background: transparent;
+  border: none;
+  padding: 8px 7px;
+  width: 100%;
+  font-size: 14px;
+}
+.notch-command input::placeholder {
+  color: #c4c0d9;
+  opacity: 1;
+}
+.notch-root .notch-send {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(145deg, #d0c2ff, #a89ae6);
+  color: #26223e;
+  border: 1px solid #e2d7ff80;
+  box-shadow: 0 2px 5px #080c274d;
+}
+.notch-root .notch-send:hover:not(:disabled) {
+  background: #ded4ff;
+  color: #26223e;
+}
+.notch-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  border-bottom: 1px solid #55516f6b;
+  padding-bottom: 10px;
+}
+.notch-actions button {
+  flex: 1;
+  white-space: nowrap;
+  min-height: 39px;
+  border-color: #73658650;
+  background: linear-gradient(140deg, #605a7838, #51495e24);
+}
+.notch-actions button:nth-child(3) {
+  flex: 1.5;
+}
+.notch-actions button svg {
+  color: #b9a9f3;
+}
+.notch-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 12px;
+  font-size: 11px;
+  color: #b7b5cf;
+}
+.notch-status-row > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #e8e4fc;
+}
+.notch-status-row > span:nth-child(2) {
+  margin-left: auto;
+}
+.notch-status-row button {
+  padding: 0;
+  font-size: 10px;
+}
+.notch-response {
+  max-height: 235px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: #787292 transparent;
+}
+.notch-response > p {
+  color: #d1cce7;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 14px 0 8px;
+}
+.notch-response .notch-error {
+  color: #ffb9c4;
+}
+.notch-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.notch-results li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #57516e70;
+  border-radius: 9px;
+  margin: 5px 0;
+  padding: 9px 11px;
+  background: #171a2d70;
+  font-size: 11px;
+}
+.notch-results li span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notch-results time {
+  margin-left: auto;
+  font-size: 10px;
+  color: #b8b4ce;
+  flex: none;
+}
+.notch-root .notch-link {
+  padding: 5px 0;
+  color: #d4c8ff;
+  font-size: 11px;
+}
+.notch-footer {
+  font-size: 11px;
+  color: #aba9c2;
+  margin-top: 10px;
+}
+.notch-footer button {
+  padding: 0 3px;
+  font-size: inherit;
+  color: #d4c8ff;
+}
+.notch-checkpoint label {
+  margin: 10px 0;
+  font-size: 11px;
+  color: #dad6ec;
+}
+.notch-checkpoint label > input:not([type="checkbox"]) {
+  margin-left: 12px;
+  color: white;
+  background: #14172d;
+  padding: 7px;
+  border: 1px solid #6b6487;
+}
+.notch-checkpoint fieldset {
+  max-height: 100px;
+  overflow: auto;
+  border-color: #57516e;
+}
+.notch-checkpoint fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+.notch-checkpoint input[type="checkbox"] {
+  flex: none;
+  accent-color: #b2a0f3;
+}
+.notch-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.notch-save-row small {
+  font-size: 10px;
+  color: #b8b4ce;
+}
+.notch-root .notch-save-row button {
+  background: #b7a9ef;
+  color: #22213b;
+}
+@keyframes notch-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notch-panel {
+    animation: none;
+  }
+}
+@media (max-width: 600px) {
+  .notch-panel {
+    padding: 12px;
+  }
+  .notch-wordmark > span,
+  .notch-status-row > span:nth-child(2) {
+    display: none;
+  }
+  .notch-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .notch-command-row .mascot {
+    width: 48px;
+    height: 48px;
+  }
+}
