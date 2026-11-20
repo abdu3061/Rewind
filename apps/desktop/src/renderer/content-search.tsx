@@ -5,6 +5,7 @@ import {
   type FileTextControlState,
   type FileTextQuery,
   type FileTextSearchReceipt,
+  type Result,
   type RuntimeSnapshot,
   type TimelineQuery,
   type VersionPreview,
@@ -17,6 +18,166 @@ import { HowItWorks, plural } from "./ui";
 
 const matches = (a: DocumentAuthority, b: DocumentAuthority | undefined) =>
   Boolean(b && a.generation === b.generation && a.revision === b.revision);
+
+/** Polls the captured-content index; calls onChange when indexed/unavailable counts move. */
+function useIndexStatus(readable: boolean, onChange?: () => void) {
+  const [status, setStatus] = useState<FileTextControlState | null>(null);
+  const [error, setError] = useState("");
+  const changed = useRef(onChange);
+  changed.current = onChange;
+  useEffect(() => {
+    if (!readable) {
+      setStatus(null);
+      return;
+    }
+    let mounted = true,
+      pending = false,
+      previous = "";
+    const poll = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const result = await window.rewind.content.state();
+        if (!mounted) return;
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        setStatus(result.value);
+        const key = `${result.value.counts.indexed}:${result.value.counts.unavailable}`;
+        if (previous && previous !== key) changed.current?.();
+        previous = key;
+      } catch {
+        if (mounted)
+          setError("Could not read captured-content indexing status.");
+      } finally {
+        pending = false;
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 1500);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [readable]);
+  return { status, setStatus, error, setError };
+}
+
+/** Settings › Storage: index status and explicit indexing of retained history. */
+export function SearchIndexSettings({
+  runtime,
+}: {
+  runtime: RuntimeSnapshot | null;
+}) {
+  const readable = Boolean(runtime?.secureStorage && window.rewind?.content);
+  const { status, setStatus, error, setError } = useIndexStatus(readable);
+  const [retry, setRetry] = useState(false),
+    [acting, setActing] = useState(false);
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  async function act(
+    operation: () => Promise<Result<FileTextControlState>>,
+    failure: string,
+  ) {
+    setActing(true);
+    setError("");
+    try {
+      const result = await operation();
+      if (!live.current) return;
+      if (result.ok) setStatus(result.value);
+      else setError(result.error.message);
+    } catch {
+      if (live.current) setError(failure);
+    } finally {
+      if (live.current) setActing(false);
+    }
+  }
+  return (
+    <section className="panel" aria-labelledby="search-index-heading">
+      <h2 id="search-index-heading">Search index</h2>
+      <p>
+        Lets Search look inside saved files. New versions are indexed
+        automatically while file protection is on.
+      </p>
+      <HowItWorks>
+        <p>
+          Index saved content to catch up on older versions, even while
+          recording is paused. This only reads Rewind's encrypted history; it
+          doesn't start recording or use the cloud. Text and code files, DOCX
+          body text and selectable PDF text are indexed, up to 64 KB and 50 PDF
+          pages per file.
+        </p>
+      </HowItWorks>
+      <p role="status" aria-label="Captured content index status">
+        {!readable
+          ? "Encrypted history is unavailable."
+          : !status
+            ? "Reading search index..."
+            : `${status.counts.indexed} of ${status.counts.eligible} saved versions searchable · ${status.counts.pending} waiting · ${status.counts.unavailable} unreadable · ${status.indexing.busy ? `indexing (${status.indexing.processed} done)` : "idle"}`}
+      </p>
+      {status?.automaticPaused && (
+        <p>
+          Automatic indexing is paused until Rewind restarts. Choose Index saved
+          content to resume it.
+        </p>
+      )}
+      {status?.indexing.error && <p>{status.indexing.error.message}</p>}
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={retry}
+          disabled={!readable || acting}
+          onChange={(event) => setRetry(event.target.checked)}
+        />
+        Retry unavailable documents
+      </label>
+      <div className="controls">
+        <button
+          disabled={!readable || acting || status?.indexing.busy}
+          onClick={() =>
+            void act(
+              () =>
+                window.rewind.content.indexSaved({
+                  confirmed: true,
+                  retryFailures: retry,
+                }),
+              "Saved-content indexing could not be started.",
+            )
+          }
+        >
+          Index saved content
+        </button>
+        <button
+          disabled={
+            !readable ||
+            acting ||
+            (Boolean(status?.automaticPaused) && !status?.indexing.busy)
+          }
+          onClick={() =>
+            void act(
+              () => window.rewind.content.stop(),
+              "Content indexing stop could not be confirmed. Try again.",
+            )
+          }
+        >
+          Stop content indexing
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function ContentSearch({
   runtime,
   query,
@@ -28,15 +189,16 @@ export function ContentSearch({
   const authority = useRef(runtime?.documentAuthority);
   authority.current = runtime?.documentAuthority;
   const authorityKey = `${runtime?.documentAuthority.generation ?? ""}:${runtime?.documentAuthority.revision ?? ""}`;
-  const [status, setStatus] = useState<FileTextControlState | null>(null);
   const [storedPage, setPage] = useState<FileTextSearchReceipt | null>(null);
   const [storedPreview, setPreview] = useState<VersionPreview | null>(null);
   const [before, setBefore] = useState<FileTextQuery["before"]>();
-  const [retry, setRetry] = useState(false),
-    [refresh, setRefresh] = useState(0);
-  const [loading, setLoading] = useState(false),
-    [acting, setActing] = useState(false);
-  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const { status, error: statusError } = useIndexStatus(readable, () =>
+    setRefresh((value) => value + 1),
+  );
+  const [searchError, setError] = useState("");
+  const error = searchError || statusError;
   const live = useRef(true),
     querySerial = useRef(0),
     previewSerial = useRef(0);
@@ -64,42 +226,6 @@ export function ContentSearch({
       void window.rewind?.content?.clearSearch();
     };
   }, []);
-  useEffect(() => {
-    if (!readable) {
-      setStatus(null);
-      return;
-    }
-    let mounted = true,
-      pending = false,
-      previous = "";
-    const poll = async () => {
-      if (pending) return;
-      pending = true;
-      try {
-        const result = await window.rewind.content.state();
-        if (!mounted) return;
-        if (!result.ok) {
-          setError(result.error.message);
-          return;
-        }
-        setStatus(result.value);
-        const key = `${result.value.counts.indexed}:${result.value.counts.unavailable}`;
-        if (previous && previous !== key) setRefresh((value) => value + 1);
-        previous = key;
-      } catch {
-        if (mounted)
-          setError("Could not read captured-content indexing status.");
-      } finally {
-        pending = false;
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 1500);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, [readable]);
   useEffect(() => {
     setBefore(undefined);
     setPage(null);
@@ -161,41 +287,6 @@ export function ContentSearch({
     refresh,
     authorityKey,
   ]);
-  async function indexSaved() {
-    setActing(true);
-    setError("");
-    try {
-      const result = await window.rewind.content.indexSaved({
-        confirmed: true,
-        retryFailures: retry,
-      });
-      if (!live.current) return;
-      if (result.ok) {
-        setStatus(result.value);
-        setRefresh((value) => value + 1);
-      } else setError(result.error.message);
-    } catch {
-      if (live.current)
-        setError("Saved-content indexing could not be started.");
-    } finally {
-      if (live.current) setActing(false);
-    }
-  }
-  async function stopIndexing() {
-    setActing(true);
-    setError("");
-    try {
-      const result = await window.rewind.content.stop();
-      if (!live.current) return;
-      if (result.ok) setStatus(result.value);
-      else setError(result.error.message);
-    } catch {
-      if (live.current)
-        setError("Content indexing stop could not be confirmed. Try again.");
-    } finally {
-      if (live.current) setActing(false);
-    }
-  }
   async function showPreview(id: string) {
     const ticket = ++previewSerial.current;
     setPreview(null);
@@ -211,69 +302,38 @@ export function ContentSearch({
     setPreview(null);
     void cancel();
   }
+  // Nothing to show until there is a query or indexing news.
+  if (
+    !text &&
+    !preview &&
+    !previewLoading &&
+    !error &&
+    !status?.indexing.busy &&
+    !status?.automaticPaused
+  )
+    return null;
   return (
     <section className="panel" aria-labelledby="content-search-heading">
       <h3 id="content-search-heading">Inside saved files</h3>
-      <p>Matches in the text of saved files, using the filters above.</p>
       <HowItWorks>
         <p>
           Searches text and code files, DOCX body text and selectable PDF text,
           up to 64 KB and 50 PDF pages per file. Scanned text, images and layout
           aren't searchable. These results stay on this PC and are never shared
-          with Gemini.
-        </p>
-        <p>
-          New versions are indexed automatically while file protection is on.
-          Index saved content to catch up on older versions, even while
-          recording is paused. This only reads Rewind's encrypted history; it
-          doesn't start recording or use the cloud.
+          with Gemini. Manage the search index in Settings › Storage.
         </p>
       </HowItWorks>
-      <p
-        role="status"
-        aria-label="Captured content index status"
-        className="hint"
-      >
-        {!readable
-          ? "Encrypted history is unavailable."
-          : !status
-            ? "Reading search index..."
-            : `${status.counts.indexed} of ${status.counts.eligible} saved versions searchable · ${status.counts.pending} waiting · ${status.counts.unavailable} unreadable · ${status.indexing.busy ? `indexing (${status.indexing.processed} done)` : "idle"}`}
-      </p>
-      {status?.automaticPaused && (
-        <p>
-          Automatic indexing is paused until Rewind restarts. Choose Index saved
-          content to resume it.
+      {status?.indexing.busy && (
+        <p role="status" className="hint">
+          Indexing saved files… {status.indexing.processed} done so far.
         </p>
       )}
-      {status?.indexing.error && <p>{status.indexing.error.message}</p>}
-      <div className="controls">
-        <label>
-          <input
-            type="checkbox"
-            checked={retry}
-            disabled={!readable || acting}
-            onChange={(event) => setRetry(event.target.checked)}
-          />{" "}
-          Retry unavailable documents
-        </label>
-        <button
-          disabled={!readable || acting || status?.indexing.busy}
-          onClick={() => void indexSaved()}
-        >
-          Index saved content
-        </button>
-        <button
-          disabled={
-            !readable ||
-            acting ||
-            (Boolean(status?.automaticPaused) && !status?.indexing.busy)
-          }
-          onClick={() => void stopIndexing()}
-        >
-          Stop content indexing
-        </button>
-      </div>
+      {status?.automaticPaused && (
+        <p className="hint">
+          Automatic indexing is paused until Rewind restarts. Resume it in
+          Settings › Storage.
+        </p>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}

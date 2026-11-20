@@ -12,7 +12,16 @@ import type {
   VersionPreview,
 } from "@rewind/contracts";
 
-export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
+export function Files({
+  runtime,
+  focusVersion,
+}: {
+  runtime: RuntimeSnapshot | null;
+  /** A version picked elsewhere (Home) to preview on arrival. */
+  focusVersion?: { id: string; revision: number } | null | undefined;
+}) {
+  const detail = useRef<HTMLElement>(null);
+  const focused = useRef(0);
   const {
     request: requestPreview,
     cancel: cancelPreview,
@@ -151,6 +160,19 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
       clearInterval(timer);
     };
   }, [preview?.version.id, readable]);
+  useEffect(() => {
+    if (!readable || !focusVersion) return;
+    if (focusVersion.revision <= focused.current) return;
+    focused.current = focusVersion.revision;
+    void showPreview(focusVersion.id);
+    // showPreview is stable for this purpose; re-run only for a new request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readable, focusVersion?.revision]);
+  useEffect(() => {
+    // In the single-column layout the detail sits below the list.
+    if (preview?.version.id)
+      detail.current?.scrollIntoView?.({ block: "nearest" });
+  }, [preview?.version.id]);
   async function loadOlder() {
     const last = versions.at(-1)?.version;
     if (!last) return;
@@ -265,6 +287,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             <li key={folder.id}>
               <span>{folder.absolutePath}</span>
               <button
+                className="danger"
                 disabled={busy || !readable}
                 aria-label={`Remove protected folder ${folder.absolutePath}`}
                 onClick={() =>
@@ -286,107 +309,174 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           </p>
         )}
       </section>
-      <section className="panel" aria-labelledby="versions-heading">
-        <h2 id="versions-heading">Saved file versions</h2>
-        <button
-          disabled={busy || !readable}
-          onClick={() => {
-            older.current = false;
-            void refresh(true).catch(() =>
-              setError("Captured versions could not be refreshed."),
-            );
-          }}
+      <div className="files-layout">
+        <section
+          className="panel files-list"
+          aria-labelledby="versions-heading"
         >
-          Refresh versions
-        </button>
-        {!versions.length && (
-          <EmptyState title="No saved versions yet">
-            Versions appear here when protected files change while you're
-            recording.
-          </EmptyState>
-        )}
-        <ol className="timeline-events" aria-label="Captured versions">
-          {versions.map((item) => (
-            <li key={item.version.id} data-testid="captured-version">
-              <strong>{item.displayName}</strong>
-              <p className="content-hash">{item.sourceLabel}</p>
-              <time dateTime={item.version.capturedAt}>
-                {new Date(item.version.capturedAt).toLocaleString()}
-              </time>
-              <p>
-                {formatBytes(item.version.byteLength)} ·{" "}
-                {item.version.mediaType}
-              </p>
-              <button
-                disabled={busy || !readable}
-                onClick={() => void showPreview(item.version.id)}
-                aria-label={`Preview ${item.displayName} captured ${item.version.capturedAt}`}
-              >
-                Preview
-              </button>
-            </li>
+          <header className="panel-toolbar">
+            <h2 id="versions-heading">Saved file versions</h2>
+            <button
+              className="ghost"
+              disabled={busy || !readable}
+              onClick={() => {
+                older.current = false;
+                void refresh(true).catch(() =>
+                  setError("Captured versions could not be refreshed."),
+                );
+              }}
+            >
+              Refresh
+            </button>
+          </header>
+          {!versions.length && (
+            <EmptyState title="No saved versions yet">
+              Versions appear here when protected files change while you're
+              recording.
+            </EmptyState>
+          )}
+          {groupByFile(versions).map((group) => (
+            <div className="file-group" key={group.key}>
+              <div className="file-head">
+                <strong>{group.displayName}</strong>
+                <small className="content-hash" title={group.sourceLabel}>
+                  {group.sourceLabel}
+                </small>
+              </div>
+              <ol className="version-list" aria-label="Captured versions">
+                {group.items.map((item) => (
+                  <li key={item.version.id} data-testid="captured-version">
+                    <button
+                      className={
+                        preview?.version.id === item.version.id
+                          ? "version-row selected"
+                          : "version-row"
+                      }
+                      aria-pressed={preview?.version.id === item.version.id}
+                      disabled={busy || !readable}
+                      onClick={() => void showPreview(item.version.id)}
+                      aria-label={`Preview ${item.displayName} captured ${item.version.capturedAt}`}
+                    >
+                      <time dateTime={item.version.capturedAt}>
+                        {new Date(item.version.capturedAt).toLocaleString()}
+                      </time>
+                      <span>
+                        {formatBytes(item.version.byteLength)} ·{" "}
+                        {item.version.mediaType}
+                      </span>
+                      <span className="version-action">Preview</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
           ))}
-        </ol>
-        {more && (
-          <button disabled={busy || !readable} onClick={() => void loadOlder()}>
-            Load older versions
-          </button>
-        )}
-      </section>
-      {previewLoading && (
-        <section className="panel">
-          <p role="status">Preparing captured preview…</p>
-          <button
-            onClick={() => {
-              previewSerial.current++;
-              setPreview(null);
-              void cancelPreview().then((result) => {
-                if (!result.ok && live.current) setError(result.error.message);
-              });
-            }}
-          >
-            Cancel preview
-          </button>
-        </section>
-      )}
-      {preview && readable && (
-        <section className="panel" aria-labelledby="preview-heading">
-          <h2 id="preview-heading">Preview: {preview.displayName}</h2>
-          <p className="content-hash">{preview.sourceLabel}</p>
-          <p>
-            {new Date(preview.version.capturedAt).toLocaleString()} ·{" "}
-            {formatBytes(preview.version.byteLength)} · verified
-          </p>
-          <HowItWorks summary="Details">
-            <p className="content-hash">
-              SHA-256: {preview.version.contentHash}
-            </p>
-          </HowItWorks>
-          {preview.warning && <p>{preview.warning}</p>}
-          {preview.text !== null && (
-            <pre className="captured-preview">{preview.text}</pre>
+          {more && (
+            <button
+              disabled={busy || !readable}
+              onClick={() => void loadOlder()}
+            >
+              Load older versions
+            </button>
           )}
-          {preview.truncated && (
-            <p className="hint">
-              Preview shortened. Recovering uses the complete file.
-            </p>
-          )}
-          <button
-            onClick={() => {
-              previewSerial.current++;
-              setPreview(null);
-              void cancelPreview();
-            }}
-          >
-            Close preview
-          </button>
-          <RecoveryCopy key={preview.version.id} preview={preview} />
-          <RecoveryOverwrite
-            key={`overwrite-${preview.version.id}`}
-            preview={preview}
-          />
         </section>
-      )}
+        <section
+          ref={detail}
+          className="panel files-detail"
+          aria-labelledby={preview ? "preview-heading" : undefined}
+          aria-label={preview ? undefined : "Version preview"}
+        >
+          {previewLoading && (
+            <>
+              <p role="status">Preparing captured preview…</p>
+              <button
+                onClick={() => {
+                  previewSerial.current++;
+                  setPreview(null);
+                  void cancelPreview().then((result) => {
+                    if (!result.ok && live.current)
+                      setError(result.error.message);
+                  });
+                }}
+              >
+                Cancel preview
+              </button>
+            </>
+          )}
+          {preview && readable ? (
+            <>
+              <h2 id="preview-heading">Preview: {preview.displayName}</h2>
+              <p className="content-hash">{preview.sourceLabel}</p>
+              <p>
+                {new Date(preview.version.capturedAt).toLocaleString()} ·{" "}
+                {formatBytes(preview.version.byteLength)} · verified
+              </p>
+              <HowItWorks summary="Details">
+                <p className="content-hash">
+                  SHA-256: {preview.version.contentHash}
+                </p>
+              </HowItWorks>
+              {preview.warning && <p>{preview.warning}</p>}
+              {preview.text !== null && (
+                <pre className="captured-preview">{preview.text}</pre>
+              )}
+              {preview.truncated && (
+                <p className="hint">
+                  Preview shortened. Recovering uses the complete file.
+                </p>
+              )}
+              <button
+                onClick={() => {
+                  previewSerial.current++;
+                  setPreview(null);
+                  void cancelPreview();
+                }}
+              >
+                Close preview
+              </button>
+              <RecoveryCopy key={preview.version.id} preview={preview} />
+              <RecoveryOverwrite
+                key={`overwrite-${preview.version.id}`}
+                preview={preview}
+              />
+            </>
+          ) : (
+            !previewLoading && (
+              <EmptyState title="Pick a version">
+                Choose a saved version to preview it and recover a copy.
+              </EmptyState>
+            )
+          )}
+        </section>
+      </div>
     </>
   );
+}
+
+/** Groups newest-first versions under their file, keeping the newest file first. */
+function groupByFile(versions: CapturedVersionSummary[]) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      displayName: string;
+      sourceLabel: string;
+      items: CapturedVersionSummary[];
+    }
+  >();
+  for (const item of versions) {
+    const key = item.sourceLabel;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        displayName: item.displayName,
+        sourceLabel: item.sourceLabel,
+        items: [],
+      };
+      groups.set(key, group);
+    }
+    group.items.push(item);
+  }
+  return [...groups.values()];
 }

@@ -28,6 +28,7 @@ async function recordAndConfigure(page: Page) {
     .toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: "End session", exact: true }).click();
   await navigate(page, "Settings");
+  await page.getByRole("tab", { name: "Gemini" }).click();
   await page
     .getByRole("button", { name: "Configure Gemini key", exact: true })
     .click();
@@ -147,6 +148,7 @@ test("normal Settings and Search use sealed configuration, explicit sharing subs
       value: { configured: true, permission: false },
     });
     await navigate(page, "Settings");
+    await page.getByRole("tab", { name: "Gemini" }).click();
     await expect(
       page.getByRole("button", {
         name: "Allow cloud questions",
@@ -207,6 +209,7 @@ test("provider failure and missing information stay explicit; Stop cancels a pen
       page.getByRole("region", { name: "Gemini answer" }),
     ).toHaveCount(0);
     await navigate(page, "Settings");
+    await page.getByRole("tab", { name: "Gemini" }).click();
     await page.getByLabel("Remove the saved Gemini key from Rewind").check();
     await page.getByRole("button", { name: "Confirm key removal" }).click();
     await expect(page.getByText(/Saved key removed\./)).toBeVisible();

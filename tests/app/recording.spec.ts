@@ -88,10 +88,10 @@ test("explicit approval records encrypted synthetic history with real filters, p
       path: "test-results/recording-timeline.png",
       fullPage: false,
     });
-    await page.getByLabel("Search history").fill("nonexistent-fixture-token");
+    await page.getByLabel("Filter text").fill("nonexistent-fixture-token");
     await page.getByRole("button", { name: "Apply filters" }).click();
     await expect(page.getByTestId("timeline-event")).toHaveCount(0);
-    await page.getByLabel("Search history").fill("Synthetic");
+    await page.getByLabel("Filter text").fill("Synthetic");
     await page.getByRole("button", { name: "Apply filters" }).click();
     await expect(page.getByTestId("timeline-event")).toHaveCount(50);
     await page.getByLabel("Event type").selectOption("capture-gap");
@@ -103,20 +103,27 @@ test("explicit approval records encrypted synthetic history with real filters, p
       "Recording on",
     );
     // Revocation must work even when an unsaved exclusion draft is invalid.
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page
       .getByLabel("Excluded applications (one name per line)")
       .fill("x".repeat(300));
     await page
       .getByRole("button", { name: "Revoke recording permission" })
       .click();
-    await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
       "Recording off",
     );
+    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+    await expect(page.getByTestId("session-status")).toHaveText("paused");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page
       .getByLabel("Excluded applications (one name per line)")
       .fill("SyntheticEditor.exe");
     await page.getByRole("button", { name: "Allow Windows activity" }).click();
+    await expect(
+      page.getByRole("button", { name: "Revoke recording permission" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     const excluded = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
@@ -133,10 +140,15 @@ test("explicit approval records encrypted synthetic history with real filters, p
     ).toEqual(excluded);
     if (!excluded.ok)
       throw new Error("Expected readable history while excluded.");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Excluded applications (one name per line)").fill("");
     await page
       .getByRole("button", { name: "Save exclusions", exact: true })
       .click();
+    await expect(
+      page.getByText("Saved. Resume the session to continue recording."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     await expect
@@ -169,6 +181,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
         }),
       ),
     ).toEqual(finalEvents);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page
       .getByLabel("Excluded applications (one name per line)")
       .fill("SyntheticEditor.exe");
@@ -205,9 +218,11 @@ test("explicit approval records encrypted synthetic history with real filters, p
     await expect(page.getByTestId("collection-status")).toHaveText(
       "Recording off",
     );
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(
       page.getByLabel("Excluded applications (one name per line)"),
     ).toHaveValue("SyntheticEditor.exe");
+    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
     expect(
       await page.evaluate(() =>
         (window as unknown as { rewind: DesktopApi }).rewind.sessions.get(),

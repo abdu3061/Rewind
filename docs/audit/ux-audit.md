@@ -221,3 +221,15 @@ Settings      Recording · Files · Browsers · AI · Storage · Privacy & limit
 | 4. Extras        | 21–25                  | Low    |                                                                                                                                 |
 
 Each phase should be its own feature branch and PR into `main`, with `npm run typecheck`, `lint`, `test`, `build` and `test:app` passing, and fresh screenshots attached for Abdullah's UI review.
+
+## Progress
+
+**Phase 1 (done, `feature/ux-phase1-copy-chrome`):** items 1, 2, 4, 6, 12, 18 and 20.
+
+**Phase 2 (done, `feature/ux-phase2-layout`):** items 3, 5, 8, 9, 10, 15 and 16, with these deliberate differences from the plan above:
+
+- **Settings** uses tabs (Recording · Browsers · Gemini · Storage) rather than seven sections. Protected folders stay on the Files page, where people add them.
+- **Home** keeps a compact Windows-activity card (allow/revoke only) while automatic recording is off, so manual recording is still one click away. Exclusions moved to Settings › Recording.
+- **Timeline** keeps a small "Filter text" box in its filter bar; Search is the search-first page.
+- **Search** stacks results ("Inside saved files", then activity) instead of using tabs, so both are visible after one search. The Gemini block collapses to one line until Gemini is allowed, and the per-row selection boxes only appear once it is.
+- **Files** shows the version list and the preview side by side from 1100 px wide; narrower windows stack them and scroll the preview into view.

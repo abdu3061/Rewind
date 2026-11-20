@@ -22,6 +22,7 @@ test("real settings and confirmed deletion drain recording and persist across re
       })
       .toBeGreaterThan(0);
     await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
     await page.getByLabel("Data retention period").fill("24");
     await page.getByLabel("Storage limit", { exact: true }).fill("32");
     await page.getByRole("button", { name: "Save storage settings" }).click();
@@ -34,6 +35,7 @@ test("real settings and confirmed deletion drain recording and persist across re
       "Recording off",
     );
     await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
     const invalid = await page.evaluate(() =>
       Reflect.apply(
         (window as unknown as { rewind: DesktopApi }).rewind.storage
@@ -55,6 +57,7 @@ test("real settings and confirmed deletion drain recording and persist across re
     );
     expect(before.ok && before.value.activityCount).toBeGreaterThan(0);
     // Delete while a live changing source is recording; acknowledgement must fence later writes.
+    await page.getByRole("tab", { name: "Recording" }).click();
     await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.getByRole("button", { name: "Resume", exact: true }).click();
@@ -62,6 +65,7 @@ test("real settings and confirmed deletion drain recording and persist across re
       "Recording on",
     );
     await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
     await page
       .getByRole("button", { name: "Delete history…", exact: true })
       .click();
@@ -85,6 +89,7 @@ test("real settings and confirmed deletion drain recording and persist across re
     application = await launchVerificationApp(profile);
     page = await application.firstWindow();
     await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
     await expect(page.getByLabel("Data retention period")).toHaveValue("24");
     await expect(page.getByLabel("Storage limit", { exact: true })).toHaveValue(
       "32",

@@ -183,7 +183,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
       ["Search", "Search your history"],
       ["Files", "Protected folders"],
       ["Checkpoints", "Save a named checkpoint"],
-      ["Settings", "History and storage"],
+      ["Settings", "Windows activity"],
     ] as const) {
       await page.getByRole("button", { name: new RegExp(screen) }).click();
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -202,6 +202,7 @@ test("packaged app uses the isolated preload bridge for session controls and nav
         ).toHaveCount(0);
       }
       if (screen === "Settings") {
+        await page.getByRole("tab", { name: "Storage" }).click();
         await expect(page.getByLabel("Data retention period")).toBeEnabled();
         await expect(
           page.getByLabel("Storage limit", { exact: true }),

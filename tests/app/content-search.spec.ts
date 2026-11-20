@@ -70,15 +70,17 @@ test("normal Search finds actual captured bodies, previews and recovers original
         path.join(folder, name),
         readFileSync(path.join(folder, name)),
       );
+    await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
+    await expect(
+      page.getByLabel("Captured content index status"),
+    ).toContainText("3 of 3 saved versions searchable", {
+      timeout: 25000,
+    });
     await page.getByRole("button", { name: /Search/ }).click();
     let content = page.getByRole("region", {
       name: "Inside saved files",
       exact: true,
-    });
-    await expect(
-      content.getByLabel("Captured content index status"),
-    ).toContainText("3 of 3 saved versions searchable", {
-      timeout: 25000,
     });
     await page.getByLabel("Search history", { exact: true }).fill(needle);
     await page.getByLabel("Search history", { exact: true }).press("Enter");
@@ -230,7 +232,8 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
   const application = await launchVerificationApp(profile);
   try {
     const page = await application.firstWindow();
-    await page.getByRole("button", { name: /Search/ }).click();
+    await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
     await page
       .getByRole("button", { name: "Stop content indexing", exact: true })
       .click();
@@ -282,29 +285,30 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
         (result) => !result.ok && result.error.code === "INVALID_INPUT",
       ),
     ).toBe(true);
-    await page.getByRole("button", { name: /Search/ }).click();
-    const content = page.getByRole("region", {
-      name: "Inside saved files",
+    await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Storage" }).click();
+    const index = page.getByRole("region", {
+      name: "Search index",
       exact: true,
     });
-    await content
+    await index
       .getByRole("button", { name: "Index saved content", exact: true })
       .click();
     await expect(
-      content.getByLabel("Captured content index status"),
+      index.getByLabel("Captured content index status"),
     ).toContainText(
       "1 of 2 saved versions searchable · 0 waiting · 1 unreadable",
       { timeout: 25000 },
     );
-    await content.getByLabel("Retry unavailable documents").check();
+    await index.getByLabel("Retry unavailable documents").check();
     await expect(
-      content.getByRole("button", { name: "Index saved content", exact: true }),
+      index.getByRole("button", { name: "Index saved content", exact: true }),
     ).toBeEnabled();
-    await content
+    await index
       .getByRole("button", { name: "Index saved content", exact: true })
       .click();
     await expect(
-      content.getByLabel("Captured content index status"),
+      index.getByLabel("Captured content index status"),
     ).toContainText(
       "1 of 2 saved versions searchable · 0 waiting · 1 unreadable",
       { timeout: 25000 },
@@ -326,6 +330,11 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
         }),
       )
       .toEqual({ mode: "saved", busy: false, processed: 1, unavailable: 1 });
+    await page.getByRole("button", { name: /Search/ }).click();
+    const content = page.getByRole("region", {
+      name: "Inside saved files",
+      exact: true,
+    });
     await page.getByLabel("Search history", { exact: true }).fill(needle);
     await page.getByLabel("Search history", { exact: true }).press("Enter");
     await expect(

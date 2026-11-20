@@ -264,6 +264,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
         "Browser connection not set up",
       );
@@ -373,6 +374,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       await appPage
         .getByRole("button", {
           name: "Allow browser activity",
@@ -434,6 +436,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       await appPage
         .getByLabel("Excluded websites (one host per line)")
         .fill("blocked.rewind-fixture.invalid");
@@ -540,6 +543,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       // Headless installed browsers can leave Electron occluded and throttle its
       // animation frames. Focus the actual window before screenshot stability checks.
       await application.evaluate(({ BrowserWindow }) => {
@@ -574,6 +578,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
         "Browser connection set up, ready",
       );
@@ -676,6 +681,7 @@ for (const [browser, channel, executable] of [
       await appPage
         .getByRole("button", { name: "Settings", exact: true })
         .click();
+      await appPage.getByRole("tab", { name: "Browsers" }).click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
         "Browser connection set up, ready",
       );

@@ -122,6 +122,7 @@ export function AssistantSettings({
             Remove the saved Gemini key from Rewind
           </label>
           <button
+            className="danger"
             disabled={!ready || !remove || waiting}
             onClick={() => void run("forget")}
           >
@@ -335,6 +336,19 @@ export function AssistantSearch({
     }
   }
   const permitted = runtime?.service === "ready" && state?.permission;
+  if (!permitted && !review && !answer && !error && !busy)
+    return (
+      <section
+        className="panel assistant-search"
+        aria-labelledby="assistant-search-heading"
+      >
+        <h3 id="assistant-search-heading">Ask Gemini about selected items</h3>
+        <p className="hint">
+          Optional. Set up Gemini in Settings to ask questions about items you
+          pick. Search itself stays on this PC.
+        </p>
+      </section>
+    );
   return (
     <section
       className="panel assistant-search"

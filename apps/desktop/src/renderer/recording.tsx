@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { AssistantSearch } from "./assistant";
 import { ContentSearch } from "./content-search";
 import { EmptyState, HowItWorks, plural } from "./ui";
+import { activitySummary } from "./home";
+import {
+  AppWindowIcon,
+  FileTextIcon,
+  GlobeIcon,
+  WarningCircleIcon,
+} from "@phosphor-icons/react";
 import type {
   ActivityEvent,
   RuntimeSnapshot,
@@ -41,10 +48,16 @@ export function useRecordingRuntime() {
   return { runtime, runtimeError: error };
 }
 
+/**
+ * Windows activity permission. `compact` shows only allow/revoke and status,
+ * reusing the saved exclusions; the full form also edits exclusions.
+ */
 export function RecordingPreferences({
   runtime,
+  compact = false,
 }: {
   runtime: RuntimeSnapshot | null;
+  compact?: boolean;
 }) {
   const exclusions = runtime?.preferences.excludedApplications.join("\n") ?? "";
   const [draft, setDraft] = useState(exclusions);
@@ -60,20 +73,20 @@ export function RecordingPreferences({
   useEffect(() => {
     setFileDraft(folderExclusions);
   }, [folderExclusions]);
-  async function update(consent: boolean, revokeOnly = false) {
+  async function update(consent: boolean, savedExclusions = false) {
     setBusy(true);
     setError(null);
     setSaved(false);
     try {
       const result = await window.rewind.privacy.update({
         collectionConsent: consent,
-        excludedFolderPaths: revokeOnly
+        excludedFolderPaths: savedExclusions
           ? (runtime?.preferences.excludedFolderPaths ?? [])
           : fileDraft
               .split(/\r?\n/)
               .map((item) => item.trim())
               .filter(Boolean),
-        excludedApplications: revokeOnly
+        excludedApplications: savedExclusions
           ? (runtime?.preferences.excludedApplications ?? [])
           : draft
               .split(/\r?\n/)
@@ -91,73 +104,80 @@ export function RecordingPreferences({
   const allowed = runtime?.preferences.collectionConsent ?? false;
   return (
     <section
-      className="panel recording-preferences"
+      className={`panel recording-preferences${compact ? " compact" : ""}`}
       aria-labelledby="recording-heading"
     >
       <h2 id="recording-heading">Windows activity</h2>
       <p>
         Records app names, window titles and times while a session is active.
         Titles can contain sensitive information.
+        {compact && " Manage exclusions in Settings."}
       </p>
-      <HowItWorks>
-        <p>
-          {runtime?.automaticRecording
-            ? "Automatic recording remembers this permission. Saving exclusions briefly pauses capture, then an active session continues."
-            : "Manual permission lasts until Rewind or its recording service restarts. Changing these settings pauses an active session until you resume it."}
-        </p>
-        <p>
-          Rewind itself, browser windows and excluded apps are always skipped.
-          Records stay encrypted on this Windows account. Browser activity is
-          set up separately in Settings.
-        </p>
-      </HowItWorks>
-      <label htmlFor="application-exclusions">
-        Excluded applications (one name per line)
-      </label>
-      <textarea
-        id="application-exclusions"
-        rows={3}
-        maxLength={256000}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          setSaved(false);
-        }}
-        placeholder="Example: private-editor.exe"
-      />
-      <p className="hint">
-        Up to 200 apps. Capitals and the .exe ending don't matter.
-      </p>
-      <label htmlFor="file-exclusions">
-        Excluded files or folders (one full path per line)
-      </label>
-      <textarea
-        id="file-exclusions"
-        rows={3}
-        maxLength={262144}
-        value={fileDraft}
-        onChange={(event) => {
-          setFileDraft(event.target.value);
-          setSaved(false);
-        }}
-        placeholder={"C:\\Users\\YourName\\Documents\\Private"}
-      />
-      <p className="hint">
-        Stops future capture and search indexing. History already saved stays
-        until it expires or you delete it.
-      </p>
+      {!compact && (
+        <>
+          <HowItWorks>
+            <p>
+              {runtime?.automaticRecording
+                ? "Automatic recording remembers this permission. Saving exclusions briefly pauses capture, then an active session continues."
+                : "Manual permission lasts until Rewind or its recording service restarts. Changing these settings pauses an active session until you resume it."}
+            </p>
+            <p>
+              Rewind itself, browser windows and excluded apps are always
+              skipped. Records stay encrypted on this Windows account. Browser
+              activity is set up separately in Settings.
+            </p>
+          </HowItWorks>
+          <label htmlFor="application-exclusions">
+            Excluded applications (one name per line)
+          </label>
+          <textarea
+            id="application-exclusions"
+            rows={3}
+            maxLength={256000}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setSaved(false);
+            }}
+            placeholder="Example: private-editor.exe"
+          />
+          <p className="hint">
+            Up to 200 apps. Capitals and the .exe ending don't matter.
+          </p>
+          <label htmlFor="file-exclusions">
+            Excluded files or folders (one full path per line)
+          </label>
+          <textarea
+            id="file-exclusions"
+            rows={3}
+            maxLength={262144}
+            value={fileDraft}
+            onChange={(event) => {
+              setFileDraft(event.target.value);
+              setSaved(false);
+            }}
+            placeholder={"C:\\Users\\YourName\\Documents\\Private"}
+          />
+          <p className="hint">
+            Stops future capture and search indexing. History already saved
+            stays until it expires or you delete it.
+          </p>
+        </>
+      )}
       <div className="controls">
-        <button
-          disabled={busy || runtime?.service !== "ready"}
-          onClick={() => void update(allowed)}
-        >
-          Save exclusions
-        </button>
+        {!compact && (
+          <button
+            disabled={busy || runtime?.service !== "ready"}
+            onClick={() => void update(allowed)}
+          >
+            Save exclusions
+          </button>
+        )}
         {!allowed && (
           <button
             className="primary"
             disabled={busy || runtime?.service !== "ready"}
-            onClick={() => void update(true)}
+            onClick={() => void update(true, compact)}
           >
             Allow Windows activity
           </button>
@@ -175,7 +195,7 @@ export function RecordingPreferences({
       <p role="status">
         {busy
           ? "Saving preferences..."
-          : saved
+          : saved && !compact
             ? runtime?.automaticRecording
               ? "Exclusions saved. Recording continues."
               : "Saved. Resume the session to continue recording."
@@ -351,6 +371,91 @@ export function RecordedHistory({
       setLoadingSessions(false);
     }
   }
+  const filters = (
+    <>
+      <div className="filter-grid">
+        <label>
+          Session
+          <select
+            aria-label="Session filter"
+            disabled={!canRead}
+            value={sessionId}
+            onChange={(event) => setSessionId(event.target.value)}
+          >
+            <option value="">All sessions</option>
+            {sessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                {displayTime(session.startedAt)} · {session.status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Event type
+          <select
+            value={type}
+            disabled={!canRead}
+            onChange={(event) => setType(event.target.value)}
+          >
+            <option value="">Everything</option>
+            <option value="foreground">Apps</option>
+            <option value="file-change">Files</option>
+            <option value="browser-visit">Websites</option>
+            <option value="capture-gap">Recording gaps</option>
+          </select>
+        </label>
+        <label>
+          From
+          <input
+            type="datetime-local"
+            disabled={!canRead}
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="datetime-local"
+            disabled={!canRead}
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+          />
+        </label>
+      </div>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={includeFileBackups}
+          disabled={!canRead}
+          onChange={(event) => setIncludeFileBackups(event.target.checked)}
+        />
+        Include file backups
+      </label>
+      {moreSessions && (
+        <button
+          type="button"
+          className="ghost"
+          disabled={loadingSessions}
+          onClick={() => void loadOlderSessions()}
+        >
+          Load older sessions
+        </button>
+      )}
+    </>
+  );
+  const activeFilters = [sessionId, type, from, to].filter(Boolean).length;
+  const selection =
+    search && runtime?.assistant.permission
+      ? {
+          selected: selectedEvidence,
+          toggle(id: string, checked: boolean) {
+            setSelectedEvidence((ids) =>
+              checked ? [...ids, id] : ids.filter((item) => item !== id),
+            );
+          },
+        }
+      : undefined;
   return (
     <section className="panel" aria-labelledby="history-heading">
       <h2 id="history-heading">
@@ -375,6 +480,7 @@ export function RecordedHistory({
         </p>
       </HowItWorks>
       <form
+        className={search ? "search-form" : "filter-form"}
         onSubmit={(event) => {
           event.preventDefault();
           try {
@@ -398,92 +504,59 @@ export function RecordedHistory({
           }
         }}
       >
-        <div className="filter-grid">
-          <label>
-            Session
-            <select
-              aria-label="Session filter"
-              disabled={!canRead}
-              value={sessionId}
-              onChange={(event) => setSessionId(event.target.value)}
-            >
-              <option value="">All sessions</option>
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {displayTime(session.startedAt)} · {session.status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Event type
-            <select
-              value={type}
-              disabled={!canRead}
-              onChange={(event) => setType(event.target.value)}
-            >
-              <option value="">Everything</option>
-              <option value="foreground">Apps</option>
-              <option value="file-change">Files</option>
-              <option value="browser-visit">Websites</option>
-              <option value="capture-gap">Recording gaps</option>
-            </select>
-          </label>
-          <label>
-            From
-            <input
-              type="datetime-local"
-              disabled={!canRead}
-              value={from}
-              onChange={(event) => setFrom(event.target.value)}
-            />
-          </label>
-          <label>
-            To
-            <input
-              type="datetime-local"
-              disabled={!canRead}
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-            />
-          </label>
-        </div>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={includeFileBackups}
-            disabled={!canRead}
-            onChange={(event) => setIncludeFileBackups(event.target.checked)}
-          />
-          Include file backups
+        <label htmlFor="history-search" className={search ? "sr-only" : ""}>
+          {search ? "Search history" : "Filter text"}
         </label>
-        <label htmlFor="history-search">Search history</label>
-        <div className="search-row">
+        <div className={search ? "search-row hero-search" : "search-row"}>
           <input
             id="history-search"
+            type={search ? "search" : "text"}
             maxLength={2000}
             disabled={!canRead}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Search apps, titles, websites and file text"
+            placeholder={
+              search
+                ? "Search apps, titles, websites and file text"
+                : "Only show items containing…"
+            }
           />
-          <button type="submit" disabled={!canRead || loading}>
+          <button
+            type="submit"
+            className={search ? "primary" : ""}
+            disabled={!canRead || loading}
+          >
             {search ? "Search" : "Apply filters"}
           </button>
         </div>
+        {search ? (
+          <details className="filters">
+            <summary>
+              Filters{activeFilters ? ` (${activeFilters} on)` : ""}
+            </summary>
+            {filters}
+          </details>
+        ) : (
+          filters
+        )}
       </form>
-      {moreSessions && (
-        <button
-          disabled={loadingSessions}
-          onClick={() => void loadOlderSessions()}
-        >
-          Load older sessions
-        </button>
-      )}
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
+      )}
+      {search && <ContentSearch runtime={runtime} query={query} />}
+      {search && (
+        <AssistantSearch
+          runtime={runtime}
+          selectedIds={selectedEvidence}
+          clearSelection={() => setSelectedEvidence([])}
+        />
+      )}
+      {search && (
+        <h3 className="results-heading">
+          {query.text ? "Matching activity" : "Recent activity"}
+        </h3>
       )}
       <p role="status" className="hint">
         {!canRead
@@ -507,85 +580,139 @@ export function RecordedHistory({
             here.
           </EmptyState>
         ))}
-      {search && <ContentSearch runtime={runtime} query={query} />}
-      {search && (
-        <AssistantSearch
-          runtime={runtime}
-          selectedIds={selectedEvidence}
-          clearSelection={() => setSelectedEvidence([])}
-        />
+      {search ? (
+        <ol className="event-list" aria-label="Recorded events">
+          {events.map((event) => (
+            <EventRow
+              key={event.id}
+              event={event}
+              time={displayTime(event.occurredAt)}
+              selection={selection}
+            />
+          ))}
+        </ol>
+      ) : (
+        groupByDay(events).map((day) => (
+          <section
+            key={day.key}
+            className="day-group"
+            aria-label={`Activity ${day.label}`}
+          >
+            <h3 className="day-header">{day.label}</h3>
+            <ol className="event-list">
+              {day.events.map((event) => (
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  time={new Date(event.occurredAt).toLocaleTimeString(
+                    undefined,
+                    { hour: "numeric", minute: "2-digit" },
+                  )}
+                />
+              ))}
+            </ol>
+          </section>
+        ))
       )}
-      <ol className="timeline-events" aria-label="Recorded events">
-        {events.map((event) => (
-          <li key={event.id} data-testid="timeline-event">
-            {search && (
-              <label>
-                <input
-                  type="checkbox"
-                  aria-label="Select observation for Gemini"
-                  checked={selectedEvidence.includes(event.id)}
-                  disabled={
-                    !selectedEvidence.includes(event.id) &&
-                    selectedEvidence.length >= 12
-                  }
-                  onChange={(input) =>
-                    setSelectedEvidence((ids) =>
-                      input.target.checked
-                        ? [...ids, event.id]
-                        : ids.filter((id) => id !== event.id),
-                    )
-                  }
-                />{" "}
-                Select for Gemini review
-              </label>
-            )}
-            <time dateTime={event.occurredAt}>
-              {displayTime(event.occurredAt)}
-            </time>
-            {event.type === "foreground" ? (
-              <>
-                <strong>{event.payload.application}</strong>
-                <p>{event.payload.windowTitle || "Untitled window"}</p>
-              </>
-            ) : event.type === "file-change" ? (
-              <>
-                <strong>{event.payload.displayName ?? "Protected file"}</strong>
-                <p>
-                  {event.payload.change === "captured"
-                    ? "Backup saved"
-                    : "File changed"}{" "}
-                  · versions are in Files
-                </p>
-              </>
-            ) : event.type === "browser-visit" ? (
-              <>
-                <strong>{event.payload.title || "Untitled page"}</strong>
-                <p>
-                  {event.payload.browser === "edge"
-                    ? "Microsoft Edge"
-                    : "Google Chrome"}{" "}
-                  · {event.payload.url}
-                </p>
-              </>
-            ) : event.type === "capture-gap" ? (
-              <>
-                <strong>Recording gap</strong>
-                <p>
-                  Rewind wasn't recording here ({event.payload.collectorId}:{" "}
-                  {event.payload.reason}).
-                </p>
-              </>
-            ) : (
-              <strong>Unsupported event type</strong>
-            )}
-          </li>
-        ))}
-      </ol>
       {more && (
         <button disabled={loading} onClick={() => void loadOlderEvents()}>
           Load older activity
         </button>
       )}
     </section>
+  );
+}
+
+function groupByDay(events: ActivityEvent[]) {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const days: { key: string; label: string; events: ActivityEvent[] }[] = [];
+  for (const event of events) {
+    const date = new Date(event.occurredAt);
+    const key = date.toDateString();
+    let day = days.at(-1);
+    if (day?.key !== key) {
+      day = {
+        key,
+        label:
+          key === today.toDateString()
+            ? "Today"
+            : key === yesterday.toDateString()
+              ? "Yesterday"
+              : date.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                }),
+        events: [],
+      };
+      days.push(day);
+    }
+    day.events.push(event);
+  }
+  return days;
+}
+
+const eventIcons: Record<ActivityEvent["type"], typeof AppWindowIcon> = {
+  foreground: AppWindowIcon,
+  "file-change": FileTextIcon,
+  "file-opened": FileTextIcon,
+  "browser-visit": GlobeIcon,
+  "capture-gap": WarningCircleIcon,
+  idle: WarningCircleIcon,
+  lock: WarningCircleIcon,
+};
+
+function EventRow({
+  event,
+  time,
+  selection,
+}: {
+  event: ActivityEvent;
+  time: string;
+  selection?:
+    | {
+        selected: readonly string[];
+        toggle(id: string, checked: boolean): void;
+      }
+    | undefined;
+}) {
+  const { title, detail } = activitySummary(event);
+  const Icon = eventIcons[event.type];
+  const extra =
+    event.type === "file-change"
+      ? " · versions are in Files"
+      : event.type === "browser-visit"
+        ? ` · ${event.payload.url}`
+        : event.type === "capture-gap"
+          ? ` · Rewind wasn't recording (${event.payload.collectorId})`
+          : "";
+  const checked = selection?.selected.includes(event.id) ?? false;
+  return (
+    <li
+      data-testid="timeline-event"
+      className={`event-row event-${event.type}`}
+    >
+      {selection && (
+        <input
+          type="checkbox"
+          aria-label="Select observation for Gemini"
+          title="Select for Gemini"
+          checked={checked}
+          disabled={!checked && selection.selected.length >= 12}
+          onChange={(input) => selection.toggle(event.id, input.target.checked)}
+        />
+      )}
+      <time dateTime={event.occurredAt}>{time}</time>
+      <Icon className="event-icon" size={18} aria-hidden="true" />
+      <span className="row-main">
+        <strong title={title}>{title}</strong>
+        <small title={detail + extra}>
+          {detail}
+          {extra}
+        </small>
+      </span>
+    </li>
   );
 }

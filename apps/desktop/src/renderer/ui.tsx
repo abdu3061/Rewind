@@ -45,6 +45,20 @@ export function formatBytes(bytes: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+/** "2 minutes ago" for recent times, otherwise a short date and time. */
+export function relativeTime(value: string, now = Date.now()): string {
+  const seconds = Math.round((Date.parse(value) - now) / 1000);
+  const abs = Math.abs(seconds);
+  if (abs < 45) return "just now";
+  if (abs < 3600) return relative.format(Math.round(seconds / 60), "minute");
+  if (abs < 86400) return relative.format(Math.round(seconds / 3600), "hour");
+  return new Date(value).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`;
 }

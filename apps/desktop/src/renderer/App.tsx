@@ -6,11 +6,10 @@ import {
   useRecordingRuntime,
 } from "./recording";
 
-import { StorageManagement } from "./storage-management";
 import { Files } from "./files";
 import { Checkpoints } from "./checkpoints";
-import { BrowserSettings } from "./browser-settings";
-import { AssistantSettings } from "./assistant";
+import { RecentOverview } from "./home";
+import { Settings, type SettingsTab } from "./settings";
 import {
   HouseIcon,
   ClockCounterClockwiseIcon,
@@ -60,12 +59,19 @@ function formatTime(value: string): string {
 export function App() {
   const { runtime, runtimeError } = useRecordingRuntime();
   const [page, setPage] = useState<Page>("Dashboard");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("Recording");
+  const [focusVersion, setFocusVersion] = useState<{
+    id: string;
+    revision: number;
+  } | null>(null);
   const presentation = usePresentation();
   const lastNavigation = useRef(-1);
   useEffect(() => {
     const intent = presentation?.navigation;
     if (intent && intent.revision > lastNavigation.current) {
       lastNavigation.current = intent.revision;
+      // The notch opens Settings to manage recording permissions.
+      if (intent.page === "Settings") setSettingsTab("Recording");
       setPage(intent.page);
     }
   }, [presentation?.navigation]);
@@ -182,6 +188,11 @@ export function App() {
       : session.status === "paused"
         ? "Session paused"
         : "Session ended";
+  // Setup leads the page until automatic recording is on and healthy.
+  const needsSetup =
+    !runtime?.automaticRecording ||
+    !runtime.preferences.collectionConsent ||
+    !runtime.filePermission;
 
   return (
     <div className="app-shell">
@@ -274,8 +285,8 @@ export function App() {
         )}
 
         {page === "Dashboard" && (
-          <>
-            <RecordingSetup runtime={runtime} />
+          <div className="stack">
+            {needsSetup && <RecordingSetup runtime={runtime} />}
             <section
               className="panel session-panel"
               aria-labelledby="session-heading"
@@ -355,84 +366,46 @@ export function App() {
               </div>
             </section>
 
-            <div className="card-grid">
-              <section className="panel">
-                <ClockCounterClockwiseIcon
-                  className="card-icon"
-                  size={24}
-                  weight="duotone"
-                  aria-hidden="true"
-                />
-                <p className="eyebrow">ACTIVITY HISTORY</p>
-                <h2>Timeline</h2>
+            {!runtime?.automaticRecording && (
+              <RecordingPreferences runtime={runtime} compact />
+            )}
 
-                <p>
-                  Find your way back through recorded moments and past sessions.
-                </p>
+            <RecentOverview
+              runtime={runtime}
+              onNavigate={setPage}
+              onOpenVersion={(id) => {
+                setFocusVersion((current) => ({
+                  id,
+                  revision: (current?.revision ?? 0) + 1,
+                }));
+                setPage("Files");
+              }}
+            />
 
-                <button
-                  className="text-button"
-                  onClick={() => setPage("Timeline")}
-                >
-                  View timeline <span aria-hidden="true">→</span>
-                </button>
-              </section>
-
-              <section className="panel">
-                <FolderSimpleIcon
-                  className="card-icon"
-                  size={24}
-                  weight="duotone"
-                  aria-hidden="true"
-                />
-                <p className="eyebrow">FILE PROTECTION</p>
-                <h2>Saved file versions</h2>
-
-                <p>
-                  Revisit captured versions and recover a verified copy when you
-                  need it.
-                </p>
-
-                <button
-                  className="text-button"
-                  onClick={() => setPage("Files")}
-                >
-                  Open file protection
-                </button>
-              </section>
-            </div>
-
-            <details className="panel" open={!runtime?.automaticRecording}>
-              <summary>Exclusions and manual permission</summary>
-              <RecordingPreferences runtime={runtime} />
-            </details>
+            {!needsSetup && <RecordingSetup runtime={runtime} />}
 
             <p className="footnote">
               Minimize to keep Rewind in the notch. Closing the window ends the
               session and quits Rewind.
             </p>
-          </>
+          </div>
         )}
 
         {page === "Timeline" && <RecordedHistory runtime={runtime} />}
 
         {page === "Search" && <RecordedHistory runtime={runtime} search />}
-        {page === "Files" && <Files runtime={runtime} />}
+        {page === "Files" && (
+          <Files runtime={runtime} focusVersion={focusVersion} />
+        )}
 
         {page === "Checkpoints" && <Checkpoints runtime={runtime} />}
 
         {page === "Settings" && (
-          <div className="settings-stack">
-            <RecordingSetup runtime={runtime} />
-            <RecordingPreferences runtime={runtime} />
-            <BrowserSettings runtime={runtime} />
-            <AssistantSettings runtime={runtime} />
-            <StorageManagement runtime={runtime} />
-            <p className="footnote">
-              Rewind never captures keystrokes, clipboard contents, screenshots,
-              page text or private browsing.
-            </p>
-          </div>
+          <Settings
+            runtime={runtime}
+            tab={settingsTab}
+            onTab={setSettingsTab}
+          />
         )}
       </main>
     </div>

@@ -255,6 +255,7 @@ export function BrowserSettings({
         {state?.setup.registeredBrowsers.map((browser) => (
           <button
             key={browser}
+            className="danger"
             disabled={!enabled || working || state.setup.repairAvailable}
             onClick={() => setConfirmation({ kind: "remove", browser })}
           >
@@ -376,6 +377,7 @@ export function BrowserSettings({
         </button>
         {approved ? (
           <button
+            className="danger"
             disabled={!readable}
             onClick={() =>
               void run(
