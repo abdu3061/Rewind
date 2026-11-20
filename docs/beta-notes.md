@@ -4,9 +4,11 @@ Rewind is an early evaluation beta for local work-session history and saved-file
 
 This update replaces the generic installer animation with a compact Rewind setup screen, clear installation/first-launch text and matching application icons. Open Rewind from the installed Desktop or Start Menu shortcut after setup; running `Rewind-Setup.exe` again starts installation again.
 
+![Rewind Windows setup](https://github.com/abdu3061/Rewind/releases/download/v0.1.0-beta.2/installer-preview.png)
+
 ## Install and start
 
-1. Download `Rewind-Setup.exe` and install it under your Windows account. Alternatively, extract the entire portable ZIP and open `Rewind.exe`; keep all its neighboring files together.
+1. If Rewind is running, choose Quit first. Download `Rewind-Setup.exe` and install it under your Windows account. Alternatively, extract the entire portable ZIP and open `Rewind.exe`; keep all its neighboring files together.
 2. Open Rewind. Recording starts off. Review the locations and exclusions before approving automatic local recording.
 3. Approval covers the verified Desktop, Documents and Downloads locations shown by setup. Supported files are copied only when created or changed during an active recording session. Existing files are not imported.
 4. Use Pause or End to stop collection. Turn automatic recording off in Settings to keep it off on later openings. Minimize shows the floating notch; closing the main window or choosing Quit shuts down recording.
@@ -26,7 +28,7 @@ This update replaces the generic installer animation with a compact Rewind setup
 - This is saved-file history, not a full-computer backup, screen recording or exact desktop-layout restore. Unsaved edits, files before their first captured save, and work while collection was paused cannot be recovered.
 - Capture is limited to supported file types, ordinary verified local NTFS locations, the active approval and current exclusions. Locked, oversized, protected or unavailable files may not be captured. File-notification overflow is reported as a gap; check recording status during a session.
 - Physical OneDrive/redirection/offline-file, multi-monitor/high-DPI and long-duration whole-system performance acceptance remain incomplete.
-- The archive and hardened executable have automated verification. Clean install, launch, acknowledged shutdown, uninstall with history retained and same-version reinstall passed on a disposable GitHub-hosted Windows machine. Upgrades to a newer version and independent security review remain outstanding; do not treat this beta as a certified backup or production release.
+- The archive and hardened executable have automated verification. Visible setup, automatic first launch, correct icons, normal shortcut launch, acknowledged shutdown, uninstall with history retained and same-version reinstall passed on disposable GitHub-hosted Windows machines. Installing beta 2 over beta 1 also preserved the synthetic encrypted profile and protected key. Interrupted/future upgrade paths and independent security review remain outstanding; do not treat this beta as a certified backup or production release.
 - Gemini is optional and separately off by default. Native key entry and a live account request have not received manual acceptance; cloud use is not required for local recording, Search or recovery.
 - Updates are manual. Install a newer accepted version to update; do not downgrade a migrated history database. Removing the application retains local encrypted history. Recovery/exported files are independent ordinary files.
 

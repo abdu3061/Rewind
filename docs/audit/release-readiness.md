@@ -1,5 +1,7 @@
 # Windows release readiness
 
+20 November 2026: [beta 2](https://github.com/abdu3061/Rewind/releases/tag/v0.1.0-beta.2) adds [branded setup and visible-install/shortcut/upgrade acceptance](professional-installer.md). The source-specific first-beta and earlier hardening reports below remain historical.
+
 20 November 2026: the [first unsigned evaluation beta](https://github.com/abdu3061/Rewind/releases/tag/v0.1.0-beta.1) is published under the owner's later explicit authorization. [Current deployment evidence](beta-deployment.md) supersedes historical candidate test totals and includes disposable hosted Windows clean-install/uninstall/reinstall acceptance. Remaining wider-release gates are retained explicitly; the report below describes its original release-hardening source.
 
 The current premium UI follow-up on `feature/premium-notch-ui` is recorded in [premium desktop/notch implementation](premium-notch-implementation.md), including exact checks, screenshots, local unsigned artifacts and device limitations. It preserves this candidate's release/security gates. The source-specific release-hardening evidence below remains historical; it is not a claim that the new presentation is externally reviewed, signed or accepted for distribution.

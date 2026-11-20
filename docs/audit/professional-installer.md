@@ -10,4 +10,14 @@ The disposable Windows acceptance script now exercises non-silent installation a
 
 References: [Forge maker options](https://js.electronforge.io/interfaces/_electron-forge_maker-squirrel.MakerSquirrelConfig.html), [Squirrel loading-image behavior](https://github.com/Squirrel/Squirrel.Windows/blob/develop/docs/using/loading-gif.md). These describe a branded setup splash rather than an interactive installation wizard. New wider-release signing, accessibility and physical high-DPI acceptance are not implied by the visual change.
 
-Candidate: `0.1.0-beta.2`, branch `fix/professional-installer`. Verification and distribution results are recorded after the candidate checks complete.
+Release: `0.1.0-beta.2`, branch `fix/professional-installer`; clean artifact source `72714b04af072084bce49e8285cdcde74b018246`. The version tag stays at that exact artifact source; later branch commits add acceptance evidence and documentation.
+
+Verification:
+
+- Types, lint, formatting and all six passive-installer lifecycle tests passed. Application/engine/collector behavior is unchanged; the earlier full beta runtime suites remain historical evidence, not a newly repeated full regression run.
+- Decoded artwork: 600 × 340, three frames; actual GIF first-frame preview inspected. Both production ZIP/Squirrel packaging and hardened release verification passed, including exact embedded GIF/ICO bytes, native/notice inventories and actual acknowledged runtime startup/shutdown.
+- [Fresh visible installation](https://github.com/abdu3061/Rewind/actions/runs/44711163234): passed. Setup launched the app automatically; installed files matched the verified ZIP; correct Rewind uninstall icon, normal shortcut reopening, encrypted profile creation, uninstall/history retention and reinstall/key preservation passed. [Receipt](professional-installer-clean.json).
+- [Beta 1 to beta 2 installation](https://github.com/abdu3061/Rewind/actions/runs/44711436406): passed in a separate disposable Windows account. The earlier beta's synthetic encrypted profile and protected key survived installation of the new version; branding, shortcut, shutdown, uninstall and reinstall checks passed. [Receipt](professional-installer-upgrade.json). This is one controlled upgrade path, not acceptance of interrupted upgrades or every Windows configuration.
+- The first fresh-install attempt passed installation/branding but rejected a valid current Squirrel shortcut because the test expected the older `Update.exe --processStart` form. The revised check accepts only the exact owned root Rewind launcher with empty arguments, or the exact legacy updater with its bounded app-launch command, then actually launches and closes the app. No installer/runtime failure was bypassed.
+
+Published as an unsigned [beta 2 prerelease](https://github.com/abdu3061/Rewind/releases/tag/v0.1.0-beta.2), with a visual preview and checksum files. Installer SHA-256: `e5a3785e6c3431a6b4d80609d3dd1aa221e0e637d7b1022fd73a8aba37219f39`. Signing and broader device/accessibility acceptance remain separate.
