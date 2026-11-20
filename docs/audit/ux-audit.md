@@ -234,7 +234,7 @@ Each phase should be its own feature branch and PR into `main`, with `npm run ty
 - **Search** stacks results ("Inside saved files", then activity) instead of using tabs, so both are visible after one search. The Gemini block collapses to one line until Gemini is allowed, and the per-row selection boxes only appear once it is.
 - **Files** shows the version list and the preview side by side from 1100 px wide; narrower windows stack them and scroll the preview into view.
 
-**Phase 3 (done, `feature/ux-phase3-flows`):** items 7, 11, 13 and 19, recorded in ADRs 0042 and 0043.
+**Phase 3 (done, `feature/ux-phase3-flows`):** items 7, 11, 13 and 19, recorded in ADRs 0042 and 0043. Approved by Rasit on 20 November 2026, released in 0.1.0-beta.3 and merged into `main`.
 
 - **Close button (19):** closing the window now minimizes Rewind to the notch. Quit is in the tray menu, or run `Rewind.exe --quit`. The release smoke and installer acceptance scripts were updated to match.
 - **Sources (7):** one Recording sources card on Home shows the status of every source, with inline Allow/Revoke for Windows activity and Manage links for the rest. It replaces the compact Windows-activity card from Phase 2.

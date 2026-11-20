@@ -1,6 +1,6 @@
 # ADR 0042: The window close button minimizes to the notch
 
-20 November 2026. Requested by the product owner during the UX audit (item 19); implemented locally for Rasit's architecture/privacy review. No remote integration or release approval.
+20 November 2026. Requested by the product owner during the UX audit (item 19). Approved by Rasit on 20 November 2026 and merged into `main`; first released in 0.1.0-beta.3.
 
 ## Problem
 

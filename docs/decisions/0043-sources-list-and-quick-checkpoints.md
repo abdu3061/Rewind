@@ -1,6 +1,6 @@
 # ADR 0043: One recording-sources list and quick checkpoints
 
-20 November 2026. UX audit Phase 3 (items 7 and 11); implemented locally for Rasit's privacy review. Presentation only: no engine, contract or consent-rule changes.
+20 November 2026. UX audit Phase 3 (items 7 and 11). Approved by Rasit on 20 November 2026 and merged into `main`; first released in 0.1.0-beta.3. Presentation only: no engine, contract or consent-rule changes.
 
 ## Problem
 
