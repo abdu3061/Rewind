@@ -13,6 +13,7 @@ import { currentPreview } from "./captured-preview";
 import { usePreviewRequest } from "./use-preview-request";
 import { RecoveryCopy } from "./recovery-copy";
 import { RecoveryOverwrite } from "./recovery-overwrite";
+import { HowItWorks, plural } from "./ui";
 
 const matches = (a: DocumentAuthority, b: DocumentAuthority | undefined) =>
   Boolean(b && a.generation === b.generation && a.revision === b.revision);
@@ -212,30 +213,36 @@ export function ContentSearch({
   }
   return (
     <section className="panel" aria-labelledby="content-search-heading">
-      <h3 id="content-search-heading">Captured file text</h3>
-      <p>
-        Search preserved text/code, DOCX body text and PDF selectable text using
-        the session and date filters above. Only captured saved bytes are
-        searched. Extraction is limited to 64 KiB and 50 PDF pages; scanned
-        text, images and layout are unavailable. These local results are
-        excluded from Gemini sharing.
-      </p>
-      <p>
-        New captured versions are indexed during an approved active file
-        session. Index saved content to process retained history locally,
-        including while capture is paused. This reads encrypted saved versions
-        and does not enable monitoring or cloud access.
-      </p>
-      <p role="status" aria-label="Captured content index status">
+      <h3 id="content-search-heading">Inside saved files</h3>
+      <p>Matches in the text of saved files, using the filters above.</p>
+      <HowItWorks>
+        <p>
+          Searches text and code files, DOCX body text and selectable PDF text,
+          up to 64 KB and 50 PDF pages per file. Scanned text, images and layout
+          aren't searchable. These results stay on this PC and are never shared
+          with Gemini.
+        </p>
+        <p>
+          New versions are indexed automatically while file protection is on.
+          Index saved content to catch up on older versions, even while
+          recording is paused. This only reads Rewind's encrypted history; it
+          doesn't start recording or use the cloud.
+        </p>
+      </HowItWorks>
+      <p
+        role="status"
+        aria-label="Captured content index status"
+        className="hint"
+      >
         {!readable
-          ? "Verified encrypted history is unavailable."
+          ? "Encrypted history is unavailable."
           : !status
-            ? "Reading content index..."
-            : `${status.counts.indexed} of ${status.counts.eligible} supported saved versions indexed; ${status.counts.pending} pending; ${status.counts.unavailable} unavailable. ${status.indexing.busy ? `Indexing or closing: ${status.indexing.processed} processed in this pass.` : "Indexing is idle."}`}
+            ? "Reading search index..."
+            : `${status.counts.indexed} of ${status.counts.eligible} saved versions searchable · ${status.counts.pending} waiting · ${status.counts.unavailable} unreadable · ${status.indexing.busy ? `indexing (${status.indexing.processed} done)` : "idle"}`}
       </p>
       {status?.automaticPaused && (
         <p>
-          Automatic content indexing is paused for this launch. Index saved
+          Automatic indexing is paused until Rewind restarts. Choose Index saved
           content to resume it.
         </p>
       )}
@@ -273,25 +280,26 @@ export function ContentSearch({
         </p>
       )}
       {!text ? (
-        <p>Enter keywords in Search history above to search captured text.</p>
+        <p className="hint">
+          Type in the search box above to look inside files.
+        </p>
       ) : !compatibleType ? (
-        <p>
-          Choose All recorded types or Saved file changes to include captured
-          text.
+        <p className="hint">
+          Set the type filter to Everything or Files to search inside files.
         </p>
       ) : (
-        <p role="status">
+        <p role="status" className="hint">
           {loading
-            ? "Searching captured text..."
-            : `${page?.hits.length ?? 0} captured text results shown.`}
+            ? "Searching inside files..."
+            : `${plural(page?.hits.length ?? 0, "file match", "file matches")}.`}
         </p>
       )}
       {page && (
         <>
           {page.hits.length === 0 && (
-            <p>
-              No indexed captured text matches this page. Pending or unavailable
-              extraction can leave saved versions without searchable text.
+            <p className="hint">
+              Files that are still waiting to be indexed, or couldn't be read,
+              won't appear here.
             </p>
           )}
           <ol className="timeline-events" aria-label="Captured text results">
@@ -302,9 +310,9 @@ export function ContentSearch({
                 <time>{new Date(hit.version.capturedAt).toLocaleString()}</time>
                 <pre className="captured-preview">{hit.snippet}</pre>
                 {hit.truncated && (
-                  <p>
-                    Searchable text is truncated; the complete captured original
-                    remains available.
+                  <p className="hint">
+                    Only part of this file is searchable; the full file can
+                    still be recovered.
                   </p>
                 )}
                 <button
@@ -339,17 +347,21 @@ export function ContentSearch({
       )}
       {preview && (
         <section aria-labelledby="content-preview-heading">
-          <h3 id="content-preview-heading">
-            Captured preview: {preview.displayName}
-          </h3>
+          <h3 id="content-preview-heading">Preview: {preview.displayName}</h3>
           <p className="content-hash">{preview.sourceLabel}</p>
-          <p className="content-hash">SHA-256: {preview.version.contentHash}</p>
+          <HowItWorks summary="Details">
+            <p className="content-hash">
+              SHA-256: {preview.version.contentHash}
+            </p>
+          </HowItWorks>
           {preview.warning && <p>{preview.warning}</p>}
           {preview.text !== null && (
             <pre className="captured-preview">{preview.text}</pre>
           )}
           {preview.truncated && (
-            <p>Preview truncated. Complete original bytes remain captured.</p>
+            <p className="hint">
+              Preview shortened. Recovering uses the complete file.
+            </p>
           )}
           <button onClick={closePreview}>Close content preview</button>
           <RecoveryCopy key={preview.version.id} preview={preview} />

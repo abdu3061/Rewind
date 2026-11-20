@@ -37,11 +37,17 @@ test("packaged app uses the isolated preload bridge for session controls and nav
     ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Pause", exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await page
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("active");
+    await expect(
+      page.getByRole("button", { name: "Start session", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Resume", exact: true }),
+    ).toHaveCount(0);
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await page.getByRole("button", { name: "Resume", exact: true }).click();
@@ -174,10 +180,10 @@ test("packaged app uses the isolated preload bridge for session controls and nav
 
     for (const [screen, heading] of [
       ["Timeline", "Recorded activity"],
-      ["Search", "Search your recorded evidence"],
+      ["Search", "Search your history"],
       ["Files", "Protected folders"],
       ["Checkpoints", "Save a named checkpoint"],
-      ["Settings", "Privacy comes first"],
+      ["Settings", "History and storage"],
     ] as const) {
       await page.getByRole("button", { name: new RegExp(screen) }).click();
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -313,7 +319,7 @@ test("concurrent session commands stay serialized and ended history survives a c
     page = await application.firstWindow();
     await expect(page.getByTestId("session-status")).toHaveText("ended");
     await expect(
-      page.getByRole("complementary").getByText("Collection off"),
+      page.getByRole("complementary").getByText("Recording off"),
     ).toBeVisible();
   } finally {
     await application.close();

@@ -35,7 +35,7 @@ test("existing files are not imported, idle work is bounded and identical saves 
       }),
     ).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     const count = async () =>
       page.evaluate(async () => {
@@ -106,7 +106,7 @@ test("existing files are not imported, idle work is bounded and identical saves 
     application = await launchVerificationApp(profile);
     page = await application.firstWindow();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     writeFileSync(file, "Synthetic active saved change");
     await new Promise((resolve) => setTimeout(resolve, 1800));
@@ -145,7 +145,7 @@ test("change-only recording ignores old large folders and coalesces a save burst
       .getByRole("button", { name: "Allow and start recording", exact: true })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     writeFileSync(saved, "Synthetic save 1");
     writeFileSync(saved, "Synthetic save 2");
@@ -163,7 +163,7 @@ test("change-only recording ignores old large folders and coalesces a save burst
       )
       .toBe(1);
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
   } finally {
     await application.close();
@@ -183,7 +183,7 @@ test("one permission starts real default-folder capture, remembers approval and 
   try {
     let page = await application.firstWindow();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await expect(
       page.getByLabel("Automatic file protection locations"),
@@ -216,7 +216,7 @@ test("one permission starts real default-folder capture, remembers approval and 
       }),
     ).toBeVisible();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     const first = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.sessions.get(),
@@ -247,14 +247,12 @@ test("one permission starts real default-folder capture, remembers approval and 
       .getByRole("button", { name: "Save exclusions", exact: true })
       .click();
     await expect(
-      page.getByText(
-        "Exclusions saved. An active automatic session continues recording.",
-      ),
+      page.getByText("Exclusions saved. Recording continues."),
     ).toBeVisible();
     writeFileSync(secret, "Synthetic excluded new save");
     await page.getByRole("button", { name: "Dashboard", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await page.screenshot({
       path: "test-results/automatic-recording-enabled.png",
@@ -264,7 +262,7 @@ test("one permission starts real default-folder capture, remembers approval and 
     application = await launchVerificationApp(profile);
     page = await application.firstWindow();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     const next = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.sessions.get(),
@@ -290,7 +288,7 @@ test("one permission starts real default-folder capture, remembers approval and 
     });
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     const captured = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.versions.list({
@@ -317,7 +315,7 @@ test("one permission starts real default-folder capture, remembers approval and 
     application = await launchVerificationApp(profile);
     page = await application.firstWindow();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     expect(
       await page.evaluate(() =>
@@ -354,7 +352,7 @@ test("remembered approval stays stopped after a worker crash and reconnect", asy
       .getByRole("button", { name: "Allow and start recording", exact: true })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await application.evaluate(({ app }) => {
       const workers = app
@@ -374,7 +372,7 @@ test("remembered approval stays stopped after a worker crash and reconnect", asy
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     expect(
       await page.evaluate(() =>
@@ -395,7 +393,7 @@ test("remembered approval stays stopped after a worker crash and reconnect", asy
       })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
   } finally {
     await application.close();

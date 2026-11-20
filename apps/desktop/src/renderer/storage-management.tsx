@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Result, RuntimeSnapshot, StorageUsage } from "@rewind/contracts";
+import { HowItWorks, formatBytes, plural } from "./ui";
 
 export function StorageManagement({
   runtime,
@@ -59,34 +60,37 @@ export function StorageManagement({
     <section className="panel" aria-labelledby="storage-heading">
       <h2 id="storage-heading">History and storage</h2>
       <p>
-        Expired evidence is removed automatically at startup, before timeline
-        queries and every minute while Rewind is open. Kept checkpoints retain
-        their evidence. Under storage pressure, the oldest unkept evidence can
-        expire sooner.
+        Old history is cleaned up automatically. Kept checkpoints are never
+        cleaned up.
       </p>
-      <p>
-        Changing storage settings, cleaning up or deleting history stops
-        recording, revokes approval and turns off automatic recording. Approve
-        again explicitly afterward.
+      <p className="hint">
+        Saving, cleaning up or deleting here stops recording and turns off
+        automatic recording. You'll need to allow recording again afterward.
       </p>
+      <HowItWorks>
+        <p>
+          Expired history is removed when Rewind starts and every minute while
+          it's open. If storage runs low, the oldest history that isn't kept can
+          be removed sooner.
+        </p>
+      </HowItWorks>
       {usage && (
         <p role="status">
-          {(usage.totalBytes / 1024 ** 2).toFixed(2)} MiB used (
-          {(usage.databaseBytes / 1024 ** 2).toFixed(2)} MiB database;{" "}
-          {(usage.journalBytes / 1024 ** 2).toFixed(2)} MiB journal).{" "}
-          {usage.activityCount} activities, {usage.versionCount} versions,{" "}
-          {usage.keptCheckpointCount} kept checkpoints.
+          {formatBytes(usage.totalBytes)} used ·{" "}
+          {plural(usage.activityCount, "activity", "activities")} ·{" "}
+          {plural(usage.versionCount, "file version")} ·{" "}
+          {plural(usage.keptCheckpointCount, "kept checkpoint")}
         </p>
       )}
       {usage?.overQuota && (
         <p role="alert" className="error">
-          The quota is exceeded by retained evidence or database overhead.
-          Recording cannot continue until space is available.
+          Storage is full. Recording can't continue until you free up space or
+          raise the limit.
         </p>
       )}
       <div className="settings-list">
         <label>
-          Data retention period (hours)
+          Keep history for (hours)
           <input
             aria-label="Data retention period"
             type="number"
@@ -95,9 +99,15 @@ export function StorageManagement({
             value={hours}
             onChange={(event) => setHours(Number(event.target.value))}
           />
+          {hours >= 24 && (
+            <span className="hint">
+              {" "}
+              ≈ {plural(Math.round((hours / 24) * 10) / 10, "day")}
+            </span>
+          )}
         </label>
         <label>
-          Storage limit (MiB)
+          Storage limit (MB)
           <input
             aria-label="Storage limit"
             type="number"
@@ -147,9 +157,13 @@ export function StorageManagement({
           aria-label="Confirm history deletion"
         >
           <p>
-            Delete recorded evidence from every session? Kept checkpoints and
-            their evidence remain unless you include them. Session dates and
-            privacy settings remain.
+            Delete recorded history from every session? Kept checkpoints stay
+            unless you include them. Session dates and privacy settings stay.
+          </p>
+          <p className="hint">
+            Deleting removes search indexes and compacts the encrypted database.
+            It can't guarantee forensic erasure from SSDs, Windows backups, swap
+            files or copies made elsewhere.
           </p>
           <label>
             <input
@@ -157,7 +171,7 @@ export function StorageManagement({
               checked={includeKept}
               onChange={(event) => setIncludeKept(event.target.checked)}
             />{" "}
-            Also delete kept checkpoints and their evidence
+            Also delete kept checkpoints
           </label>
           <div className="controls">
             <button
@@ -182,11 +196,9 @@ export function StorageManagement({
           </div>
         </div>
       )}
-      <p className="footnote">
-        Logical deletion removes search indexes and compacts encrypted storage.
-        It cannot guarantee forensic erasure on SSDs, OS backups, swap or
-        external copies. The quota covers the database and its journals;
-        temporary compaction can require additional disk space.
+      <p className="hint">
+        The limit covers Rewind's database and its journal files. Cleanup can
+        briefly need extra disk space.
       </p>
       {message && <p role="status">{message}</p>}
       {error && (

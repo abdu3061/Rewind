@@ -35,16 +35,14 @@ test("selected synthetic folders capture saved bytes with independent consent an
     await page.getByRole("button", { name: /Files/ }).click();
     await expect(
       page.getByRole("button", {
-        name: "Allow file protection for this launch",
+        name: "Allow file protection",
       }),
     ).toBeDisabled();
     await page
       .getByRole("button", { name: "Select protected folder", exact: true })
       .click();
     await expect(page.locator(".protected-folders")).toContainText(source);
-    await page
-      .getByRole("button", { name: "Allow file protection for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow file protection" }).click();
     await expect(
       page.getByRole("button", { name: "Revoke file protection", exact: true }),
     ).toBeVisible();
@@ -53,7 +51,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     writeFileSync(file, alpha);
     expect(
@@ -100,7 +98,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     writeFileSync(file, "A paused synthetic change must not be captured");
     await page.waitForTimeout(2300);
@@ -116,7 +114,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
       .click();
     await expect(
       page.getByRole("button", {
-        name: "Allow file protection for this launch",
+        name: "Allow file protection",
       }),
     ).toBeVisible();
     // Recover the earlier saved version after recording has stopped. Only the dialog is mocked;
@@ -200,7 +198,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
     await expect(page.getByTestId("captured-version")).toHaveCount(2);
     await expect(
       page.getByRole("button", {
-        name: "Allow file protection for this launch",
+        name: "Allow file protection",
       }),
     ).toBeVisible();
     await page
@@ -209,7 +207,7 @@ test("selected synthetic folders capture saved bytes with independent consent an
       .click();
     await expect(page.locator(".captured-preview")).toHaveText(beta);
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
   } finally {
     await application.close();

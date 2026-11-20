@@ -13,6 +13,7 @@ import type {
 } from "@rewind/contracts";
 import { RecoveryCopy } from "./recovery-copy";
 import { RecoveryOverwrite } from "./recovery-overwrite";
+import { EmptyState, HowItWorks, formatBytes, plural } from "./ui";
 
 const time = (value: string) => new Date(value).toLocaleString();
 function label(event: ActivityEvent): string {
@@ -259,7 +260,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
     return (
       <section className="panel">
         <h2>Checkpoints unavailable</h2>
-        <p>Reconnect verified secure storage to manage saved evidence.</p>
+        <p>Reconnect secure storage to manage checkpoints.</p>
       </section>
     );
   return (
@@ -267,11 +268,22 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
       <section className="panel" aria-labelledby="checkpoint-create-heading">
         <h2 id="checkpoint-create-heading">Save a named checkpoint</h2>
         <p>
-          Select actual retained versions and activity from one session. A
-          checkpoint groups captured evidence; it cannot restore unsaved
-          application state or prove a document was read.
+          Bookmark files and activity from a session so you can find them again.
         </p>
-        <label htmlFor="checkpoint-session">Evidence session</label>
+        <HowItWorks>
+          <p>
+            A checkpoint groups saved file versions and activity. It can't
+            restore unsaved work in an app, and it doesn't prove a document was
+            read. Up to 100 file versions, 200 activities and 64 MB of files per
+            checkpoint; your selection is checked again before saving.
+          </p>
+          <p>
+            Kept checkpoints survive automatic cleanup, storage limits and
+            history deletion. Checkpoints that aren't kept expire like the rest
+            of your history.
+          </p>
+        </HowItWorks>
+        <label htmlFor="checkpoint-session">Session</label>
         <select
           id="checkpoint-session"
           value={sessionId}
@@ -281,8 +293,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           {!sessions.length && <option value="">No recorded sessions</option>}
           {sessions.map((session) => (
             <option key={session.id} value={session.id}>
-              {time(session.startedAt)} · {session.status} ·{" "}
-              {session.id.slice(0, 8)}
+              {time(session.startedAt)} · {session.status}
             </option>
           ))}
         </select>
@@ -321,7 +332,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           disabled={busy || !sessionId}
           onClick={() => setEvidenceRefresh((current) => current + 1)}
         >
-          Refresh evidence and clear selection
+          Reload items
         </button>
         <label htmlFor="checkpoint-name">Checkpoint name</label>
         <input
@@ -338,20 +349,13 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
             disabled={busy}
             onChange={(event) => setKept(event.target.checked)}
           />{" "}
-          Keep this checkpoint and its selected evidence
+          Keep this checkpoint (skip automatic cleanup)
         </label>
-        <p className="footnote">
-          Kept evidence survives ordinary retention, quota cleanup and history
-          deletion. Unkept checkpoints expire with retention and can be evicted
-          for quota. Up to 100 file versions, 200 activities and 64 MiB of
-          original bytes per checkpoint. Selection is checked again before
-          saving.
-        </p>
         <fieldset disabled={busy}>
-          <legend>
-            Captured file versions ({selectedFiles.length} selected)
-          </legend>
-          {!versions.length && <p>No captured versions in this session.</p>}
+          <legend>File versions ({selectedFiles.length} selected)</legend>
+          {!versions.length && (
+            <p className="hint">No saved file versions in this session.</p>
+          )}
           <div className="evidence-picker">
             {versions.map((item) => (
               <label key={item.version.id}>
@@ -372,14 +376,14 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                   }
                 />{" "}
                 {item.displayName} · {time(item.version.capturedAt)} ·{" "}
-                {item.version.byteLength.toLocaleString()} bytes
+                {formatBytes(item.version.byteLength)}
                 <span className="content-hash"> · {item.sourceLabel}</span>
               </label>
             ))}
           </div>
           {moreFiles && (
             <button onClick={() => void run(() => olderEvidence(true))}>
-              Load older file evidence
+              Load older file versions
             </button>
           )}
         </fieldset>
@@ -387,7 +391,9 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           <legend>
             Recorded activity ({selectedActivities.length} selected)
           </legend>
-          {!activities.length && <p>No retained activity in this session.</p>}
+          {!activities.length && (
+            <p className="hint">No recorded activity in this session.</p>
+          )}
           <div className="evidence-picker">
             {activities.map((event) => (
               <label key={event.id}>
@@ -413,7 +419,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           </div>
           {moreActivities && (
             <button onClick={() => void run(() => olderEvidence(false))}>
-              Load older activity evidence
+              Load older activity
             </button>
           )}
         </fieldset>
@@ -441,7 +447,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 await inspect(result.value.id);
               }
               return result;
-            }, "Checkpoint saved with confirmed captured evidence.")
+            }, "Checkpoint saved.")
           }
         >
           Save checkpoint
@@ -466,16 +472,20 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
         >
           Refresh checkpoints
         </button>
-        {!checkpoints.length && <p>No retained checkpoints.</p>}
+        {!checkpoints.length && (
+          <EmptyState title="No checkpoints yet">
+            Save one above, or from the notch while you work.
+          </EmptyState>
+        )}
         <ol className="timeline-events">
           {checkpoints.map((checkpoint) => (
             <li key={checkpoint.id} data-testid="saved-checkpoint">
               <strong>{checkpoint.name}</strong>
               <p>
                 {time(checkpoint.createdAt)} ·{" "}
-                {checkpoint.kept ? "Kept" : "Subject to retention"} ·{" "}
-                {checkpoint.fileVersionCount} versions ·{" "}
-                {checkpoint.activityCount} activities
+                {checkpoint.kept ? "Kept" : "Expires with history"} ·{" "}
+                {plural(checkpoint.fileVersionCount, "file")} ·{" "}
+                {plural(checkpoint.activityCount, "activity", "activities")}
               </p>
               <button
                 disabled={busy}
@@ -506,10 +516,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           <h2 id="checkpoint-view-heading">
             Checkpoint: {view.checkpoint.name}
           </h2>
-          <p>
-            Created {time(view.checkpoint.createdAt)} · session{" "}
-            {view.checkpoint.sessionId}
-          </p>
+          <p>Created {time(view.checkpoint.createdAt)}</p>
           <label htmlFor="checkpoint-edit-name">Saved checkpoint name</label>
           <input
             id="checkpoint-edit-name"
@@ -528,9 +535,10 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
             Keep saved checkpoint
           </label>
           {!editKept && (
-            <p>
-              Saving without Keep releases its retention protection. Already
-              expired evidence may disappear on the next cleanup.
+            <p className="hint">
+              Without Keep, this checkpoint expires like the rest of your
+              history. Items that are already old may be removed at the next
+              cleanup.
             </p>
           )}
           <button
@@ -547,12 +555,12 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                   setPreview(null);
                 }
                 return result;
-              }, "Checkpoint updated. Unkept evidence follows retention and quota policy.")
+              }, "Checkpoint updated.")
             }
           >
             Save checkpoint changes
           </button>
-          <h3>Captured file evidence</h3>
+          <h3>Files</h3>
           <ol className="timeline-events">
             {view.versions.map((item) => (
               <li key={item.version.id}>
@@ -560,7 +568,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 <p className="content-hash">{item.sourceLabel}</p>
                 <p>
                   {time(item.version.capturedAt)} ·{" "}
-                  {item.version.byteLength.toLocaleString()} bytes
+                  {formatBytes(item.version.byteLength)}
                 </p>
                 <button
                   disabled={busy}
@@ -584,7 +592,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
               </li>
             ))}
           </ol>
-          <h3>Recorded activity evidence</h3>
+          <h3>Activity</h3>
           <ul>
             {view.activities.map((event) => (
               <li key={event.id}>
@@ -611,14 +619,14 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           )}
           {preview && (
             <div>
-              <h3>Captured preview: {preview.displayName}</h3>
+              <h3>Preview: {preview.displayName}</h3>
               {preview.warning && <p>{preview.warning}</p>}
               {preview.text !== null && (
                 <pre className="captured-preview">{preview.text}</pre>
               )}
               {preview.truncated && (
-                <p>
-                  Preview truncated. Recovery uses the complete original bytes.
+                <p className="hint">
+                  Preview shortened. Recovering uses the complete file.
                 </p>
               )}
               <RecoveryCopy key={preview.version.id} preview={preview} />
@@ -639,9 +647,8 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           ) : (
             <div>
               <p>
-                Delete this named checkpoint and release its evidence pins?
-                Original files and recovered copies remain. Evidence follows
-                retention after this manifest is removed.
+                Delete this checkpoint? Your files and recovered copies aren't
+                affected. Its items then expire like the rest of your history.
               </p>
               <button
                 className="end-button"
@@ -657,7 +664,7 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                       setPreview(null);
                     }
                     return result;
-                  }, "Checkpoint deleted. Its evidence now follows ordinary retention.")
+                  }, "Checkpoint deleted.")
                 }
               >
                 Confirm delete checkpoint

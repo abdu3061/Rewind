@@ -9,9 +9,7 @@ test("real settings and confirmed deletion drain recording and persist across re
   let application = await launchVerificationApp(profile);
   try {
     let page = await application.firstWindow();
-    await page
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await page
       .getByRole("button", { name: "Start session", exact: true })
       .click();
@@ -33,7 +31,7 @@ test("real settings and confirmed deletion drain recording and persist across re
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await page.getByRole("button", { name: /Settings/ }).click();
     const invalid = await page.evaluate(() =>
@@ -57,13 +55,11 @@ test("real settings and confirmed deletion drain recording and persist across re
     );
     expect(before.ok && before.value.activityCount).toBeGreaterThan(0);
     // Delete while a live changing source is recording; acknowledgement must fence later writes.
-    await page
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await page.getByRole("button", { name: /Settings/ }).click();
     await page

@@ -136,7 +136,7 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
       .getByRole("button", { name: "Save checkpoint", exact: true })
       .click();
     await expect(
-      page.getByText("Checkpoint saved with confirmed captured evidence.", {
+      page.getByText("Checkpoint saved.", {
         exact: true,
       }),
     ).toBeVisible();
@@ -199,7 +199,7 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
       true,
     );
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
   } finally {
     await application.close();

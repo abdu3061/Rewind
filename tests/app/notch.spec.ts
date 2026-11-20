@@ -39,13 +39,13 @@ test("notch shows worker failure and reconnecting through the desktop never rest
   try {
     const desktop = await application.firstWindow();
     await desktop
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
+      .getByRole("button", { name: "Allow Windows activity" })
       .click();
     await desktop
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(desktop.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     const created = application.waitForEvent("window");
     await application.evaluate(({ BrowserWindow }) =>
@@ -86,7 +86,7 @@ test("notch shows worker failure and reconnecting through the desktop never rest
       .click();
     await expect(desktop.getByTestId("session-status")).toHaveText("paused");
     await expect(desktop.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
@@ -124,13 +124,13 @@ test("losing the notch renderer acknowledges shutdown and leaves no hidden recor
   try {
     const desktop = await application.firstWindow();
     await desktop
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
+      .getByRole("button", { name: "Allow Windows activity" })
       .click();
     await desktop
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(desktop.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     const created = application.waitForEvent("window");
     await application.evaluate(({ BrowserWindow }) =>
@@ -426,13 +426,13 @@ test("notch session, recall and reviewed checkpoint actions use the same encrypt
       "not started",
     );
     await desktop
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
+      .getByRole("button", { name: "Allow Windows activity" })
       .click();
     await desktop
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(desktop.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await expect
       .poll(
@@ -569,7 +569,7 @@ test("notch session, recall and reviewed checkpoint actions use the same encrypt
     desktop = await application.firstWindow();
     await expect(desktop.getByTestId("session-status")).toHaveText("ended");
     await expect(desktop.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     const persisted = await desktop.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.checkpoints.list({

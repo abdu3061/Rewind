@@ -87,7 +87,7 @@ test("renderer loss drains an active synthetic session before exit and restart",
       const fresh = await restarted.firstWindow();
       await expect(fresh.getByTestId("session-status")).toHaveText("ended");
       await expect(fresh.getByTestId("collection-status")).toHaveText(
-        "Collection off",
+        "Recording off",
       );
     } finally {
       await restarted.close();

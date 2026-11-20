@@ -89,14 +89,12 @@ export function RecoveryCopy({ preview }: { preview: VersionPreview }) {
     <div className="recovery-copy">
       <h3>Recover as a separate copy</h3>
       <p>
-        Choose a new filename. The complete verified original bytes will be
-        saved, including content beyond this preview. Existing destinations are
-        rejected. Optional overwrite is available separately below.
+        Save the complete file under a new name. Rewind never replaces an
+        existing file here; overwriting is a separate option below.
       </p>
-      <p>
-        The saved copy is an ordinary file outside Rewind's encrypted history.
-        Retention and history deletion do not delete recovered copies. Rewind
-        does not open or run the recovered file.
+      <p className="hint">
+        The copy is a normal file outside Rewind, so deleting history won't
+        remove it. Rewind doesn't open or run it.
       </p>
       {!proposal && (
         <button

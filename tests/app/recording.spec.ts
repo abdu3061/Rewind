@@ -17,7 +17,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
     await expect(page.getByTestId("session-status")).toHaveText("not started");
     await expect(page.getByText("Synthetic verification mode")).toBeVisible();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await page
       .getByRole("button", { name: "Start session", exact: true })
@@ -31,16 +31,14 @@ test("explicit approval records encrypted synthetic history with real filters, p
         }),
       ),
     ).toEqual({ ok: true, value: [] });
-    await page
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await expect
       .poll(
@@ -102,7 +100,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
     await page.getByRole("button", { name: /Dashboard/ }).click();
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     // Revocation must work even when an unsaved exclusion draft is invalid.
     await page
@@ -113,14 +111,12 @@ test("explicit approval records encrypted synthetic history with real filters, p
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await page
       .getByLabel("Excluded applications (one name per line)")
       .fill("SyntheticEditor.exe");
-    await page
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await page.getByRole("button", { name: "Resume", exact: true }).click();
     const excluded = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
@@ -158,7 +154,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("ended");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     const finalEvents = await page.evaluate(() =>
       (window as unknown as { rewind: DesktopApi }).rewind.timeline.query({
@@ -207,7 +203,7 @@ test("explicit approval records encrypted synthetic history with real filters, p
     page = await application.firstWindow();
     await expect(page.getByTestId("session-status")).toHaveText("ended");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await expect(
       page.getByLabel("Excluded applications (one name per line)"),
@@ -240,9 +236,7 @@ test("worker crash is visible, reconnect restores a paused session and gap witho
   try {
     const page = await application.firstWindow();
     await expect(page.getByTestId("session-status")).toHaveText("not started");
-    await page
-      .getByRole("button", { name: "Allow Windows activity for this launch" })
-      .click();
+    await page.getByRole("button", { name: "Allow Windows activity" }).click();
     await expect(
       page.getByRole("button", { name: "Revoke recording permission" }),
     ).toBeVisible();
@@ -250,7 +244,7 @@ test("worker crash is visible, reconnect restores a paused session and gap witho
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
     );
     await application.evaluate(({ app }) => {
       const workers = app
@@ -266,25 +260,27 @@ test("worker crash is visible, reconnect restores a paused session and gap witho
       process.kill(workers[0].pid);
     });
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection unavailable",
+      "Recording unavailable",
     );
     await expect(
       page.getByRole("button", { name: "Start session", exact: true }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await page
       .getByRole("button", { name: "Reconnect recording service" })
       .click();
     await expect(page.getByTestId("session-status")).toHaveText("paused");
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection off",
+      "Recording off",
     );
     await expect(
       page.getByRole("button", {
-        name: "Allow Windows activity for this launch",
+        name: "Allow Windows activity",
       }),
     ).toBeVisible();
     await page.getByRole("button", { name: /Timeline/ }).click();
-    await expect(page.getByText("Capture gap", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Recording gap", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await application.close();
@@ -313,7 +309,7 @@ test("missing protected key fails closed without replacing existing history", as
     );
     await expect(
       page.getByRole("button", {
-        name: "Allow Windows activity for this launch",
+        name: "Allow Windows activity",
       }),
     ).toBeDisabled();
     await expect(

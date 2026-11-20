@@ -3,6 +3,7 @@ import { RecoveryCopy } from "./recovery-copy";
 import { RecoveryOverwrite } from "./recovery-overwrite";
 import { currentPreview } from "./captured-preview";
 import { usePreviewRequest } from "./use-preview-request";
+import { EmptyState, HowItWorks, formatBytes, plural } from "./ui";
 import type {
   CapturedVersionSummary,
   FileProtectionState,
@@ -177,33 +178,43 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
       <section className="panel" aria-labelledby="file-protection-heading">
         <h2 id="file-protection-heading">Protected folders</h2>
         <p>
+          Rewind saves a version of a supported file each time it changes while
+          you're recording.
           {runtime?.automaticRecording
-            ? "Automatic setup protects the verified folders below during active sessions. Manage file or folder exclusions in Settings. Revoke or Remove also turns off future automatic recording."
-            : "Enable automatic recording on Dashboard to protect Desktop, Documents and Downloads without selecting folders. You can also choose project folders here and approve capture for this launch."}{" "}
-          Changing protected folders pauses recording, revokes file approval and
-          turns off automatic recording until you approve the new scope.
+            ? " Automatic recording protects the folders below."
+            : " Turn on automatic recording on the Dashboard, or add project folders here."}
         </p>
-        <p>
-          Rewind captures complete saved bytes for supported text/code,
-          Markdown, DOCX and PDF files up to 16 MiB when they are created or
-          changed during recording. Existing files are not imported. Repeated
-          save notifications are batched; unchanged content is not copied again.
-          The first recovery copy is the saved version after a change. Earlier,
-          paused or uncaptured work cannot be recovered.
+        <p className="hint">
+          Adding or removing a folder pauses recording and turns off automatic
+          recording until you allow the new set of folders.
         </p>
-        <p>
-          During an approved active session, bounded saved text is also indexed
-          in encrypted local history. Search shows progress, limits, Stop and
-          retained-history indexing controls. Document bodies are excluded from
-          Gemini sharing.
-        </p>
+        <HowItWorks summary="What's supported">
+          <p>
+            Text and code, Markdown, DOCX and PDF files up to 16 MB, on local
+            NTFS drives with paths under 240 characters. Existing files aren't
+            imported, and unchanged content isn't copied again. Work from before
+            recording, while paused or never saved can't be recovered.
+          </p>
+          <p>
+            Hidden files, build folders, links/junctions, app profiles and
+            unsupported files are skipped. If a folder is replaced, select it
+            again. A saved file doesn't prove a document was read.
+            {runtime?.automaticRecording
+              ? " Automatic setup remembers your permission."
+              : " Manual permission ends when Rewind restarts."}
+          </p>
+          <p>
+            Saved text is indexed locally so Search can find it. File contents
+            are never shared with Gemini.
+          </p>
+        </HowItWorks>
         <div className="controls">
           <button
             disabled={busy || !readable}
             onClick={() =>
               void run(
                 () => window.rewind.files.selectFolder(),
-                "Folder selection finished. File capture needs explicit approval.",
+                "Folder added. Allow file protection to start saving versions.",
               )
             }
           >
@@ -216,11 +227,11 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
               onClick={() =>
                 void run(
                   () => window.rewind.files.permission(true),
-                  "File capture approved for this launch. Start or resume the session explicitly.",
+                  "File protection allowed until Rewind restarts. Start or resume a session to begin.",
                 )
               }
             >
-              Allow file protection for this launch
+              Allow file protection
             </button>
           ) : (
             <button
@@ -229,7 +240,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
               onClick={() =>
                 void run(
                   () => window.rewind.files.permission(false),
-                  "File protection permission revoked. Capture has stopped.",
+                  "File protection is off. Capture has stopped.",
                 )
               }
             >
@@ -237,11 +248,11 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             </button>
           )}
         </div>
-        <p role="status">
-          File permission {runtime?.filePermission ? "approved" : "off"}.
-          Capture {protection?.status.state ?? "unavailable"}.{" "}
+        <p role="status" className="hint">
+          File protection {runtime?.filePermission ? "on" : "off"} · capture{" "}
+          {protection?.status.state ?? "unavailable"}
           {protection
-            ? `${protection.status.captured} captures confirmed this run; ${protection.status.pending} pending; ${protection.status.skipped} skipped; ${protection.status.failed} failed.`
+            ? ` · ${plural(protection.status.captured, "version")} saved since Rewind opened${protection.status.pending ? `, ${protection.status.pending} waiting` : ""}${protection.status.skipped ? `, ${protection.status.skipped} skipped` : ""}${protection.status.failed ? `, ${protection.status.failed} failed` : ""}`
             : ""}
         </p>
         {protection?.status.issue && (
@@ -259,7 +270,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 onClick={() =>
                   void run(
                     () => window.rewind.files.removeFolder(folder.id),
-                    "Folder removed from protection. Existing captured versions follow retention settings.",
+                    "Folder removed. Versions already saved stay until they expire.",
                   )
                 }
               >
@@ -268,15 +279,6 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
             </li>
           ))}
         </ul>
-        <p className="footnote">
-          Local NTFS folders and paths up to 240 characters. Hidden files, build
-          trees, reparse points, hardlinks, application profiles and unsupported
-          files are skipped or rejected. A directory replacement requires
-          selecting it again. File saves do not prove that a document was read.
-          {runtime?.automaticRecording
-            ? " Automatic setup remembers approval for normal app openings."
-            : " Manual approval expires on restart."}
-        </p>
         {message && <p role="status">{message}</p>}
         {error && (
           <p role="alert" className="error">
@@ -285,7 +287,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
         )}
       </section>
       <section className="panel" aria-labelledby="versions-heading">
-        <h2 id="versions-heading">Captured file versions</h2>
+        <h2 id="versions-heading">Saved file versions</h2>
         <button
           disabled={busy || !readable}
           onClick={() => {
@@ -298,10 +300,10 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
           Refresh versions
         </button>
         {!versions.length && (
-          <p>
-            No captured versions are available. Metadata-only observations are
-            not recoverable files.
-          </p>
+          <EmptyState title="No saved versions yet">
+            Versions appear here when protected files change while you're
+            recording.
+          </EmptyState>
         )}
         <ol className="timeline-events" aria-label="Captured versions">
           {versions.map((item) => (
@@ -312,7 +314,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 {new Date(item.version.capturedAt).toLocaleString()}
               </time>
               <p>
-                {item.version.byteLength.toLocaleString()} original bytes ·{" "}
+                {formatBytes(item.version.byteLength)} ·{" "}
                 {item.version.mediaType}
               </p>
               <button
@@ -320,7 +322,7 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 onClick={() => void showPreview(item.version.id)}
                 aria-label={`Preview ${item.displayName} captured ${item.version.capturedAt}`}
               >
-                Preview captured version
+                Preview
               </button>
             </li>
           ))}
@@ -349,22 +351,24 @@ export function Files({ runtime }: { runtime: RuntimeSnapshot | null }) {
       )}
       {preview && readable && (
         <section className="panel" aria-labelledby="preview-heading">
-          <h2 id="preview-heading">Captured preview: {preview.displayName}</h2>
+          <h2 id="preview-heading">Preview: {preview.displayName}</h2>
           <p className="content-hash">{preview.sourceLabel}</p>
           <p>
             {new Date(preview.version.capturedAt).toLocaleString()} ·{" "}
-            {preview.version.byteLength.toLocaleString()} verified original
-            bytes
+            {formatBytes(preview.version.byteLength)} · verified
           </p>
-          <p className="content-hash">SHA-256: {preview.version.contentHash}</p>
+          <HowItWorks summary="Details">
+            <p className="content-hash">
+              SHA-256: {preview.version.contentHash}
+            </p>
+          </HowItWorks>
           {preview.warning && <p>{preview.warning}</p>}
           {preview.text !== null && (
             <pre className="captured-preview">{preview.text}</pre>
           )}
           {preview.truncated && (
-            <p>
-              Preview truncated. The complete original bytes remain in the
-              captured version.
+            <p className="hint">
+              Preview shortened. Recovering uses the complete file.
             </p>
           )}
           <button

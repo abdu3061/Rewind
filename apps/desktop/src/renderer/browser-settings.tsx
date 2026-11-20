@@ -4,9 +4,16 @@ import type {
   Result,
   RuntimeSnapshot,
 } from "@rewind/contracts";
+import { HowItWorks, plural } from "./ui";
 
 type Browser = "chrome" | "edge";
 const label = (browser: Browser) => (browser === "chrome" ? "Chrome" : "Edge");
+const setupLabel: Record<BrowserControlState["setup"]["state"], string> = {
+  "not-installed": "not set up",
+  installed: "set up",
+  "needs-attention": "needs attention",
+  unavailable: "unavailable",
+};
 type Confirmation =
   { kind: "install" | "repair" } | { kind: "remove"; browser: Browser };
 export function BrowserSettings({
@@ -141,36 +148,42 @@ export function BrowserSettings({
     >
       <h2 id="browser-heading">Chrome and Edge activity</h2>
       <p>
-        Browser metadata needs separate approval here and in the extension, plus
-        an active session. Rewind records the focused regular tab's title,
-        website path and time. Query strings and fragments are removed. Private
-        browsing, page text and browser window titles are excluded.
+        Records the title, website and time of the tab you're looking at. Page
+        text and private browsing are never recorded.
       </p>
-      <p>
-        Approval expires when Rewind, its service or the extension restarts.
-        Permission and exclusion changes pause recording; start or resume
-        explicitly afterward. Setup does not install the extension or approve
-        recording.
-      </p>
+      <HowItWorks>
+        <p>
+          Browser recording needs permission here and in the Rewind extension,
+          plus an active session. Query strings and #fragments are removed from
+          addresses, and browser window titles are skipped.
+        </p>
+        <p>
+          Permission ends when Rewind, its service or the extension restarts.
+          Changing permission or exclusions pauses recording until you start or
+          resume. Setting up the connection doesn't install the extension or
+          turn on recording.
+        </p>
+      </HowItWorks>
       {!readable && (
         <p role="status">
           Reconnect the secure recording service to use browser controls.
         </p>
       )}
       {state && (
-        <p role="status" data-testid="browser-status">
-          Setup {state.setup.state}; connection {state.bridge.state};{" "}
-          {state.capture.connected} connected client(s). Capture{" "}
-          {state.capture.state}: {state.capture.captured} events saved this run,{" "}
-          {state.capture.pending} pending. Browser approval{" "}
-          {approved ? "on" : "off"}.
+        <p role="status" data-testid="browser-status" className="hint">
+          Browser connection {setupLabel[state.setup.state]},{" "}
+          {state.bridge.state} · {plural(state.capture.connected, "browser")}{" "}
+          connected · recording {state.capture.state}:{" "}
+          {plural(state.capture.captured, "visit")} saved since Rewind opened
+          {state.capture.pending ? `, ${state.capture.pending} waiting` : ""} ·
+          permission {approved ? "on" : "off"}
         </p>
       )}
       {state?.setup.checkedAt && (
-        <p className="footnote">
-          Setup last checked {new Date(state.setup.checkedAt).toLocaleString()}.
-          Recorded registrations:{" "}
-          {state.setup.registeredBrowsers.map(label).join(", ") || "none"}.
+        <p className="hint">
+          Connected browsers:{" "}
+          {state.setup.registeredBrowsers.map(label).join(", ") || "none"} ·
+          checked {new Date(state.setup.checkedAt).toLocaleString()}
         </p>
       )}
       {state?.setup.error && (
@@ -307,12 +320,15 @@ export function BrowserSettings({
           </div>
         </div>
       )}
-      <p className="footnote">
-        After setup, open chrome://extensions or edge://extensions, enable
-        Developer mode and use Load unpacked to select the opened extension
-        folder. Then use Allow and connect in the extension. Only the approved
-        active session can record.
-      </p>
+      <ol className="hint steps">
+        <li>Choose your browsers and Set up browser connection.</li>
+        <li>
+          Open chrome://extensions or edge://extensions and turn on Developer
+          mode.
+        </li>
+        <li>Load unpacked and pick the folder from Open extension folder.</li>
+        <li>In the extension, choose Allow and connect.</li>
+      </ol>
       <label htmlFor="browser-site-exclusions">
         Excluded websites (one host per line)
       </label>
@@ -329,10 +345,9 @@ export function BrowserSettings({
           setMessage("");
         }}
       />
-      <p className="footnote">
-        Up to 200 hosts, including their subdomains. Enter host names without
-        URLs, paths or wildcards. Exclusions affect future recording; manage
-        existing evidence in History and storage.
+      <p className="hint">
+        Up to 200 sites, e.g. example.com (subdomains included). No paths or
+        wildcards. History already saved isn't affected.
       </p>
       {state && !state.policyValid && (
         <p className="error" role="alert">
@@ -352,7 +367,7 @@ export function BrowserSettings({
                     .map((host) => host.trim())
                     .filter(Boolean),
                 ),
-              "Website exclusions saved. Browser approval is off; approve and resume explicitly.",
+              "Website exclusions saved. Browser permission is off; allow it again and resume the session.",
               { saveDraft: true },
             )
           }
@@ -385,11 +400,11 @@ export function BrowserSettings({
             onClick={() =>
               void run(
                 () => window.rewind.browser.permission(true),
-                "Browser approval saved. Start or resume explicitly and approve the extension separately.",
+                "Browser activity allowed. Start or resume a session, and allow it in the extension too.",
               )
             }
           >
-            Allow browser activity for this launch
+            Allow browser activity
           </button>
         )}
       </div>
@@ -398,8 +413,8 @@ export function BrowserSettings({
           ? "Waiting for the browser operation..."
           : message ||
             (approved
-              ? "Browser activity is approved for this launch."
-              : "Browser activity permission is off.")}
+              ? "Browser activity allowed until Rewind restarts."
+              : "Browser activity is off.")}
       </p>
       {error && (
         <p className="error" role="alert">

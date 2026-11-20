@@ -59,13 +59,13 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
       .getByRole("button", { name: "Save checkpoint", exact: true })
       .click();
     await expect(
-      page.getByText("Checkpoint saved with confirmed captured evidence.", {
+      page.getByText("Checkpoint saved.", {
         exact: true,
       }),
     ).toBeVisible();
     await expect(page.getByTestId("saved-checkpoint")).toHaveCount(1);
     await expect(page.getByTestId("saved-checkpoint")).toContainText(
-      "1 versions · 1 activities",
+      "1 file · 1 activity",
     );
     await page
       .getByRole("button", { name: "Preview checkpoint version", exact: true })
@@ -120,7 +120,7 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
       "Renamed checkpoint5392",
     );
     await expect(page.getByTestId("saved-checkpoint")).toContainText(
-      "Subject to retention",
+      "Expires with history",
     );
     await page
       .getByRole("button", {

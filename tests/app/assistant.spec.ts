@@ -12,9 +12,7 @@ async function navigate(page: Page, name: string) {
     .click();
 }
 async function recordAndConfigure(page: Page) {
-  await page
-    .getByRole("button", { name: "Allow Windows activity for this launch" })
-    .click();
+  await page.getByRole("button", { name: "Allow Windows activity" }).click();
   await page
     .getByRole("button", { name: "Start session", exact: true })
     .click();
@@ -43,9 +41,7 @@ async function recordAndConfigure(page: Page) {
       (window as unknown as { rewind: DesktopApi }).rewind.assistant.state(),
     ),
   ).toMatchObject({ ok: true, value: { configured: true, permission: false } });
-  await page
-    .getByRole("button", { name: "Allow cloud questions for this launch" })
-    .click();
+  await page.getByRole("button", { name: "Allow cloud questions" }).click();
   await expect(
     page.getByRole("button", { name: "Revoke cloud approval" }),
   ).toBeVisible();
@@ -153,7 +149,7 @@ test("normal Settings and Search use sealed configuration, explicit sharing subs
     await navigate(page, "Settings");
     await expect(
       page.getByRole("button", {
-        name: "Allow cloud questions for this launch",
+        name: "Allow cloud questions",
       }),
     ).toBeEnabled();
     await page.screenshot({

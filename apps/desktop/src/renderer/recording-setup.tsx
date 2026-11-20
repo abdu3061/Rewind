@@ -57,53 +57,53 @@ export function RecordingSetup({
       <p className="eyebrow">ONE-TIME SETUP</p>
       <h2 id="automatic-recording-heading">
         {enabled
-          ? "Automatic recording is enabled"
+          ? "Automatic recording is on"
           : "Let Rewind remember your work"}
       </h2>
       {!enabled && (
         <p>
-          With your approval, Rewind records app names, window titles and times,
-          and saves recovery versions of supported files you create or change
-          during recording in Desktop, Documents and Downloads. Existing files
-          are not imported. No app or folder selection is needed. Titles and
-          saved files can contain sensitive information.
+          Rewind records which apps and window titles you use, and saves a new
+          version of supported files whenever you create or change them in
+          Desktop, Documents and Downloads. Titles and files can contain
+          sensitive information.
         </p>
       )}
       <p>
-        Approval is remembered on this Windows account. Rewind starts recording
-        when you open it. Pause or End stops this session; turning off automatic
-        recording prevents future automatic starts.
+        You approve once on this Windows account. Recording then starts each
+        time you open Rewind; Pause or End stops it, and turning this off stops
+        future automatic starts.
       </p>
-      <details open={!enabled}>
-        <summary>Protected locations and capture limits</summary>
-        {setup?.locations.length ? (
-          <ul aria-label="Automatic file protection locations">
-            {setup.locations.map((location) => (
-              <li key={location.name}>
-                <strong>{location.name}</strong>: {location.path}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p>
-          Previously added folders in Files are included too. Add app, file or
-          folder exclusions in Settings.
-        </p>
-        <p className="footnote">
-          Saved versions stay encrypted locally and follow your storage and
-          retention limits. Unsaved edits, screenshots and keystrokes are not
-          captured. Hidden files, system folders, caches and unsupported files
-          are skipped; large bursts of changes can exceed capture limits.
-          Browser recording and Gemini need separate setup.
-        </p>
+      <details className="how-it-works" open={!enabled}>
+        <summary>What's included</summary>
+        <div>
+          {setup?.locations.length ? (
+            <ul aria-label="Automatic file protection locations">
+              {setup.locations.map((location) => (
+                <li key={location.name}>
+                  <strong>{location.name}</strong>: {location.path}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <p>
+            Folders you added in Files are included too. Existing files aren't
+            imported. Saved versions stay encrypted on this PC and are cleaned
+            up by your storage settings.
+          </p>
+          <p>
+            Not captured: keystrokes, screenshots, unsaved edits, hidden or
+            system files, caches and unsupported file types. Very large bursts
+            of changes can exceed capture limits. Exclude apps, files or folders
+            in Settings; browser and Gemini are set up separately.
+          </p>
+        </div>
       </details>
       {enabled &&
         (!runtime?.preferences.collectionConsent ||
           !runtime?.filePermission) && (
           <p role="status">
-            Recording approval was not renewed after an interruption or settings
-            change. Review your protected locations above, then re-enable
-            recording when ready.
+            Recording was paused after an interruption or a settings change.
+            Check the locations above, then turn it back on.
           </p>
         )}
       {enabled &&
@@ -131,8 +131,8 @@ export function RecordingSetup({
       {enabled && (
         <p role="status">
           {runtime?.collection === "active"
-            ? "Recording this session. Manage exclusions in Settings and captured versions in Files."
-            : "This session is stopped or paused. Use Start or Resume to continue; Rewind starts automatically on its next normal opening."}
+            ? "Recording this session."
+            : "Not recording right now. Start or resume a session to continue."}
         </p>
       )}
       {(runtime?.automaticRecordingIssue || setup?.issue) && (

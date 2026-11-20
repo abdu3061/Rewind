@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AssistantSearch } from "./assistant";
 import { ContentSearch } from "./content-search";
+import { EmptyState, HowItWorks, plural } from "./ui";
 import type {
   ActivityEvent,
   RuntimeSnapshot,
@@ -93,19 +94,23 @@ export function RecordingPreferences({
       className="panel recording-preferences"
       aria-labelledby="recording-heading"
     >
-      <h2 id="recording-heading">Windows activity permission</h2>
+      <h2 id="recording-heading">Windows activity</h2>
       <p>
-        Approve application names, window titles and timestamps during active
-        sessions. Titles may contain sensitive information. Records stay
-        encrypted on this Windows account.
+        Records app names, window titles and times while a session is active.
+        Titles can contain sensitive information.
       </p>
-      <p>
-        {runtime?.automaticRecording
-          ? "Automatic recording remembers local app and file approval. Saving exclusions briefly pauses capture and then continues an active session."
-          : "Manual approval lasts until Rewind or its recording service restarts. Preference changes pause active sessions; resume explicitly."}{" "}
-        Rewind, browser windows and excluded apps are skipped. Browser metadata
-        needs separate setup in Settings and the extension.
-      </p>
+      <HowItWorks>
+        <p>
+          {runtime?.automaticRecording
+            ? "Automatic recording remembers this permission. Saving exclusions briefly pauses capture, then an active session continues."
+            : "Manual permission lasts until Rewind or its recording service restarts. Changing these settings pauses an active session until you resume it."}
+        </p>
+        <p>
+          Rewind itself, browser windows and excluded apps are always skipped.
+          Records stay encrypted on this Windows account. Browser activity is
+          set up separately in Settings.
+        </p>
+      </HowItWorks>
       <label htmlFor="application-exclusions">
         Excluded applications (one name per line)
       </label>
@@ -120,11 +125,8 @@ export function RecordingPreferences({
         }}
         placeholder="Example: private-editor.exe"
       />
-      <p className="footnote">
-        Up to 200 names, matched without case or the .exe suffix. No keystrokes,
-        clipboard capture or screenshots. Manage retention, storage and history
-        deletion in Settings. Use nonsensitive development sessions while
-        independent security review is pending.
+      <p className="hint">
+        Up to 200 apps. Capitals and the .exe ending don't matter.
       </p>
       <label htmlFor="file-exclusions">
         Excluded files or folders (one full path per line)
@@ -138,12 +140,11 @@ export function RecordingPreferences({
           setFileDraft(event.target.value);
           setSaved(false);
         }}
-        placeholder="C:\\Users\\YourName\\Documents\\Private"
+        placeholder={"C:\\Users\\YourName\\Documents\\Private"}
       />
-      <p className="footnote">
-        Exclusions stop future capture and content indexing for that file or
-        folder. Existing saved history follows your retention settings; delete
-        it explicitly in Settings if needed.
+      <p className="hint">
+        Stops future capture and search indexing. History already saved stays
+        until it expires or you delete it.
       </p>
       <div className="controls">
         <button
@@ -158,7 +159,7 @@ export function RecordingPreferences({
             disabled={busy || runtime?.service !== "ready"}
             onClick={() => void update(true)}
           >
-            Allow Windows activity for this launch
+            Allow Windows activity
           </button>
         )}
         {allowed && (
@@ -176,11 +177,11 @@ export function RecordingPreferences({
           ? "Saving preferences..."
           : saved
             ? runtime?.automaticRecording
-              ? "Exclusions saved. An active automatic session continues recording."
-              : "Preferences saved. Resume explicitly to continue recording."
+              ? "Exclusions saved. Recording continues."
+              : "Saved. Resume the session to continue recording."
             : allowed
-              ? "Windows activity approved for this launch."
-              : "Windows activity permission is off."}
+              ? "Windows activity allowed until Rewind restarts."
+              : "Windows activity is off."}
       </p>
       {error && (
         <p className="error" role="alert">
@@ -232,6 +233,13 @@ export function RecordedHistory({
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   const canRead = Boolean(runtime?.secureStorage);
+  const filtered = Boolean(
+    query.text ||
+    query.sessionId ||
+    query.from ||
+    query.to ||
+    query.types?.length,
+  );
   const sessionKey = `${runtime?.session?.id ?? ""}:${runtime?.session?.status ?? ""}`;
   useEffect(() => {
     if (!canRead || !window.rewind?.timeline) return;
@@ -346,17 +354,26 @@ export function RecordedHistory({
   return (
     <section className="panel" aria-labelledby="history-heading">
       <h2 id="history-heading">
-        {search ? "Search your recorded evidence" : "Recorded activity"}
+        {search ? "Search your history" : "Recorded activity"}
       </h2>
       <p>
-        Recorded application observations, saved-file changes and capture gaps,
-        newest first. Initial and refreshed recovery backups are hidden from
-        Timeline unless included below; they remain available in Files and
-        Search. A window title does not prove that a file was saved or read.
-        Browser metadata needs both approvals. Idle and lock detection remain
-        unavailable. Optional Gemini questions require separate cloud approval
-        and per-question sharing review.
+        {search
+          ? "Search recorded activity and the text inside saved files."
+          : "Apps, files and websites Rewind recorded, newest first."}
       </p>
+      <HowItWorks>
+        <p>
+          A window title shows what was on screen. It doesn't prove a file was
+          saved or read. File backups (the first saved copy of a file) are
+          hidden from Timeline unless you include them, and are always available
+          in Files and Search.
+        </p>
+        <p>
+          Browser visits need browser setup in Settings. Idle and screen-lock
+          time aren't detected. Gemini questions need separate approval and a
+          review of what's shared each time.
+        </p>
+      </HowItWorks>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -393,8 +410,7 @@ export function RecordedHistory({
               <option value="">All sessions</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {displayTime(session.startedAt)} · {session.status} ·{" "}
-                  {session.id.slice(-6)}
+                  {displayTime(session.startedAt)} · {session.status}
                 </option>
               ))}
             </select>
@@ -406,11 +422,11 @@ export function RecordedHistory({
               disabled={!canRead}
               onChange={(event) => setType(event.target.value)}
             >
-              <option value="">All recorded types</option>
-              <option value="foreground">Application activity</option>
-              <option value="capture-gap">Capture gaps</option>
-              <option value="file-change">Saved file changes</option>
-              <option value="browser-visit">Browser visits</option>
+              <option value="">Everything</option>
+              <option value="foreground">Apps</option>
+              <option value="file-change">Files</option>
+              <option value="browser-visit">Websites</option>
+              <option value="capture-gap">Recording gaps</option>
             </select>
           </label>
           <label>
@@ -439,7 +455,7 @@ export function RecordedHistory({
             disabled={!canRead}
             onChange={(event) => setIncludeFileBackups(event.target.checked)}
           />
-          Include recovery backups
+          Include file backups
         </label>
         <label htmlFor="history-search">Search history</label>
         <div className="search-row">
@@ -449,7 +465,7 @@ export function RecordedHistory({
             disabled={!canRead}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Search saved activity and captured file text"
+            placeholder="Search apps, titles, websites and file text"
           />
           <button type="submit" disabled={!canRead || loading}>
             {search ? "Search" : "Apply filters"}
@@ -469,19 +485,28 @@ export function RecordedHistory({
           {error}
         </p>
       )}
-      <p role="status">
+      <p role="status" className="hint">
         {!canRead
-          ? "Verified encrypted history is unavailable."
+          ? "Encrypted history is unavailable."
           : loading
-            ? "Loading recorded history..."
-            : `${events.length} recorded events shown.`}
+            ? "Loading history..."
+            : events.length
+              ? `Showing ${plural(events.length, "item")}.`
+              : ""}
       </p>
-      {!loading && canRead && events.length === 0 && (
-        <p>
-          No recorded activity matches these filters. Approve Windows activity
-          and start or resume a session to collect permitted observations.
-        </p>
-      )}
+      {!loading &&
+        canRead &&
+        events.length === 0 &&
+        (filtered ? (
+          <EmptyState title="No matches">
+            Try different words, another session or a wider date range.
+          </EmptyState>
+        ) : (
+          <EmptyState title="Nothing recorded yet">
+            Start a session on the Dashboard and your activity will show up
+            here.
+          </EmptyState>
+        ))}
       {search && <ContentSearch runtime={runtime} query={query} />}
       {search && (
         <AssistantSearch
@@ -527,9 +552,9 @@ export function RecordedHistory({
                 <strong>{event.payload.displayName ?? "Protected file"}</strong>
                 <p>
                   {event.payload.change === "captured"
-                    ? "Recovery backup saved. This does not mean the file was opened or changed during the session."
-                    : "Saved-file change observed. This does not identify which app or person made the change, or prove that the file was read."}{" "}
-                  Inspect captured versions in Files.
+                    ? "Backup saved"
+                    : "File changed"}{" "}
+                  · versions are in Files
                 </p>
               </>
             ) : event.type === "browser-visit" ? (
@@ -541,17 +566,13 @@ export function RecordedHistory({
                     : "Google Chrome"}{" "}
                   · {event.payload.url}
                 </p>
-                <p>
-                  Focused page observation. Page contents and time spent are not
-                  captured.
-                </p>
               </>
             ) : event.type === "capture-gap" ? (
               <>
-                <strong>Capture gap</strong>
+                <strong>Recording gap</strong>
                 <p>
-                  {event.payload.collectorId}: {event.payload.reason}. Activity
-                  during this gap was not recorded.
+                  Rewind wasn't recording here ({event.payload.collectorId}:{" "}
+                  {event.payload.reason}).
                 </p>
               </>
             ) : (

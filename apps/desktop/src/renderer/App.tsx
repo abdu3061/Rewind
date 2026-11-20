@@ -42,6 +42,14 @@ const pageIcons = [
   SlidersHorizontalIcon,
 ];
 
+const collectionLabel = {
+  off: "off",
+  starting: "starting",
+  active: "on",
+  stopping: "stopping",
+  unavailable: "unavailable",
+} as const;
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -166,6 +174,14 @@ export function App() {
   const canStart = !session || session.status === "ended";
   const serviceReady =
     ready && (!window.rewind?.runtime || runtime?.service === "ready");
+  const collection = runtime?.collection ?? "off";
+  const sessionHeading = !session
+    ? "Ready when you are"
+    : session.status === "active"
+      ? "Session in progress"
+      : session.status === "paused"
+        ? "Session paused"
+        : "Session ended";
 
   return (
     <div className="app-shell">
@@ -201,61 +217,40 @@ export function App() {
           })}
         </nav>
 
-        <div className="sidebar-note">
-          <span className="privacy-dot" />
+        <div className={`sidebar-status collection-${collection}`}>
+          <span className="status-dot" aria-hidden="true" />
           <span data-testid="collection-status" role="status">
-            Collection {runtime?.collection ?? "off"}
+            Recording {collectionLabel[collection]}
           </span>
-          <p>
-            {runtime?.collection === "active"
-              ? runtime.filePermission || runtime.browserPermission
-                ? "Approved sources are enabled; see Files and Settings for progress."
-                : "Windows activity recording is enabled."
-              : runtime?.collection === "unavailable"
-                ? "Recording service requires attention."
-                : "No active recording authorization."}
-            <br />
-            {runtime?.assistant.permission
-              ? "Cloud questions approved."
-              : "Cloud approval is off."}
-          </p>
+          {runtime?.assistant.permission && <small>Cloud AI on</small>}
         </div>
 
         <div className="build-label">
-          <ShieldCheckIcon size={15} aria-hidden="true" /> Private by design ·
-          v0.1 beta
+          <ShieldCheckIcon size={15} aria-hidden="true" /> Encrypted on this PC
+          · v0.1 beta
         </div>
       </aside>
 
       <main id="main-content" tabIndex={-1}>
         <header className="page-header">
-          <div>
-            <p className="eyebrow">YOUR WORK, WITH CONTEXT</p>
-            <h1>{page}</h1>
-          </div>
-
-          <span className="badge">
-            {runtime?.synthetic
-              ? "Synthetic verification mode"
-              : "On your device"}
-          </span>
+          <h1>{page}</h1>
+          {runtime?.synthetic && (
+            <span className="badge">Synthetic verification mode</span>
+          )}
         </header>
 
-        <div className="notice secure-summary">
-          <ShieldCheckIcon size={19} aria-hidden="true" />
-          <strong>
-            {!runtime || runtime.service === "starting"
-              ? "Connecting to secure history"
-              : runtime.secureStorage
-                ? "Encrypted local history"
+        {(!runtime ||
+          runtime.service === "starting" ||
+          !runtime.secureStorage) && (
+          <div className="notice secure-summary">
+            <ShieldCheckIcon size={19} aria-hidden="true" />
+            <strong>
+              {!runtime || runtime.service === "starting"
+                ? "Connecting to secure history…"
                 : "Secure storage unavailable"}
-          </strong>
-          <span>
-            {runtime?.assistant.permission
-              ? "Cloud questions approved · Each question needs a sharing review"
-              : "Cloud off · You choose what Rewind remembers"}
-          </span>
-        </div>
+            </strong>
+          </div>
+        )}
 
         {(runtimeError || runtime?.error) && (
           <div className="error" role="alert">
@@ -286,14 +281,7 @@ export function App() {
               aria-labelledby="session-heading"
             >
               <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">SESSION CONTROLS</p>
-                  <h2 id="session-heading">Stay in your flow.</h2>
-                  <p className="session-greeting">
-                    A good place to pick things up.
-                  </p>
-                </div>
-
+                <h2 id="session-heading">{sessionHeading}</h2>
                 <span
                   className={`status status-${session?.status ?? "none"}`}
                   data-testid="session-status"
@@ -305,46 +293,52 @@ export function App() {
 
               <p>
                 {runtime?.automaticRecording
-                  ? "Your approved sources record during active sessions. Pause or End stops capture."
-                  : "Use the one-time setup above to start recording automatically, or use manual source controls below."}
+                  ? "Approved sources record while a session is active."
+                  : "Start a session to record, or use the setup above to start automatically."}
               </p>
 
               <div className="controls" aria-label="Session controls">
-                <button
-                  className="primary"
-                  onClick={() => void run("start")}
-                  disabled={!serviceReady || busy || !canStart}
-                  aria-busy={pendingAction === "start"}
-                >
-                  {pendingAction === "start" ? "Starting..." : "Start session"}
-                </button>
-
-                <button
-                  onClick={() => void run("pause")}
-                  disabled={!ready || busy || status !== "active"}
-
-                  aria-busy={pendingAction === "pause"}
-                >
-                  {pendingAction === "pause" ? "Pausing..." : "Pause"}
-                </button>
-
-                <button
-                  onClick={() => void run("resume")}
-                  disabled={!serviceReady || busy || status !== "paused"}
-
-                  aria-busy={pendingAction === "resume"}
-                >
-                  {pendingAction === "resume" ? "Resuming..." : "Resume"}
-                </button>
-
-                <button
-                  className="end-button"
-                  onClick={() => void run("end")}
-                  disabled={!ready || busy || canStart}
-                  aria-busy={pendingAction === "end"}
-                >
-                  {pendingAction === "end" ? "Ending..." : "End session"}
-                </button>
+                {canStart ? (
+                  <button
+                    className="primary"
+                    onClick={() => void run("start")}
+                    disabled={!serviceReady || busy}
+                    aria-busy={pendingAction === "start"}
+                  >
+                    {pendingAction === "start"
+                      ? "Starting..."
+                      : "Start session"}
+                  </button>
+                ) : (
+                  <>
+                    {status === "paused" ? (
+                      <button
+                        className="primary"
+                        onClick={() => void run("resume")}
+                        disabled={!serviceReady || busy}
+                        aria-busy={pendingAction === "resume"}
+                      >
+                        {pendingAction === "resume" ? "Resuming..." : "Resume"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => void run("pause")}
+                        disabled={!ready || busy}
+                        aria-busy={pendingAction === "pause"}
+                      >
+                        {pendingAction === "pause" ? "Pausing..." : "Pause"}
+                      </button>
+                    )}
+                    <button
+                      className="end-button"
+                      onClick={() => void run("end")}
+                      disabled={!ready || busy}
+                      aria-busy={pendingAction === "end"}
+                    >
+                      {pendingAction === "end" ? "Ending..." : "End session"}
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="session-meta">
@@ -409,14 +403,13 @@ export function App() {
             </div>
 
             <details className="panel" open={!runtime?.automaticRecording}>
-              <summary>Advanced recording controls and exclusions</summary>
+              <summary>Exclusions and manual permission</summary>
               <RecordingPreferences runtime={runtime} />
             </details>
 
             <p className="footnote">
-              Minimize to keep Rewind within reach in the notch. Closing the
-              window ends the session and quits. Automatic recording restarts
-              when you next open Rewind if you enabled it.
+              Minimize to keep Rewind in the notch. Closing the window ends the
+              session and quits Rewind.
             </p>
           </>
         )}
@@ -429,32 +422,17 @@ export function App() {
         {page === "Checkpoints" && <Checkpoints runtime={runtime} />}
 
         {page === "Settings" && (
-          <section className="panel">
-            <h2>Privacy comes first</h2>
+          <div className="settings-stack">
             <RecordingSetup runtime={runtime} />
             <RecordingPreferences runtime={runtime} />
             <BrowserSettings runtime={runtime} />
             <AssistantSettings runtime={runtime} />
-            <div className="notice">
-              <strong>Privacy settings</strong>
-              <span>
-                Recording permission and application exclusions above are saved
-                by the engine. Manage encrypted history below and protected
-                folders in Files.
-              </span>
-            </div>
-
             <StorageManagement runtime={runtime} />
-            <p>
-              Article extraction remains off and unavailable. Gemini requires
-              separate approval and a reviewed question in Search.
-            </p>
-
             <p className="footnote">
-              No keystrokes, clipboard contents, screenshots, or private browser
-              activity is captured. Browser window titles are skipped.
+              Rewind never captures keystrokes, clipboard contents, screenshots,
+              page text or private browsing.
             </p>
-          </section>
+          </div>
         )}
       </main>
     </div>

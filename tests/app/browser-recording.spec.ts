@@ -265,7 +265,7 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Settings", exact: true })
         .click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
-        "Setup not-installed",
+        "Browser connection not set up",
       );
       await appPage
         .getByRole("checkbox", { name: label(browser), exact: true })
@@ -296,7 +296,7 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Confirm setup", exact: true })
         .click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
-        "Setup installed; connection ready",
+        "Browser connection set up, ready",
         { timeout: 60000 },
       );
       const generation = readdirSync(
@@ -375,7 +375,7 @@ for (const [browser, channel, executable] of [
         .click();
       await appPage
         .getByRole("button", {
-          name: "Allow browser activity for this launch",
+          name: "Allow browser activity",
           exact: true,
         })
         .click();
@@ -442,7 +442,7 @@ for (const [browser, channel, executable] of [
         .click();
       await expect(
         appPage.getByText(
-          "Website exclusions saved. Browser approval is off; approve and resume explicitly.",
+          "Website exclusions saved. Browser permission is off; allow it again and resume the session.",
           { exact: true },
         ),
       ).toBeVisible();
@@ -453,7 +453,7 @@ for (const [browser, channel, executable] of [
       expect(await reads()).toBe(paused);
       await appPage
         .getByRole("button", {
-          name: "Allow browser activity for this launch",
+          name: "Allow browser activity",
           exact: true,
         })
         .click();
@@ -575,7 +575,7 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Settings", exact: true })
         .click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
-        "Setup installed; connection ready",
+        "Browser connection set up, ready",
       );
       await expect(
         appPage.getByLabel("Excluded websites (one host per line)"),
@@ -595,7 +595,7 @@ for (const [browser, channel, executable] of [
       await permission(worker, controls, true);
       await appPage
         .getByRole("button", {
-          name: "Allow browser activity for this launch",
+          name: "Allow browser activity",
           exact: true,
         })
         .click();
@@ -627,7 +627,7 @@ for (const [browser, channel, executable] of [
         })
         .toBe(true);
       await expect(appPage.getByTestId("collection-status")).toHaveText(
-        "Collection unavailable",
+        "Recording unavailable",
       );
       const disconnected = await reads();
       await browserPage.goto("http://rewind-fixture.invalid/disconnected");
@@ -677,7 +677,7 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Settings", exact: true })
         .click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
-        "Setup installed; connection ready",
+        "Browser connection set up, ready",
       );
       await appPage
         .getByRole("button", {
@@ -689,7 +689,7 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Confirm removal", exact: true })
         .click();
       await expect(appPage.getByTestId("browser-status")).toContainText(
-        "Setup not-installed; connection off",
+        "Browser connection not set up, off",
         { timeout: 30000 },
       );
     } catch (error) {

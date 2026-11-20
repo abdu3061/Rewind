@@ -6,6 +6,7 @@ import type {
   Result,
   RuntimeSnapshot,
 } from "@rewind/contracts";
+import { HowItWorks } from "./ui";
 
 export function AssistantSettings({
   runtime,
@@ -61,28 +62,29 @@ export function AssistantSettings({
     waiting = busy || state?.busy;
   return (
     <section className="panel" aria-labelledby="assistant-settings-heading">
-      <h2 id="assistant-settings-heading">Optional Gemini questions</h2>
+      <h2 id="assistant-settings-heading">Ask Gemini (optional)</h2>
       <p>
-        Local keyword search works without Gemini. Cloud questions send your
-        reviewed question and selected recorded observations to Google using
-        your Gemini account. Page text, file contents and full file paths are
-        excluded from this feature.
+        Ask questions about activity you pick. You review exactly what's sent to
+        Google before each question. Search works without this.
       </p>
-      <p>
-        Configure your key in a native Windows dialog, using its Password field.
-        Rewind stores it in encrypted local storage. Saving a key grants no
-        cloud permission. Approval expires on app/service restart. Privacy
-        changes and explicit history maintenance revoke approval; evidence
-        changes invalidate its reviews and answers. Changing cloud settings
-        pauses an active recording session; resume explicitly afterward.
-      </p>
-      <p role="status">
-        {state?.configured
-          ? "A Gemini key is configured."
-          : "No Gemini key is configured."}{" "}
+      <HowItWorks>
+        <p>
+          Only your question and the titles and times of items you select are
+          sent, using your own Gemini account. Page text, file contents and full
+          file paths are never sent.
+        </p>
+        <p>
+          Your key is entered in a Windows dialog and stored encrypted on this
+          PC. Saving a key doesn't turn questions on. Permission ends when
+          Rewind restarts or when privacy or history settings change. Changing
+          these settings pauses an active session until you resume it.
+        </p>
+      </HowItWorks>
+      <p role="status" className="hint">
+        {state?.configured ? "Gemini key saved." : "No Gemini key yet."}{" "}
         {state?.permission
-          ? "Cloud questions are approved for this launch."
-          : "Cloud approval is off."}
+          ? "Cloud questions allowed until Rewind restarts."
+          : "Cloud questions are off."}
       </p>
       <div className="controls">
         <button
@@ -97,7 +99,7 @@ export function AssistantSettings({
             disabled={!ready || waiting || !state?.configured}
             onClick={() => void run("allow")}
           >
-            Allow cloud questions for this launch
+            Allow cloud questions
           </button>
         ) : (
           <button
@@ -338,19 +340,17 @@ export function AssistantSearch({
       className="panel assistant-search"
       aria-labelledby="assistant-search-heading"
     >
-      <h3 id="assistant-search-heading">Ask about selected evidence</h3>
+      <h3 id="assistant-search-heading">Ask Gemini about selected items</h3>
       <p>
-        Select up to 12 observations below, then write a question. Preparing a
-        local review sends nothing to Google. Each question needs a separate
-        review and explicit Send. This searches only the evidence you select.
+        Tick up to 12 items below and write a question. Nothing is sent until
+        you review it and press Send.
       </p>
       {!permitted && (
-        <p>
-          Configure Gemini and allow cloud questions in Settings to use this
-          optional feature. Keyword search remains local.
+        <p className="hint">
+          Set up Gemini in Settings to use this. Search itself stays on this PC.
         </p>
       )}
-      <p>{selectedIds.length} observations selected.</p>
+      <p className="hint">{selectedIds.length} of 12 selected.</p>
       <label htmlFor="assistant-question">Question for Gemini</label>
       <textarea
         id="assistant-question"

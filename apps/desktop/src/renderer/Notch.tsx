@@ -621,7 +621,7 @@ export function Notch() {
             )}
           </div>
           <footer className="notch-footer">
-            Recording needs separate launch approvals.{" "}
+            You choose what Rewind records.{" "}
             <button
               onClick={() =>
                 void window.rewind.presentation.send({

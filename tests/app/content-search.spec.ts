@@ -28,7 +28,7 @@ async function selectAndStart(
     .click();
   await page
     .getByRole("button", {
-      name: "Allow file protection for this launch",
+      name: "Allow file protection",
       exact: true,
     })
     .click();
@@ -37,7 +37,7 @@ async function selectAndStart(
     .getByRole("button", { name: "Start session", exact: true })
     .click();
   await expect(page.getByTestId("collection-status")).toHaveText(
-    "Collection active",
+    "Recording on",
     { timeout: 15000 },
   );
   return page;
@@ -72,12 +72,12 @@ test("normal Search finds actual captured bodies, previews and recovers original
       );
     await page.getByRole("button", { name: /Search/ }).click();
     let content = page.getByRole("region", {
-      name: "Captured file text",
+      name: "Inside saved files",
       exact: true,
     });
     await expect(
       content.getByLabel("Captured content index status"),
-    ).toContainText("3 of 3 supported saved versions indexed", {
+    ).toContainText("3 of 3 saved versions searchable", {
       timeout: 25000,
     });
     await page.getByLabel("Search history", { exact: true }).fill(needle);
@@ -163,7 +163,7 @@ test("normal Search finds actual captured bodies, previews and recovers original
     page = await application.firstWindow();
     await page.getByRole("button", { name: /Search/ }).click();
     content = page.getByRole("region", {
-      name: "Captured file text",
+      name: "Inside saved files",
       exact: true,
     });
     await page.getByLabel("Search history", { exact: true }).fill(needle);
@@ -235,7 +235,7 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
       .getByRole("button", { name: "Stop content indexing", exact: true })
       .click();
     await expect(
-      page.getByText(/Automatic content indexing is paused for this launch/),
+      page.getByText(/Automatic indexing is paused until Rewind restarts/),
     ).toBeVisible();
     await selectAndStart(application, folder);
     for (const name of ["ordinary.txt", "encrypted.pdf"])
@@ -284,7 +284,7 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
     ).toBe(true);
     await page.getByRole("button", { name: /Search/ }).click();
     const content = page.getByRole("region", {
-      name: "Captured file text",
+      name: "Inside saved files",
       exact: true,
     });
     await content
@@ -293,7 +293,7 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
     await expect(
       content.getByLabel("Captured content index status"),
     ).toContainText(
-      "1 of 2 supported saved versions indexed; 0 pending; 1 unavailable",
+      "1 of 2 saved versions searchable · 0 waiting · 1 unreadable",
       { timeout: 25000 },
     );
     await content.getByLabel("Retry unavailable documents").check();
@@ -306,7 +306,7 @@ test("normal Search stops automatic content work, explicitly indexes saved histo
     await expect(
       content.getByLabel("Captured content index status"),
     ).toContainText(
-      "1 of 2 supported saved versions indexed; 0 pending; 1 unavailable",
+      "1 of 2 saved versions searchable · 0 waiting · 1 unreadable",
       { timeout: 25000 },
     );
     await expect

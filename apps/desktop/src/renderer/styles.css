@@ -194,6 +194,7 @@ legend {
 nav {
   display: grid;
   gap: 7px;
+  margin-bottom: 24px;
 }
 .nav-item {
   display: flex;
@@ -219,26 +220,44 @@ nav {
   font-size: 10px;
   opacity: 0.7;
 }
-.sidebar-note {
-  color: #d7d3e9;
-  margin: auto 10px 0;
-  padding-top: 45px;
+.sidebar-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 9px;
+  margin: auto 0 0;
+  padding: 10px 12px;
+  border: 1px solid #3c3b58;
+  border-radius: 12px;
+  background: #ffffff08;
+  color: #e4e0f4;
   font-size: 13px;
   font-weight: 600;
 }
-.privacy-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #67798c;
-  margin-right: 8px;
-}
-.sidebar-note p {
+.sidebar-status small {
+  flex-basis: 100%;
+  padding-left: 17px;
   color: #b1aec5;
+  font-size: 11px;
   font-weight: 400;
-  line-height: 1.7;
-  font-size: 12px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6f7290;
+  flex: none;
+}
+.collection-active .status-dot {
+  background: #f2709c;
+  box-shadow: 0 0 0 3px #f2709c33;
+}
+.collection-starting .status-dot,
+.collection-stopping .status-dot {
+  background: #e6b54c;
+}
+.collection-unavailable .status-dot {
+  background: #e05a5a;
 }
 .build-label {
   font-size: 10px;
@@ -332,7 +351,41 @@ p {
   font-size: 23px;
 }
 .status {
-  text-transform: capitalize;
+  display: inline-block;
+}
+.status::first-letter {
+  text-transform: uppercase;
+}
+.panel > p,
+.how-it-works p {
+  max-width: 75ch;
+}
+.how-it-works {
+  margin: 4px 0 8px;
+}
+.how-it-works summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.how-it-works > div {
+  margin-top: 8px;
+  padding: 2px 14px;
+  border-left: 2px solid var(--color-soft);
+}
+.how-it-works p,
+.how-it-works li {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.hint {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.settings-stack > * + * {
+  margin-top: 20px;
 }
 .status-active {
   background: #e7eef9;
@@ -400,19 +453,21 @@ p {
 }
 .empty-state {
   text-align: center;
-  padding: 65px 40px;
+  padding: 36px 24px;
+  margin: 16px 0;
+}
+.empty-state h3 {
+  margin: 12px 0 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 .empty-state p {
-  max-width: 520px;
-  margin: 15px auto 30px;
+  max-width: 420px;
+  margin: 6px auto 0;
 }
-.empty-symbol {
-  background: var(--color-soft);
-  color: var(--color-accent);
-  border-radius: 14px;
-  width: 55px;
-  margin: 0 auto 25px;
-  font-size: 38px;
+.empty-mascot {
+  width: 56px;
+  height: 56px;
 }
 .error {
   border: 1px solid #d3a6a6;
@@ -498,8 +553,8 @@ dd {
     padding-top: 10px;
     padding-bottom: 10px;
   }
-  .sidebar-note {
-    padding-top: 16px;
+  .sidebar-status {
+    padding: 8px 10px;
   }
   .build-label {
     margin-top: 12px;
@@ -625,12 +680,8 @@ dd {
   letter-spacing: -0.9px;
   margin-bottom: 6px;
 }
-.session-greeting {
-  margin: 0;
-  font-size: 13px;
-}
 .session-panel > p {
-  margin-top: 20px;
+  margin-top: 8px;
   max-width: 570px;
 }
 .card-icon {

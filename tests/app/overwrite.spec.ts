@@ -32,7 +32,7 @@ test("explicit overwrite preserves current bytes, rejects intervening changes an
       .click();
     await page
       .getByRole("button", {
-        name: "Allow file protection for this launch",
+        name: "Allow file protection",
         exact: true,
       })
       .click();
@@ -41,7 +41,7 @@ test("explicit overwrite preserves current bytes, rejects intervening changes an
       .getByRole("button", { name: "Start session", exact: true })
       .click();
     await expect(page.getByTestId("collection-status")).toHaveText(
-      "Collection active",
+      "Recording on",
       { timeout: 15000 },
     );
     await page.getByRole("button", { name: "Files", exact: true }).click();
