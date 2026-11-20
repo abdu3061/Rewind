@@ -375,6 +375,24 @@ try {
     ],
     { windowsHide: true, timeout: 5000 },
   );
+  // ADR 0042: the window's close button keeps Rewind running in the notch.
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  assert.equal(exited, false, "Window close quit instead of minimizing");
+  assert.equal(
+    (await readFile(logPath, "utf8")).includes('"DESKTOP_STOPPED"'),
+    false,
+    "Window close stopped the desktop",
+  );
+  // An explicit quit still performs the acknowledged shutdown.
+  await promisify(execFile)(
+    executable,
+    [`--rewind-fixture-root=${profile}`, "--quit"],
+    {
+      windowsHide: true,
+      timeout: 15000,
+      env: { ...process.env, APPDATA: profile, LOCALAPPDATA: profile },
+    },
+  );
   const code = await Promise.race([
     closed,
     new Promise((_, reject) => {

@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { SessionAction, SessionState } from "@rewind/contracts";
-import {
-  RecordedHistory,
-  RecordingPreferences,
-  useRecordingRuntime,
-} from "./recording";
+import { RecordedHistory, useRecordingRuntime } from "./recording";
 
 import { Files } from "./files";
+import { SourcesPanel } from "./sources";
 import { Checkpoints } from "./checkpoints";
 import { RecentOverview } from "./home";
 import { Settings, type SettingsTab } from "./settings";
@@ -366,9 +363,13 @@ export function App() {
               </div>
             </section>
 
-            {!runtime?.automaticRecording && (
-              <RecordingPreferences runtime={runtime} compact />
-            )}
+            <SourcesPanel
+              runtime={runtime}
+              onGo={(target, tab) => {
+                if (tab) setSettingsTab(tab);
+                setPage(target);
+              }}
+            />
 
             <RecentOverview
               runtime={runtime}
@@ -385,8 +386,9 @@ export function App() {
             {!needsSetup && <RecordingSetup runtime={runtime} />}
 
             <p className="footnote">
-              Minimize to keep Rewind in the notch. Closing the window ends the
-              session and quits Rewind.
+              Closing this window keeps Rewind running in the notch. To stop
+              recording, end the session; to quit, use Quit Rewind in the tray
+              menu.
             </p>
           </div>
         )}

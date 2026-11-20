@@ -314,21 +314,7 @@ export function Files({
           className="panel files-list"
           aria-labelledby="versions-heading"
         >
-          <header className="panel-toolbar">
-            <h2 id="versions-heading">Saved file versions</h2>
-            <button
-              className="ghost"
-              disabled={busy || !readable}
-              onClick={() => {
-                older.current = false;
-                void refresh(true).catch(() =>
-                  setError("Captured versions could not be refreshed."),
-                );
-              }}
-            >
-              Refresh
-            </button>
-          </header>
+          <h2 id="versions-heading">Saved file versions</h2>
           {!versions.length && (
             <EmptyState title="No saved versions yet">
               Versions appear here when protected files change while you're

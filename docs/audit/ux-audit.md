@@ -233,3 +233,11 @@ Each phase should be its own feature branch and PR into `main`, with `npm run ty
 - **Timeline** keeps a small "Filter text" box in its filter bar; Search is the search-first page.
 - **Search** stacks results ("Inside saved files", then activity) instead of using tabs, so both are visible after one search. The Gemini block collapses to one line until Gemini is allowed, and the per-row selection boxes only appear once it is.
 - **Files** shows the version list and the preview side by side from 1100 px wide; narrower windows stack them and scroll the preview into view.
+
+**Phase 3 (done, `feature/ux-phase3-flows`):** items 7, 11, 13 and 19, recorded in ADRs 0042 and 0043.
+
+- **Close button (19):** closing the window now minimizes Rewind to the notch. Quit is in the tray menu, or run `Rewind.exe --quit`. The release smoke and installer acceptance scripts were updated to match.
+- **Sources (7):** one Recording sources card on Home shows the status of every source, with inline Allow/Revoke for Windows activity and Manage links for the rest. It replaces the compact Windows-activity card from Phase 2.
+- **Checkpoints (11):** Save checkpoint saves everything from the chosen session by default; Choose items… opens the picker.
+- **Live lists (13):** the Refresh buttons in Files and Checkpoints are gone; the lists update themselves.
+- **Deferred:** item 17 (exclusion chips with a folder picker) needs a new native dialog command over IPC, so it waits for a security review. Item 14 was mostly covered in Phase 2.

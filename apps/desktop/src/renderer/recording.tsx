@@ -48,16 +48,11 @@ export function useRecordingRuntime() {
   return { runtime, runtimeError: error };
 }
 
-/**
- * Windows activity permission. `compact` shows only allow/revoke and status,
- * reusing the saved exclusions; the full form also edits exclusions.
- */
+/** Windows activity permission and exclusions (Settings › Recording). */
 export function RecordingPreferences({
   runtime,
-  compact = false,
 }: {
   runtime: RuntimeSnapshot | null;
-  compact?: boolean;
 }) {
   const exclusions = runtime?.preferences.excludedApplications.join("\n") ?? "";
   const [draft, setDraft] = useState(exclusions);
@@ -104,80 +99,73 @@ export function RecordingPreferences({
   const allowed = runtime?.preferences.collectionConsent ?? false;
   return (
     <section
-      className={`panel recording-preferences${compact ? " compact" : ""}`}
+      className="panel recording-preferences"
       aria-labelledby="recording-heading"
     >
       <h2 id="recording-heading">Windows activity</h2>
       <p>
         Records app names, window titles and times while a session is active.
         Titles can contain sensitive information.
-        {compact && " Manage exclusions in Settings."}
       </p>
-      {!compact && (
-        <>
-          <HowItWorks>
-            <p>
-              {runtime?.automaticRecording
-                ? "Automatic recording remembers this permission. Saving exclusions briefly pauses capture, then an active session continues."
-                : "Manual permission lasts until Rewind or its recording service restarts. Changing these settings pauses an active session until you resume it."}
-            </p>
-            <p>
-              Rewind itself, browser windows and excluded apps are always
-              skipped. Records stay encrypted on this Windows account. Browser
-              activity is set up separately in Settings.
-            </p>
-          </HowItWorks>
-          <label htmlFor="application-exclusions">
-            Excluded applications (one name per line)
-          </label>
-          <textarea
-            id="application-exclusions"
-            rows={3}
-            maxLength={256000}
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setSaved(false);
-            }}
-            placeholder="Example: private-editor.exe"
-          />
-          <p className="hint">
-            Up to 200 apps. Capitals and the .exe ending don't matter.
-          </p>
-          <label htmlFor="file-exclusions">
-            Excluded files or folders (one full path per line)
-          </label>
-          <textarea
-            id="file-exclusions"
-            rows={3}
-            maxLength={262144}
-            value={fileDraft}
-            onChange={(event) => {
-              setFileDraft(event.target.value);
-              setSaved(false);
-            }}
-            placeholder={"C:\\Users\\YourName\\Documents\\Private"}
-          />
-          <p className="hint">
-            Stops future capture and search indexing. History already saved
-            stays until it expires or you delete it.
-          </p>
-        </>
-      )}
+      <HowItWorks>
+        <p>
+          {runtime?.automaticRecording
+            ? "Automatic recording remembers this permission. Saving exclusions briefly pauses capture, then an active session continues."
+            : "Manual permission lasts until Rewind or its recording service restarts. Changing these settings pauses an active session until you resume it."}
+        </p>
+        <p>
+          Rewind itself, browser windows and excluded apps are always skipped.
+          Records stay encrypted on this Windows account. Browser activity is
+          set up separately in Settings.
+        </p>
+      </HowItWorks>
+      <label htmlFor="application-exclusions">
+        Excluded applications (one name per line)
+      </label>
+      <textarea
+        id="application-exclusions"
+        rows={3}
+        maxLength={256000}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setSaved(false);
+        }}
+        placeholder="Example: private-editor.exe"
+      />
+      <p className="hint">
+        Up to 200 apps. Capitals and the .exe ending don't matter.
+      </p>
+      <label htmlFor="file-exclusions">
+        Excluded files or folders (one full path per line)
+      </label>
+      <textarea
+        id="file-exclusions"
+        rows={3}
+        maxLength={262144}
+        value={fileDraft}
+        onChange={(event) => {
+          setFileDraft(event.target.value);
+          setSaved(false);
+        }}
+        placeholder={"C:\\Users\\YourName\\Documents\\Private"}
+      />
+      <p className="hint">
+        Stops future capture and search indexing. History already saved stays
+        until it expires or you delete it.
+      </p>
       <div className="controls">
-        {!compact && (
-          <button
-            disabled={busy || runtime?.service !== "ready"}
-            onClick={() => void update(allowed)}
-          >
-            Save exclusions
-          </button>
-        )}
+        <button
+          disabled={busy || runtime?.service !== "ready"}
+          onClick={() => void update(allowed)}
+        >
+          Save exclusions
+        </button>
         {!allowed && (
           <button
             className="primary"
             disabled={busy || runtime?.service !== "ready"}
-            onClick={() => void update(true, compact)}
+            onClick={() => void update(true)}
           >
             Allow Windows activity
           </button>
@@ -195,7 +183,7 @@ export function RecordingPreferences({
       <p role="status">
         {busy
           ? "Saving preferences..."
-          : saved && !compact
+          : saved
             ? runtime?.automaticRecording
               ? "Exclusions saved. Recording continues."
               : "Saved. Resume the session to continue recording."

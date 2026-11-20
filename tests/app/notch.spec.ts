@@ -558,12 +558,26 @@ test("notch session, recall and reviewed checkpoint actions use the same encrypt
     expect(resumed.ok && resumed.value.session?.id).toEqual(
       session.ok && session.value.session?.id,
     );
-    const exited = application.waitForEvent("close");
+    // The window's close button keeps Rewind running in the notch (ADR 0042).
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
         .find((window) => window.getTitle() === "Rewind")
         ?.close(),
     );
+    await expect
+      .poll(() =>
+        application.evaluate(
+          ({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()
+              .find((window) => window.getTitle() === "Rewind")
+              ?.isMinimized() ?? false,
+        ),
+      )
+      .toBe(true);
+    await expect(desktop.getByTestId("session-status")).toHaveText("active");
+    // Quitting (the tray's "Quit Rewind") still ends the session.
+    const exited = application.waitForEvent("close");
+    await application.evaluate(({ app }) => app.quit());
     await exited;
     application = await launchVerificationApp(profile);
     desktop = await application.firstWindow();

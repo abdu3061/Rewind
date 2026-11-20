@@ -44,6 +44,9 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
       ),
     ).toMatchObject({ ok: true });
     await page.getByRole("button", { name: /Checkpoints/ }).click();
+    await page
+      .getByRole("button", { name: "Choose items…", exact: true })
+      .click();
     await expect(
       page.getByRole("group", { name: "Recorded activity (0 selected)" }),
     ).toContainText("checkpoint.txt · updated");
@@ -154,6 +157,65 @@ test("named checkpoints pin actual captured bytes/activity, survive deletion/res
     });
     expect(readFileSync(path.join(folder, "checkpoint.txt"), "utf8")).toBe(
       text,
+    );
+  } finally {
+    await application.close();
+  }
+});
+
+test("quick save bookmarks everything recorded in the session without picking items", async ({
+  profile,
+}) => {
+  test.setTimeout(60000);
+  const folder = path.join(profile, "protected");
+  mkdirSync(folder);
+  writeFileSync(path.join(folder, "quick.txt"), "SyntheticQuickCheckpoint7731");
+  const application = await launchVerificationApp(profile);
+  try {
+    const page = await application.firstWindow();
+    await application.evaluate(({ dialog }, selected) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [selected],
+      });
+    }, folder);
+    const setup = await page.evaluate(async () => {
+      const api = (window as unknown as { rewind: DesktopApi }).rewind;
+      return [
+        await api.files.selectFolder(),
+        await api.files.permission(true),
+        await api.sessions.start(),
+      ];
+    });
+    expect(setup.every((result) => result.ok)).toBe(true);
+    writeFileSync(
+      path.join(folder, "quick.txt"),
+      "SyntheticQuickCheckpoint7731",
+    );
+    await page.getByRole("button", { name: /Files/ }).click();
+    await expect(page.getByTestId("captured-version")).toHaveCount(1, {
+      timeout: 15000,
+    });
+    await page.getByRole("button", { name: /Checkpoints/ }).click();
+    await expect(page.getByText(/^Saves 1 file version and /)).toBeVisible();
+    // The item picker stays closed for a quick save.
+    await expect(
+      page.getByRole("group", { name: /Recorded activity/ }),
+    ).toHaveCount(0);
+    await page
+      .getByLabel("Checkpoint name", { exact: true })
+      .fill("Quick synthetic checkpoint");
+    await page
+      .getByRole("button", { name: "Save checkpoint", exact: true })
+      .click();
+    await expect(
+      page.getByText("Checkpoint saved.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByTestId("saved-checkpoint")).toContainText(
+      "Quick synthetic checkpoint",
+    );
+    await expect(page.getByTestId("saved-checkpoint")).toContainText(
+      "1 file ·",
     );
   } finally {
     await application.close();

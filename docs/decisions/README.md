@@ -1,5 +1,9 @@
 # Architecture decisions
 
+[ADR 0043](0043-sources-list-and-quick-checkpoints.md) gathers recording permissions into one Recording sources list on Home and makes Save checkpoint a one-step quick save, with the item picker behind Choose items. Presentation only; no consent-rule changes.
+
+[ADR 0042](0042-window-close-minimizes-to-notch.md) makes the window close button minimize to the notch; Quit (tray or `Rewind.exe --quit`) and Windows log-off keep the acknowledged shutdown.
+
 [ADR 0041](0041-change-only-file-capture.md) removes existing-file imports and periodic body rereads, adds bounded native notifications and cross-run identical-content deduplication, and records performance/lifecycle verification.
 
 [ADR 0040](0040-file-backups-and-session-activity.md) distinguishes recovery backups from default Timeline activity, preserves explicit search/history access and accurately classifies newly observed active-run saves.

@@ -124,6 +124,9 @@ test("real captured DOCX/PDF previews are escaped, recover original bytes and su
     });
     await page.getByRole("button", { name: /Checkpoints/ }).click();
     await page
+      .getByRole("button", { name: "Choose items…", exact: true })
+      .click();
+    await page
       .getByLabel("Checkpoint name", { exact: true })
       .fill("Synthetic document checkpoint 72641");
     await page

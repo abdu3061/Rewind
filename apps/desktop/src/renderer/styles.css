@@ -390,12 +390,6 @@ p {
 .stack > .recording-preferences {
   margin-top: 20px;
 }
-.recording-preferences.compact h2 {
-  margin-bottom: 4px;
-}
-.recording-preferences.compact .controls {
-  margin-top: 12px;
-}
 /* Settings tabs */
 .tabs {
   display: flex;
@@ -576,6 +570,42 @@ p {
 }
 .files-detail h2 {
   overflow-wrap: anywhere;
+}
+/* Recording sources */
+.source-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.source-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+  min-width: 0;
+}
+.source-list li > svg {
+  flex: none;
+  color: #7c6cb4;
+}
+.source-list button {
+  flex: none;
+  padding: 8px 14px;
+}
+.chip {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 4px 10px;
+  background: var(--color-soft);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.chip.on {
+  background: #fde8ef;
+  color: #a3285a;
 }
 /* Home overview */
 .overview-grid {

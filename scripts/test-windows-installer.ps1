@@ -45,6 +45,11 @@ function Close-InstalledDesktop {
   } 'INSTALLED_DESKTOP_NOT_READY'
   $desktop = @(Get-Process Rewind -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and $_.MainWindowHandle -ne 0 })
   if ($desktop.Count -ne 1 -or !$desktop[0].CloseMainWindow()) { throw 'INSTALLED_DESKTOP_CLOSE_NOT_ACKNOWLEDGED' }
+  # ADR 0042: newer builds keep running in the notch on window close; ask the running instance to quit.
+  Start-Sleep -Seconds 3
+  if (Get-Process -Id $desktop[0].Id -ErrorAction SilentlyContinue) {
+    Start-Process -FilePath $desktop[0].Path -ArgumentList '--quit' -WindowStyle Hidden | Out-Null
+  }
   Wait-Condition { !(Get-Process Rewind -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase) }) } 'INSTALLED_DESKTOP_DID_NOT_EXIT' 30
   if (![IO.File]::ReadAllText($log).Contains('DESKTOP_STOPPED')) { throw 'INSTALLED_DESKTOP_SHUTDOWN_NOT_ACKNOWLEDGED' }
 }

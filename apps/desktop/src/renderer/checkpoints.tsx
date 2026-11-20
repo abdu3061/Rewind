@@ -46,7 +46,8 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]),
     [selectedActivities, setSelectedActivities] = useState<string[]>([]);
   const [name, setName] = useState(""),
-    [kept, setKept] = useState(true);
+    [kept, setKept] = useState(true),
+    [choosing, setChoosing] = useState(false);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]),
     [view, setView] = useState<CheckpointView | null>(null);
   const [storedPreview, setPreview] = useState<VersionPreview | null>(null),
@@ -95,6 +96,20 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
       setMoreCheckpoints(result.value.length === 50);
     } else setError(result.error.message);
   }
+  // Keep the list current when history changes elsewhere (for example a
+  // checkpoint saved from the notch, or cleanup). Only the first page reloads.
+  const historyStamp = `${runtime?.documentAuthority.generation ?? ""}:${runtime?.documentAuthority.revision ?? ""}`;
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    if (!readable) return;
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      return;
+    }
+    void loadCheckpoints().catch(() => undefined);
+    // loadCheckpoints only reads state through the latest render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyStamp, readable]);
   useEffect(() => {
     live.current = true;
     evidenceSerial.current++;
@@ -256,6 +271,11 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
     }
     return result;
   }
+  // Quick save takes everything loaded for the session, within the engine limits.
+  const quickFiles = versions.slice(0, 100).map((item) => item.version.id);
+  const quickActivities = activities.slice(0, 200).map((event) => event.id);
+  const fileVersionIds = choosing ? selectedFiles : quickFiles;
+  const activityIds = choosing ? selectedActivities : quickActivities;
   if (!readable)
     return (
       <section className="panel">
@@ -328,12 +348,6 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
             Load older sessions
           </button>
         )}
-        <button
-          disabled={busy || !sessionId}
-          onClick={() => setEvidenceRefresh((current) => current + 1)}
-        >
-          Reload items
-        </button>
         <label htmlFor="checkpoint-name">Checkpoint name</label>
         <input
           id="checkpoint-name"
@@ -351,85 +365,117 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
           />{" "}
           Keep this checkpoint (skip automatic cleanup)
         </label>
-        <fieldset disabled={busy}>
-          <legend>File versions ({selectedFiles.length} selected)</legend>
-          {!versions.length && (
-            <p className="hint">No saved file versions in this session.</p>
-          )}
-          <div className="evidence-picker">
-            {versions.map((item) => (
-              <label key={item.version.id}>
-                <input
-                  type="checkbox"
-                  aria-label={`Select version ${item.displayName} ${item.version.capturedAt} from ${item.sourceLabel}`}
-                  checked={selectedFiles.includes(item.version.id)}
-                  disabled={
-                    !selectedFiles.includes(item.version.id) &&
-                    selectedFiles.length >= 100
-                  }
-                  onChange={(event) =>
-                    setSelectedFiles((current) =>
-                      event.target.checked
-                        ? [...current, item.version.id]
-                        : current.filter((id) => id !== item.version.id),
-                    )
-                  }
-                />{" "}
-                {item.displayName} · {time(item.version.capturedAt)} ·{" "}
-                {formatBytes(item.version.byteLength)}
-                <span className="content-hash"> · {item.sourceLabel}</span>
-              </label>
-            ))}
-          </div>
-          {moreFiles && (
-            <button onClick={() => void run(() => olderEvidence(true))}>
-              Load older file versions
+        {!choosing && (
+          <p className="hint">
+            {quickFiles.length + quickActivities.length
+              ? `Saves ${plural(quickFiles.length, "file version")} and ${plural(quickActivities.length, "activity", "activities")} from this session${moreFiles || moreActivities ? " (the most recent ones)" : ""}.`
+              : "Nothing has been recorded in this session yet."}
+          </p>
+        )}
+        <div className="controls inline-controls">
+          <button
+            type="button"
+            className="ghost"
+            aria-expanded={choosing}
+            disabled={busy || !sessionId}
+            onClick={() => setChoosing((current) => !current)}
+          >
+            {choosing ? "Save everything instead" : "Choose items…"}
+          </button>
+          {choosing && (
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !sessionId}
+              onClick={() => setEvidenceRefresh((current) => current + 1)}
+            >
+              Reload items
             </button>
           )}
-        </fieldset>
-        <fieldset disabled={busy}>
-          <legend>
-            Recorded activity ({selectedActivities.length} selected)
-          </legend>
-          {!activities.length && (
-            <p className="hint">No recorded activity in this session.</p>
-          )}
-          <div className="evidence-picker">
-            {activities.map((event) => (
-              <label key={event.id}>
-                <input
-                  type="checkbox"
-                  aria-label={`Select activity ${event.id}`}
-                  checked={selectedActivities.includes(event.id)}
-                  disabled={
-                    !selectedActivities.includes(event.id) &&
-                    selectedActivities.length >= 200
-                  }
-                  onChange={(input) =>
-                    setSelectedActivities((current) =>
-                      input.target.checked
-                        ? [...current, event.id]
-                        : current.filter((id) => id !== event.id),
-                    )
-                  }
-                />{" "}
-                {time(event.occurredAt)} · {label(event)}
-              </label>
-            ))}
-          </div>
-          {moreActivities && (
-            <button onClick={() => void run(() => olderEvidence(false))}>
-              Load older activity
-            </button>
-          )}
-        </fieldset>
+        </div>
+        {choosing && (
+          <>
+            <fieldset disabled={busy}>
+              <legend>File versions ({selectedFiles.length} selected)</legend>
+              {!versions.length && (
+                <p className="hint">No saved file versions in this session.</p>
+              )}
+              <div className="evidence-picker">
+                {versions.map((item) => (
+                  <label key={item.version.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select version ${item.displayName} ${item.version.capturedAt} from ${item.sourceLabel}`}
+                      checked={selectedFiles.includes(item.version.id)}
+                      disabled={
+                        !selectedFiles.includes(item.version.id) &&
+                        selectedFiles.length >= 100
+                      }
+                      onChange={(event) =>
+                        setSelectedFiles((current) =>
+                          event.target.checked
+                            ? [...current, item.version.id]
+                            : current.filter((id) => id !== item.version.id),
+                        )
+                      }
+                    />{" "}
+                    {item.displayName} · {time(item.version.capturedAt)} ·{" "}
+                    {formatBytes(item.version.byteLength)}
+                    <span className="content-hash"> · {item.sourceLabel}</span>
+                  </label>
+                ))}
+              </div>
+              {moreFiles && (
+                <button onClick={() => void run(() => olderEvidence(true))}>
+                  Load older file versions
+                </button>
+              )}
+            </fieldset>
+            <fieldset disabled={busy}>
+              <legend>
+                Recorded activity ({selectedActivities.length} selected)
+              </legend>
+              {!activities.length && (
+                <p className="hint">No recorded activity in this session.</p>
+              )}
+              <div className="evidence-picker">
+                {activities.map((event) => (
+                  <label key={event.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select activity ${event.id}`}
+                      checked={selectedActivities.includes(event.id)}
+                      disabled={
+                        !selectedActivities.includes(event.id) &&
+                        selectedActivities.length >= 200
+                      }
+                      onChange={(input) =>
+                        setSelectedActivities((current) =>
+                          input.target.checked
+                            ? [...current, event.id]
+                            : current.filter((id) => id !== event.id),
+                        )
+                      }
+                    />{" "}
+                    {time(event.occurredAt)} · {label(event)}
+                  </label>
+                ))}
+              </div>
+              {moreActivities && (
+                <button onClick={() => void run(() => olderEvidence(false))}>
+                  Load older activity
+                </button>
+              )}
+            </fieldset>
+          </>
+        )}
         <button
           className="primary"
           disabled={
             busy ||
             !name.trim() ||
             !sessionId ||
-            selectedFiles.length + selectedActivities.length === 0
+            fileVersionIds.length + activityIds.length === 0
           }
           onClick={() =>
             void run(async () => {
@@ -437,8 +483,8 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
                 sessionId,
                 name,
                 kept,
-                fileVersionIds: selectedFiles,
-                activityIds: selectedActivities,
+                fileVersionIds,
+                activityIds,
               });
               if (live.current && result.ok) {
                 setName("");
@@ -461,17 +507,6 @@ export function Checkpoints({ runtime }: { runtime: RuntimeSnapshot | null }) {
       </section>
       <section className="panel" aria-labelledby="saved-checkpoints-heading">
         <h2 id="saved-checkpoints-heading">Saved checkpoints</h2>
-        <button
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await loadCheckpoints();
-              return { ok: true, value: true };
-            })
-          }
-        >
-          Refresh checkpoints
-        </button>
         {!checkpoints.length && (
           <EmptyState title="No checkpoints yet">
             Save one above, or from the notch while you work.

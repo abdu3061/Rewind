@@ -509,6 +509,9 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Checkpoints", exact: true })
         .click();
       await appPage
+        .getByRole("button", { name: "Choose items…", exact: true })
+        .click();
+      await appPage
         .getByLabel("Checkpoint name", { exact: true })
         .fill(`Kept packaged browser ${browser}`);
       await appPage

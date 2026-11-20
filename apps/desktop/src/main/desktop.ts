@@ -66,7 +66,13 @@ const operationalLog = new OperationalLog(
 );
 operationalLog.write("DESKTOP_STARTING");
 let lastService: string | null = null;
-app.on("second-instance", () => {
+app.on("second-instance", (_event, argv) => {
+  // `Rewind.exe --quit` asks the running instance for its normal acknowledged
+  // shutdown, since the window's close button now keeps Rewind in the notch.
+  if (argv.includes("--quit")) {
+    app.quit();
+    return;
+  }
   notch?.open();
 });
 const applicationIcon = path.join(
@@ -128,6 +134,8 @@ const sessions = createBackend({
   },
 });
 let mainWindow: BrowserWindow | null = null;
+/** Set once an explicit quit begins; until then the window's close button keeps Rewind in the notch (ADR 0042). */
+let quitting = false;
 let notch: NotchWindow | null = null;
 let trayWindows: ReturnType<typeof trayPresentation> | null = null;
 const nativeCredentialPrompt = new NativeCredentialPrompt(() => {
@@ -289,6 +297,18 @@ async function createWindow(): Promise<void> {
       app.quit();
     });
   });
+  mainWindow.on("close", (event) => {
+    // The close button minimizes to the notch; quitting happens from the tray.
+    if (quitting) return;
+    event.preventDefault();
+    mainWindow?.minimize();
+  });
+  // Never hold up Windows log-off, restart or shutdown.
+  const endingSession = () => {
+    quitting = true;
+  };
+  mainWindow.on("query-session-end", endingSession);
+  mainWindow.on("session-end", endingSession);
   mainWindow.on("restore", () => notch?.hide());
   mainWindow.on("move", () => notch?.rememberDesktopDisplay());
   mainWindow.on("resize", () => notch?.rememberDesktopDisplay());
@@ -488,5 +508,8 @@ const quitGuard = new QuitGuard({
     );
   },
 });
-app.on("before-quit", (event) => quitGuard.beforeQuit(event));
+app.on("before-quit", (event) => {
+  quitting = true;
+  quitGuard.beforeQuit(event);
+});
 app.on("window-all-closed", () => app.quit());
