@@ -419,6 +419,9 @@ test("minimize, hover, keyboard, restore and single-instance activation preserve
 test("notch session, recall and reviewed checkpoint actions use the same encrypted worker", async ({
   profile,
 }) => {
+  // Hosted CI runners persist the synthetic activity backlog several times
+  // more slowly than a developer machine.
+  test.setTimeout(90000);
   let application = await launchVerificationApp(profile);
   try {
     let desktop = await application.firstWindow();
@@ -444,7 +447,7 @@ test("notch session, recall and reviewed checkpoint actions use the same encrypt
           );
           return result.ok ? result.value.length : 0;
         },
-        { timeout: 12000 },
+        { timeout: 45000 },
       )
       .toBeGreaterThanOrEqual(55);
     const session = await desktop.evaluate(() =>
