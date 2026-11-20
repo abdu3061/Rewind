@@ -1,6 +1,8 @@
-# Rewind 0.1.0-beta.1 for Windows x64
+# Rewind 0.1.0-beta.2 for Windows x64
 
 Rewind is an early evaluation beta for local work-session history and saved-file recovery. This release is unsigned. Windows may show a publisher/trust warning; use only the download from the team's GitHub release, check its SHA-256 value, and follow your organization's software policy.
+
+This update replaces the generic installer animation with a compact Rewind setup screen, clear installation/first-launch text and matching application icons. Open Rewind from the installed Desktop or Start Menu shortcut after setup; running `Rewind-Setup.exe` again starts installation again.
 
 ## Install and start
 

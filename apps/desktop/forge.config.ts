@@ -67,6 +67,11 @@ const config: ForgeConfig = {
       description: "Local, consent-driven work-session memory and recovery.",
       setupExe: "Rewind-Setup.exe",
       setupIcon: path.join(desktopDirectory, "assets", "rewind.ico"),
+      loadingGif: path.join(desktopDirectory, "assets", "installer.gif"),
+      // Keep the installed-app identity consistent instead of Squirrel's Electron icon.
+      iconUrl:
+        "https://raw.githubusercontent.com/abdu3061/Rewind/v0.1.0-beta.1/apps/desktop/assets/rewind.ico",
+      title: "Rewind",
       noMsi: true,
       noDelta: true,
       ...(windowsSign ? { windowsSign } : {}),

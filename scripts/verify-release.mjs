@@ -244,13 +244,18 @@ await inspectZip(files[2]);
 
 // Read the bootstrapper's embedded package without executing or installing it.
 // This catches a stale Setup.exe even when the neighboring NuGet/ZIP are current.
-for (const payload of [files[2], files[3]]) {
+for (const [payload, embeddedName] of [
+  [files[2], path.basename(files[2])],
+  [files[3], path.basename(files[3])],
+  [path.resolve("apps/desktop/assets/installer.gif"), "background.gif"],
+  [path.resolve("apps/desktop/assets/rewind.ico"), "setupIcon.ico"],
+]) {
   const expectedBytes = (await stat(payload)).size;
   const expectedHash = await hash(payload);
   await new Promise((resolve, reject) => {
     const extractor = spawn(
       path.resolve("node_modules/electron-winstaller/vendor/7z-x64.exe"),
-      ["x", "-so", "-bd", "-y", files[1], path.basename(payload)],
+      ["x", "-so", "-bd", "-y", files[1], embeddedName],
       { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
     );
     const value = createHash("sha256");

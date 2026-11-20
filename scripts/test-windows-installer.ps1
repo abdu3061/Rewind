@@ -29,7 +29,9 @@ function Wait-Condition([scriptblock]$condition, [string]$failure, [int]$seconds
   throw $failure
 }
 function Run-InstallerTool([string]$file, [string[]]$arguments) {
-  $process = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
+  $launch = @{ FilePath=$file; PassThru=$true; WindowStyle='Hidden' }
+  if ($arguments.Count) { $launch.ArgumentList=$arguments } else { $launch.WindowStyle='Normal' }
+  $process = Start-Process @launch
   if (!$process.WaitForExit(120000)) { throw 'INSTALLER_TOOL_TIMEOUT' }
   if ($process.ExitCode -ne 0) { throw 'INSTALLER_TOOL_FAILED' }
 }
@@ -69,15 +71,13 @@ try {
   Expand-Archive -LiteralPath (Join-Path $work $zip.name) -DestinationPath $portable
   if (!(Test-Path -LiteralPath (Join-Path $portable 'Rewind.exe'))) { throw 'PORTABLE_BETA_LAYOUT_INVALID' }
   Record-Step 'DOWNLOADED_PUBLISHED_BYTES_VERIFIED'
-  Run-InstallerTool $installer @('--silent')
+  # Exercise the user-visible setup and its automatic first-launch handoff.
+  Run-InstallerTool $installer @()
   Wait-Condition { (Test-Path -LiteralPath (Join-Path $installRoot 'Update.exe')) -and @(Get-ChildItem -LiteralPath $installRoot -Directory -Filter 'app-*').Count -eq 1 } 'INSTALLATION_LAYOUT_MISSING'
   $applicationDirectory = @(Get-ChildItem -LiteralPath $installRoot -Directory -Filter 'app-*')[0].FullName
   foreach ($relative in @('Rewind.exe','resources/app.asar','resources/browser/assets.json','resources/notices/inventory.json','resources/release/build.json')) {
     if ((Get-FileHash -LiteralPath (Join-Path $applicationDirectory $relative) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $portable $relative) -Algorithm SHA256).Hash) { throw 'INSTALLED_PAYLOAD_DIFFERS_FROM_VERIFIED_ARCHIVE' }
   }
-  # Squirrel's silent install skips first-run launch. Show the actual GUI under
-  # test on the disposable VM so normal window-close acknowledgement is observable.
-  Start-Process -FilePath (Join-Path $applicationDirectory 'Rewind.exe') -WindowStyle Normal | Out-Null
   Close-InstalledDesktop
   $history = Join-Path $profile 'secure/history.sqlite'
   $key = Join-Path $profile 'secure/history.key'
@@ -90,7 +90,16 @@ try {
   $shortcutRoots = @([Environment]::GetFolderPath('DesktopDirectory'),[Environment]::GetFolderPath('StartMenu'))
   $shortcuts = @($shortcutRoots | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter 'Rewind.lnk' -File -Recurse -ErrorAction SilentlyContinue })
   if ($shortcuts.Count -lt 2) { throw 'INSTALLER_SHORTCUTS_MISSING' }
+  $installedIcon = (Get-ItemProperty -LiteralPath $registry).DisplayIcon
+  if (!$installedIcon -or !(Test-Path -LiteralPath $installedIcon)) { throw 'INSTALLED_BRAND_ICON_MISSING' }
+  $expectedIcon = Join-Path (Get-Location) 'apps/desktop/assets/rewind.ico'
+  if ((Get-FileHash -LiteralPath $installedIcon -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $expectedIcon -Algorithm SHA256).Hash) { throw 'INSTALLED_BRAND_ICON_DIFFERS' }
   Record-Step 'CLEAN_INSTALL_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED'
+  $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcuts[0].FullName)
+  if ($shortcut.Arguments -notmatch '--processStart\s+"?Rewind\.exe"?' -or $shortcut.Arguments -match '--install') { throw 'INSTALLED_SHORTCUT_RESTARTS_SETUP' }
+  Start-Process -FilePath $shortcuts[0].FullName -WindowStyle Normal | Out-Null
+  Close-InstalledDesktop
+  Record-Step 'BRANDED_ICON_AND_NORMAL_SHORTCUT_LAUNCH_PASSED'
   Run-InstallerTool (Join-Path $installRoot 'Update.exe') @('--uninstall','--silent')
   Wait-Condition { !(Test-Path -LiteralPath (Join-Path $applicationDirectory 'Rewind.exe')) -and !(Test-Path -LiteralPath $registry) } 'UNINSTALL_DID_NOT_REMOVE_APPLICATION'
   foreach ($shortcut in $shortcuts) { if (Test-Path -LiteralPath $shortcut.FullName) { throw 'UNINSTALL_SHORTCUT_REMAINS' } }

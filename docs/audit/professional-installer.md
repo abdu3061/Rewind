@@ -1,0 +1,13 @@
+# Branded Windows setup
+
+20 November 2026. The user reported an unexpected Installing/Downloading animation after running Setup and asked for a clean, professional installation experience. The previous maker omitted `loadingGif`, so `electron-winstaller` selected its stock `install-spinner.gif`. It also inherited Electron's remote Control Panel icon URL. The application has no installer/download window in its normal startup path.
+
+The existing Squirrel/Forge installation lifecycle is retained. A small original 600 × 340 setup card uses Rewind's existing artwork, app colors and native Windows Segoe UI. Copy explains installation and the automatic first-launch handoff. Three quiet activity dots replace the stock animation; there is no fake percentage. Squirrel continues reporting actual progress in the taskbar. The card and ICO are included directly in the bootstrapper, while the installed-app metadata uses the existing published Rewind ICO rather than Electron branding. No dependency or installer framework is added. Signing remains a separate owner-controlled process.
+
+The native image generator is reproducible in PowerShell/C#, with a palette that preserves text antialiasing. The decoded GIF's actual first frame is inspected as `apps/desktop/assets/installer-preview.png`. Release verification compares the bootstrapper's embedded `background.gif` and `setupIcon.ico` byte-for-byte with these approved source assets, in addition to existing payload, provenance, native inventory, notice and hardened-runtime checks.
+
+The disposable Windows acceptance script now exercises non-silent installation and automatic app launch, verifies the installed icon and shortcut command, and opens the normal shortcut again before uninstall/reinstall checks. The first launch still requires the user's separate recording approval; no installation event opens history or grants collection. Automated execution remains restricted to marked fresh synthetic accounts/profiles on hosted Windows runners.
+
+References: [Forge maker options](https://js.electronforge.io/interfaces/_electron-forge_maker-squirrel.MakerSquirrelConfig.html), [Squirrel loading-image behavior](https://github.com/Squirrel/Squirrel.Windows/blob/develop/docs/using/loading-gif.md). These describe a branded setup splash rather than an interactive installation wizard. New wider-release signing, accessibility and physical high-DPI acceptance are not implied by the visual change.
+
+Candidate: `0.1.0-beta.2`, branch `fix/professional-installer`. Verification and distribution results are recorded after the candidate checks complete.
