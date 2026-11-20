@@ -22,6 +22,12 @@ try { $source=$reader.ReadToEnd() } finally { $reader.Dispose(); $gzip.Dispose()
 & ([ScriptBlock]::Create($source))
 `.trim();
 
+// Each request is bounded. The request that starts the helper also pays for
+// PowerShell startup and compiling its native type, which can take several
+// seconds on a cold or busy machine, so it gets a longer (still finite) budget.
+const requestDeadlineMs = 8000;
+const startupRequestDeadlineMs = 30000;
+
 const unavailable = () =>
   failure(
     "UNAVAILABLE",
@@ -131,10 +137,14 @@ export class WindowsProtectedFileAccess implements ProtectedFileAccess {
         if (this.closed) return unavailable();
         return new Promise<Result<unknown>>((resolve) => {
           try {
+            const starting = !this.child;
             const child = this.start();
             this.pending = {
               resolve,
-              timer: setTimeout(() => this.fail(), 8000),
+              timer: setTimeout(
+                () => this.fail(),
+                starting ? startupRequestDeadlineMs : requestDeadlineMs,
+              ),
             };
             child.stdin.write(JSON.stringify(command) + "\n");
           } catch {
