@@ -1,6 +1,6 @@
 # Rewind
 
-Download the [Windows evaluation beta](https://github.com/abdu3061/Rewind/releases/tag/v0.1.0-beta.2). Read [beta notes](docs/beta-notes.md), [installer acceptance](docs/audit/professional-installer.md) and [deployment evidence](docs/audit/beta-deployment.md) for current checks and remaining acceptance limits. It is an unsigned prerelease, with manual updates and no new open-source license grant.
+Download the [Windows evaluation beta](https://github.com/abdu3061/Rewind/releases/tag/v0.1.0-beta.3). Read [beta notes](docs/beta-notes.md), [installer acceptance](docs/audit/professional-installer.md) and [deployment evidence](docs/audit/beta-deployment.md) for current checks and remaining acceptance limits. It is an unsigned prerelease, with manual updates and no new open-source license grant.
 
 Rewind is a Windows desktop work-session memory project. The Windows evaluation beta provides consent-driven recording, encrypted saved versions, search and reviewed recovery. Wider-release acceptance limits remain explicit. See [release readiness](docs/audit/release-readiness.md), the [Windows build/install/removal procedure](docs/windows-release.md) and the [core implementation report](docs/audit/core-functionality-integration.md).
 
