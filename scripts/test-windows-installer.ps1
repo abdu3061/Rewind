@@ -123,7 +123,10 @@ try {
     Record-Step 'CLEAN_INSTALL_PAYLOAD_STARTUP_ENCRYPTION_AND_CLOSE_PASSED'
   }
   $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcuts[0].FullName)
-  if ($shortcut.Arguments -notmatch '--processStart\s+"?Rewind\.exe"?' -or $shortcut.Arguments -match '--install') { throw 'INSTALLED_SHORTCUT_RESTARTS_SETUP' }
+  # Current Squirrel targets the root app launcher; older builds used Update.exe.
+  $directShortcut = [string]::Equals($shortcut.TargetPath,(Join-Path $installRoot 'Rewind.exe'),[StringComparison]::OrdinalIgnoreCase) -and [string]::IsNullOrWhiteSpace($shortcut.Arguments)
+  $legacyShortcut = [string]::Equals($shortcut.TargetPath,(Join-Path $installRoot 'Update.exe'),[StringComparison]::OrdinalIgnoreCase) -and $shortcut.Arguments -match '^--processStart\s+"?Rewind\.exe"?$'
+  if (!$directShortcut -and !$legacyShortcut) { throw 'INSTALLED_SHORTCUT_RESTARTS_SETUP' }
   Start-Process -FilePath $shortcuts[0].FullName -WindowStyle Normal | Out-Null
   Close-InstalledDesktop
   Record-Step 'BRANDED_ICON_AND_NORMAL_SHORTCUT_LAUNCH_PASSED'
