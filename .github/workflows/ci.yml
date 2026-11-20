@@ -14,6 +14,10 @@ on:
         description: Existing beta release tag to verify
         type: string
         default: v0.1.0-beta.1
+      upgrade_from_tag:
+        description: Optional earlier beta to install first for an upgrade check
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -67,6 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REWIND_BETA_TAG: ${{ inputs.beta_tag }}
+          REWIND_UPGRADE_FROM_TAG: ${{ inputs.upgrade_from_tag }}
         run: ./scripts/test-windows-installer.ps1
       - name: Upload fixed-code installer acceptance receipt
         if: always()

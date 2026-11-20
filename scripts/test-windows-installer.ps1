@@ -4,6 +4,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or !$env:RU
   throw 'INSTALLER_ACCEPTANCE_REQUIRES_DISPOSABLE_GITHUB_WINDOWS_RUNNER'
 }
 if ($env:REWIND_BETA_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$') { throw 'INVALID_BETA_TAG' }
+if ($env:REWIND_UPGRADE_FROM_TAG -and ($env:REWIND_UPGRADE_FROM_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' -or $env:REWIND_UPGRADE_FROM_TAG -eq $env:REWIND_BETA_TAG)) { throw 'INVALID_UPGRADE_SOURCE_TAG' }
 $repository = $env:GITHUB_REPOSITORY
 if ($repository -ne 'abdu3061/Rewind') { throw 'UNEXPECTED_ACCEPTANCE_REPOSITORY' }
 $work = Join-Path $env:RUNNER_TEMP ('rewind-installer-synthetic-' + [guid]::NewGuid().ToString('N'))
@@ -71,6 +72,23 @@ try {
   Expand-Archive -LiteralPath (Join-Path $work $zip.name) -DestinationPath $portable
   if (!(Test-Path -LiteralPath (Join-Path $portable 'Rewind.exe'))) { throw 'PORTABLE_BETA_LAYOUT_INVALID' }
   Record-Step 'DOWNLOADED_PUBLISHED_BYTES_VERIFIED'
+  $previousKeyHash = $null
+  if ($env:REWIND_UPGRADE_FROM_TAG) {
+    $previousRelease = @($releases | Where-Object { $_.tag_name -eq $env:REWIND_UPGRADE_FROM_TAG })
+    if ($previousRelease.Count -ne 1) { throw 'UPGRADE_SOURCE_RELEASE_MISSING' }
+    $previousAsset = @($previousRelease[0].assets | Where-Object { $_.name -eq 'Rewind-Setup.exe' })
+    if ($previousAsset.Count -ne 1 -or $previousAsset[0].state -ne 'uploaded') { throw 'UPGRADE_SOURCE_INSTALLER_MISSING' }
+    $previousAsset = $previousAsset[0]
+    $previousInstaller = Join-Path $work 'previous-Rewind-Setup.exe'
+    Invoke-WebRequest -Uri $previousAsset.url -Headers @{ Authorization="Bearer $env:GH_TOKEN"; Accept='application/octet-stream'; 'X-GitHub-Api-Version'='2022-11-28' } -OutFile $previousInstaller
+    if (('sha256:' + (Get-FileHash -LiteralPath $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()) -ne $previousAsset.digest) { throw 'UPGRADE_SOURCE_HASH_MISMATCH' }
+    Run-InstallerTool $previousInstaller @('--silent')
+    $previousApplication = @(Get-ChildItem -LiteralPath $installRoot -Directory -Filter 'app-*')[0].FullName
+    Start-Process -FilePath (Join-Path $previousApplication 'Rewind.exe') -WindowStyle Normal | Out-Null
+    Close-InstalledDesktop
+    $previousKeyHash = (Get-FileHash -LiteralPath (Join-Path $profile 'secure/history.key') -Algorithm SHA256).Hash
+    Record-Step 'PREVIOUS_BETA_SYNTHETIC_ENCRYPTED_PROFILE_CREATED'
+  }
   # Exercise the user-visible setup and its automatic first-launch handoff.
   Run-InstallerTool $installer @()
   Wait-Condition { (Test-Path -LiteralPath (Join-Path $installRoot 'Update.exe')) -and @(Get-ChildItem -LiteralPath $installRoot -Directory -Filter 'app-*').Count -eq 1 } 'INSTALLATION_LAYOUT_MISSING'
@@ -85,6 +103,11 @@ try {
   $header = [IO.File]::ReadAllBytes($history)
   if ($header.Length -lt 16 -or [Text.Encoding]::ASCII.GetString($header,0,16) -eq "SQLite format 3`0") { throw 'INSTALLED_HISTORY_NOT_ENCRYPTED' }
   $keyHash = (Get-FileHash -LiteralPath $key -Algorithm SHA256).Hash
+  if ($previousKeyHash) {
+    if ($keyHash -ne $previousKeyHash) { throw 'UPGRADE_REPLACED_PROTECTED_KEY' }
+    $receipt.upgradeFrom = $env:REWIND_UPGRADE_FROM_TAG
+    Record-Step 'NEWER_VERSION_INSTALL_PRESERVED_ENCRYPTED_PROFILE_AND_KEY'
+  }
   $registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Rewind'
   if (!(Test-Path -LiteralPath $registry)) { throw 'INSTALLER_UNINSTALL_ENTRY_MISSING' }
   $shortcutRoots = @([Environment]::GetFolderPath('DesktopDirectory'),[Environment]::GetFolderPath('StartMenu'))
