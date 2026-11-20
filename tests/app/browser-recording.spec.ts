@@ -468,8 +468,9 @@ for (const [browser, channel, executable] of [
         .getByRole("button", { name: "Resume", exact: true })
         .click();
       await browserPage.bringToFront();
-      await new Promise((resolve) => setTimeout(resolve, 2200));
-      expect(await reads()).toBeGreaterThan(paused);
+      // Resuming re-arms the extension asynchronously; slow runners need more
+      // than one polling interval before the next page read.
+      await expect.poll(reads, { timeout: 15000 }).toBeGreaterThan(paused);
       expect(await events()).toMatchObject({
         ok: true,
         value: [expect.anything()],
